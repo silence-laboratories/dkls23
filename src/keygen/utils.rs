@@ -1,3 +1,4 @@
+use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use sl_mpc_mate::{
     cooridinator::Coordinator,
     nacl::EncryptedData,
@@ -39,28 +40,33 @@ pub fn setup_keygen<const T: usize, const N: usize>(
     Ok((actors, coord))
 }
 
-/// Execute one round of DKG protocol
+/// Execute one round of DKG protocol, execute parties in parallel
 pub fn run_round<I, N, R, M, E>(coord: &mut Coordinator, actors: Vec<R>, round: usize) -> Vec<N>
 where
     R: Round<Input = Vec<I>, Output = std::result::Result<(N, M), E>>,
-    I: PersistentObject + Clone,
+    I: PersistentObject + Clone + Sync,
     M: PersistentObject,
     E: std::fmt::Debug,
+    Vec<R>: IntoParallelIterator<Item = R>,
+    N: Send,
 {
     let msgs = recv_broadcast(coord, round);
 
-    actors
-        .into_iter()
+    let (actors, msgs): (Vec<N>, Vec<M>) = actors
+        .into_par_iter()
         .map(|actor| {
             let (actor, msg) = actor.process(msgs.clone()).unwrap();
 
-            if round < coord.max_round() {
-                coord.send(round + 1, msg.to_bytes().unwrap()).unwrap();
-            }
-
-            actor
+            (actor, msg)
         })
-        .collect()
+        .unzip();
+
+    if round < coord.max_round() {
+        msgs.iter().for_each(|msg| {
+            coord.send(round + 1, msg.to_bytes().unwrap()).unwrap();
+        })
+    }
+    actors
 }
 
 pub(crate) trait HasVsotMsg: HasFromParty {

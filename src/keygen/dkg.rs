@@ -962,7 +962,7 @@ impl Round for KeygenParty<R6> {
 
         // Get messages with party id less than current party id.
         let rec_seed_list = messages
-            .iter()
+            .par_iter()
             .take(self.params.party_id)
             .map(|message| {
                 let ek_i = &self.params.party_pubkeys_list[message.get_pid()].encryption_key;
