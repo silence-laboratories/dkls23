@@ -10,7 +10,6 @@ use sl_mpc_mate::{
 use sl_oblivious::{
     serialization::serde_projective_point,
     soft_spoken::{ReceiverOTSeed, SenderOTSeed},
-    vsot::{ReceiverOutput, SenderOutput},
     zkproofs::DLogProof,
 };
 

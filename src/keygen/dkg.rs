@@ -1,5 +1,3 @@
-use std::fmt::Debug;
-
 use k256::{
     elliptic_curve::{group::GroupEncoding, subtle::ConstantTimeEq, PrimeField},
     schnorr::CryptoRngCore,
@@ -20,17 +18,14 @@ use crate::{
 use sl_oblivious::{
     soft_spoken::{build_pprf, eval_pprf, PPRFOutput, SenderOTSeed},
     utils::TranscriptProtocol,
-    vsot::{
-        InitRec, RecR1, RecR2, SendR1, SendR2, SenderOutput, VSOTError, VSOTMsg5, VSOTReceiver,
-        VSOTSender,
-    },
+    vsot::{InitRec, RecR1, RecR2, SendR1, SendR2, VSOTError, VSOTMsg5, VSOTReceiver, VSOTSender},
     zkproofs::DLogProof,
 };
 
 use digest::Digest;
 use sl_mpc_mate::{
     math::{birkhoff_coeffs, feldman_verify, polynomial_coeff_multipliers, GroupPolynomial},
-    nacl::{encrypt_data, sign_message, verify_signature, BoxPrivKey, EncryptedData, HasSignature},
+    nacl::{encrypt_data, sign_message, verify_signature, EncryptedData, HasSignature},
     random_bytes,
     traits::{HasFromParty, PersistentObject, Round},
     HashBytes, SessionId,
