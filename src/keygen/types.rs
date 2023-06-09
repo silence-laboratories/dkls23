@@ -208,6 +208,18 @@ pub enum KeygenError {
     /// Big S value mismatch
     #[error("Big S value mismatch")]
     BigSMismatch,
+
+    /// Invalid PPRF plaintext
+    #[error("Invalid PPRF plaintext")]
+    InvalidPPRFPlaintext,
+
+    #[error("PPRF error")]
+    /// PPRF error
+    PPRFError(String),
+
+    /// Invalid seed
+    #[error("Invalid Seed")]
+    InvalidSeed,
 }
 
 #[cfg(test)]

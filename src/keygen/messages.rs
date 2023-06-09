@@ -9,6 +9,7 @@ use sl_mpc_mate::{
 };
 use sl_oblivious::{
     serialization::serde_projective_point,
+    soft_spoken::{ReceiverOTSeed, SenderOTSeed},
     vsot::{ReceiverOutput, SenderOutput},
     zkproofs::DLogProof,
 };
@@ -60,7 +61,7 @@ pub struct KeygenMsg2 {
     pub big_f_i_vector: GroupPolynomial<Secp256k1>,
 
     /// Encrypted VSOT msg 1
-    pub enc_vsot_msgs: Vec<EncryptedData>,
+    pub enc_vsot_msgs1: Vec<EncryptedData>,
 
     /// Participants dlog proof
     pub dlog_proofs_i: Vec<DLogProof>,
@@ -91,7 +92,7 @@ pub struct KeygenMsg3 {
 
 impl HasVsotMsg for KeygenMsg2 {
     fn get_vsot_msg(&self, party_id: usize) -> &EncryptedData {
-        &self.enc_vsot_msgs[self.get_idx_from_id(party_id)]
+        &self.enc_vsot_msgs1[self.get_idx_from_id(party_id)]
     }
 }
 
@@ -176,6 +177,12 @@ pub struct KeygenMsg6 {
     /// Encrypted VSOT msg 3
     pub enc_vsot_msgs5: Vec<EncryptedData>,
 
+    /// Encrypted pprf outputs
+    pub enc_pprf_outputs: Vec<EncryptedData>,
+
+    /// Encrypted seed_i_j values
+    pub enc_seed_i_j_list: Vec<EncryptedData>,
+
     /// Participants signature of the message
     #[serde(with = "serde_arrays")]
     pub signature: Signature,
@@ -200,9 +207,13 @@ pub struct Keyshare {
     pub(crate) x_i_list: Vec<NonZeroScalar>,
     pub(crate) rank_list: Vec<usize>,
     ///
-    pub seed_ot_receivers: Vec<ReceiverOutput>,
+    pub seed_ot_receivers: Vec<ReceiverOTSeed>,
     ///
-    pub seed_ot_senders: Vec<SenderOutput>,
+    pub seed_ot_senders: Vec<SenderOTSeed>,
+    /// Seed values sent to the other parties
+    pub sent_seed_list: Vec<[u8; 32]>,
+    /// Seed values received from the other parties
+    pub rec_seed_list: Vec<[u8; 32]>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
