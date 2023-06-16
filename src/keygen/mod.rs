@@ -13,7 +13,7 @@ pub mod messages;
 mod tests {
     use std::collections::HashSet;
 
-    use k256::{elliptic_curve::group::GroupEncoding, NonZeroScalar};
+    use k256::elliptic_curve::group::GroupEncoding;
     use rand::seq::SliceRandom;
 
     use crate::keygen::{check_all_but_one_seeds, check_secret_recovery};

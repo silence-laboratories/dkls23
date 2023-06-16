@@ -1,6 +1,5 @@
 use dkls23::keygen::{run_round, setup_keygen, KeygenError};
 use k256::elliptic_curve::group::GroupEncoding;
-use sl_oblivious::{soft_spoken, soft_spoken_mod::soft_spoken_ot_mod::SOFT_SPOKEN_K};
 
 fn main() -> Result<(), KeygenError> {
     const T: usize = 3;

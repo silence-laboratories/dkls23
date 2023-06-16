@@ -7,12 +7,12 @@ use sl_mpc_mate::{
     recv_broadcast,
     traits::{HasFromParty, PersistentObject, Round},
 };
-use sl_oblivious::soft_spoken::{self, ReceiverOTSeed, SenderOTSeed};
-
-use crate::{
-    soft_spoken_ot_mod::{KAPPA, SOFT_SPOKEN_K, SOFT_SPOKEN_Q},
-    utils::Init,
+use sl_oblivious::{
+    soft_spoken::{self, ReceiverOTSeed, SenderOTSeed},
+    soft_spoken_mod::{KAPPA_DIV_SOFT_SPOKEN_K, SOFT_SPOKEN_K, SOFT_SPOKEN_Q},
 };
+
+use crate::utils::Init;
 
 use super::{messages::Keyshare, KeygenError, KeygenParty, KeygenPartyKeys, R6};
 ///
@@ -22,8 +22,8 @@ pub fn setup_keygen<const T: usize, const N: usize>(
 ) -> Result<(Vec<KeygenParty<Init>>, Coordinator), KeygenError> {
     let mut coord = Coordinator::new(N, 4 + 4);
     let mut rng = rand::thread_rng();
-
     // Initializing the keygen for each party.
+
     let actors = n_i_list
         .unwrap_or([0; N])
         .into_iter()
@@ -150,22 +150,11 @@ pub(crate) fn check_secret_recovery(
         .ok_or(KeygenError::PublicKeyMismatch)
 }
 
-// def check_all_but_one_seeds(seed_ot_sender: SenderOTSeed, seed_ot_receiver: ReceiverOTSeed):
-//     for i in range(KAPPA//SOFT_SPOKEN_K):
-//         sender_pad = seed_ot_sender.one_time_pad_encryption_keys[i]
-//         receiver_pad = seed_ot_receiver.one_time_pad_decryption_keys[i]
-//         choice = seed_ot_receiver.random_choices[i]
-
-//         for j in range(SOFT_SPOKEN_Q):
-//             if j == choice:
-//                 continue
-//             assert sender_pad[j] == receiver_pad[j]
-
 pub(crate) fn check_all_but_one_seeds(
     seed_ot_sender: &SenderOTSeed,
     seed_ot_receiver: &ReceiverOTSeed,
 ) {
-    for i in 0..KAPPA / SOFT_SPOKEN_K {
+    for i in 0..KAPPA_DIV_SOFT_SPOKEN_K {
         let sender_pad = &seed_ot_sender.one_time_pad_enc_keys[i];
         let receiver_pad = &seed_ot_receiver.one_time_pad_dec_keys[i];
         let choice = seed_ot_receiver.random_choices[i];

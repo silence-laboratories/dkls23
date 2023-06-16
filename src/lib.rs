@@ -4,8 +4,6 @@
 /// DKLs23 keygen protocol
 pub mod keygen;
 
-mod soft_spoken_ot_mod;
-
 /// Utilities
 pub mod utils {
     use k256::sha2::{Digest, Sha256};
