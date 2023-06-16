@@ -32,6 +32,7 @@ use sl_mpc_mate::{
 };
 
 use super::{
+    check_secret_recovery,
     messages::{KeyGenCompleteMsg, KeygenMsg1, KeygenMsg4},
     types::KeygenParams,
     HasVsotMsg, KeyEntropy, KeygenError, KeygenPartyKeys, KeygenPartyPublicKeys,
@@ -45,6 +46,7 @@ pub const DLOG_PROOF1_LABEL: &[u8] = b"SilenceLaboratories-DKG-DLOG-PROOF1";
 pub const DLOG_PROOF2_LABEL: &[u8] = b"SilenceLaboratories-DKG-DLOG-PROOF2";
 
 /// Keygen logic for a single party
+#[derive(Clone)]
 pub struct KeygenParty<T> {
     params: KeygenParams,
     state: T,
@@ -105,6 +107,7 @@ pub struct R5 {
     other_parties: Vec<usize>,
 }
 /// State of a keygen party after processing the fifth message.
+#[derive(Clone)]
 pub struct R6 {
     final_session_id: SessionId,
     vsot_receivers: Vec<VSOTReceiver<RecR2>>,
@@ -1272,42 +1275,4 @@ where
         .unzip();
 
     Ok((next_receivers, enc_vsot_msgs))
-}
-
-fn check_secret_recovery(
-    x_i_list: &[NonZeroScalar],
-    rank_list: &[usize],
-    big_s_list: &[ProjectivePoint],
-    public_key: &ProjectivePoint,
-) -> Result<(), KeygenError> {
-    // Checking if secret recovery works
-    let mut party_params_list = x_i_list
-        .iter()
-        .zip(rank_list)
-        .zip(big_s_list)
-        .collect::<Vec<((&NonZeroScalar, &usize), &ProjectivePoint)>>();
-
-    party_params_list.sort_by_key(|((_, n_i), _)| *n_i);
-
-    let params = party_params_list
-        .iter()
-        .map(|((x_i, n_i), _)| (x_i.to_owned().to_owned(), **n_i))
-        .collect::<Vec<_>>();
-
-    let sorted_big_s_list = party_params_list
-        .iter()
-        .map(|((_, _), big_s_i)| *big_s_i)
-        .collect::<Vec<_>>();
-
-    let betta_vector = birkhoff_coeffs(params.as_slice());
-    let public_key_point = sorted_big_s_list
-        .iter()
-        .zip(betta_vector.iter())
-        .fold(ProjectivePoint::IDENTITY, |acc, (point, betta_i)| {
-            acc + *point * betta_i
-        });
-
-    (public_key == &public_key_point)
-        .then_some(())
-        .ok_or(KeygenError::PublicKeyMismatch)
 }
