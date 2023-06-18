@@ -4,6 +4,9 @@
 /// DKLs23 keygen protocol
 pub mod keygen;
 
+/// DKLs23 signing protocol
+pub mod sign;
+
 /// Utilities
 pub mod utils {
     use k256::sha2::{Digest, Sha256};
