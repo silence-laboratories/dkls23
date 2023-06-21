@@ -2,23 +2,21 @@ use k256::{
     elliptic_curve::{
         bigint::Encoding,
         subtle::{Choice, ConditionallySelectable},
-        PrimeField,
     },
     schnorr::CryptoRngCore,
     Scalar, Secp256k1, U256,
 };
-use rand::CryptoRng;
+use serde::{Deserialize, Serialize};
 use sl_mpc_mate::{
     random_bytes,
-    traits::{Round, ToScalar},
+    traits::{PersistentObject, Round, ToScalar},
     SessionId,
 };
 use sl_oblivious::{
     soft_spoken::{ReceiverOTSeed, SenderOTSeed},
     soft_spoken_mod::{
         Init, RecR0, RecR1, Round1Output, Round2Output, SoftSpokenOTRec, SoftSpokenOTSender,
-        COT_BATCH_SIZE_BYTES, COT_BLOCK_SIZE_BYTES, ETA, KAPPA, KAPPA_BYTES,
-        KAPPA_DIV_SOFT_SPOKEN_K, L,
+        COT_BLOCK_SIZE_BYTES, ETA, KAPPA, KAPPA_BYTES, KAPPA_DIV_SOFT_SPOKEN_K, L,
     },
     utils::{ExtractBit, Hasher},
 };
@@ -178,11 +176,11 @@ impl Round for PairwiseMtaRec<MtaRecR1> {
             }
         }
 
-        for k in 0..2 {
+        chi.iter_mut().enumerate().for_each(|(k, chi_k)| {
             h.update(format!("chi_{}", k).as_bytes());
             let digest: [u8; 32] = h.finalize().into();
-            chi[k] = U256::from_be_slice(&digest).to_scalar::<Secp256k1>();
-        }
+            *chi_k = U256::from_be_slice(&digest).to_scalar::<Secp256k1>();
+        });
 
         let mut output_additive_shares = [Scalar::ZERO; 2];
         let mut r_hash = Hasher::new();
@@ -313,18 +311,7 @@ impl Round for PairwiseMtaSender<MtaSendR0> {
         hasher.update(b"SL-DKLS-MTA");
         hasher.update(self.session_id.as_ref());
         hasher.update(b"r_list");
-        //  for j in range(ETA):
-        //             r_j = self.cot_sender.output_additive_shares[j][0]
-        //             r_j += chi[0] * self.cot_sender.output_additive_shares[j][1]
-        //             r_j += chi[1] * self.cot_sender.output_additive_shares[j][2]
-        //             r_j %= self.curve.order
-        //             r_hash.update(int(r_j).to_bytes(32, 'big'))
-        //             for i in range(2):
-        //                 self.output_additive_shares[i] += self.gadget_vector[j] * self.cot_sender.output_additive_shares[j][i]
-        //                 self.output_additive_shares[i] %= self.curve.order
 
-        //         u = alpha_1 + chi[0] * alpha_2 + chi[1] * a_hat
-        //         u %= self.curve.order
         for j in 0..ETA {
             let mut r_j = cot_sender_shares[j][0];
             r_j += chi[0] * cot_sender_shares[j][1];
@@ -351,11 +338,13 @@ impl Round for PairwiseMtaSender<MtaSendR0> {
 }
 
 /// Round 2 output in Pairwise Mta protocol
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MtaRound2Output {
     cot_round_2_output: Round2Output,
     r: [u8; 32],
     u: Scalar,
 }
+impl PersistentObject for MtaRound2Output {}
 
 #[cfg(test)]
 mod tests {

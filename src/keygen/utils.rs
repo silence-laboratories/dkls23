@@ -8,13 +8,13 @@ use sl_mpc_mate::{
     traits::{HasFromParty, PersistentObject, Round},
 };
 use sl_oblivious::{
-    soft_spoken::{self, ReceiverOTSeed, SenderOTSeed},
+    soft_spoken::{ReceiverOTSeed, SenderOTSeed},
     soft_spoken_mod::{KAPPA_DIV_SOFT_SPOKEN_K, SOFT_SPOKEN_K, SOFT_SPOKEN_Q},
 };
 
 use crate::utils::Init;
 
-use super::{messages::Keyshare, KeygenError, KeygenParty, KeygenPartyKeys, R6};
+use super::{messages::Keyshare, KeygenError, KeygenParty, PartyKeys, R6};
 ///
 pub fn setup_keygen<const T: usize, const N: usize>(
     n_i_list: Option<[usize; N]>,
@@ -30,7 +30,7 @@ pub fn setup_keygen<const T: usize, const N: usize>(
         .map(|n_i| {
             // Generate or load from persistent storage
             // set of party's keys
-            let party_keys = KeygenPartyKeys::new(&mut rng);
+            let party_keys = PartyKeys::new(&mut rng);
 
             // extract public keys
             let actor_pubkeys = party_keys.public_keys();
@@ -76,15 +76,20 @@ where
 }
 
 pub(crate) trait HasVsotMsg: HasFromParty {
-    /// Get the index of the vsot message for the given party id.
-    fn get_idx_from_id(&self, party_id: usize) -> usize {
-        if party_id > self.get_pid() {
-            party_id - 1
-        } else {
-            party_id
-        }
-    }
     fn get_vsot_msg(&self, party_id: usize) -> &EncryptedData;
+}
+
+/// Get the index of the message for the given party id.
+/// This is indexing is when a party wants to get message from id list, it's own id is not included in the list.
+/// # Note
+/// For e.g if party id is 1 and there are 3 parties, then the id list will be `[0, 2]` and the index of the vsot message
+/// for party 0 will be 0, and for party 2 will be 1.
+pub fn get_idx_from_id(current_party_id: usize, for_party_id: usize) -> usize {
+    if for_party_id > current_party_id {
+        for_party_id - 1
+    } else {
+        for_party_id
+    }
 }
 
 /// Utility function to process all rounds of keygen

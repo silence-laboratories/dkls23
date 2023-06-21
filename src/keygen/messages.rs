@@ -4,7 +4,7 @@ use sl_mpc_mate::{
     impl_basemessage,
     math::GroupPolynomial,
     nacl::{EncryptedData, Signature},
-    traits::PersistentObject,
+    traits::{HasFromParty, PersistentObject},
     HashBytes, SessionId,
 };
 use sl_oblivious::{
@@ -13,7 +13,7 @@ use sl_oblivious::{
     zkproofs::DLogProof,
 };
 
-use super::HasVsotMsg;
+use super::{get_idx_from_id, HasVsotMsg};
 
 // TODO: Change all usizes to u32 or u64
 
@@ -91,32 +91,32 @@ pub struct KeygenMsg3 {
 
 impl HasVsotMsg for KeygenMsg2 {
     fn get_vsot_msg(&self, party_id: usize) -> &EncryptedData {
-        &self.enc_vsot_msgs1[self.get_idx_from_id(party_id)]
+        &self.enc_vsot_msgs1[get_idx_from_id(self.get_pid(), party_id)]
     }
 }
 
 // TODO: Remove multiple impls?
 impl HasVsotMsg for KeygenMsg3 {
     fn get_vsot_msg(&self, party_id: usize) -> &EncryptedData {
-        &self.enc_vsot_msgs2[self.get_idx_from_id(party_id)]
+        &self.enc_vsot_msgs2[get_idx_from_id(self.get_pid(), party_id)]
     }
 }
 
 impl HasVsotMsg for KeygenMsg4 {
     fn get_vsot_msg(&self, party_id: usize) -> &EncryptedData {
-        &self.enc_vsot_msgs3[self.get_idx_from_id(party_id)]
+        &self.enc_vsot_msgs3[get_idx_from_id(self.get_pid(), party_id)]
     }
 }
 
 impl HasVsotMsg for KeygenMsg5 {
     fn get_vsot_msg(&self, party_id: usize) -> &EncryptedData {
-        &self.enc_vsot_msgs4[self.get_idx_from_id(party_id)]
+        &self.enc_vsot_msgs4[get_idx_from_id(self.get_pid(), party_id)]
     }
 }
 
 impl HasVsotMsg for KeygenMsg6 {
     fn get_vsot_msg(&self, party_id: usize) -> &EncryptedData {
-        &self.enc_vsot_msgs5[self.get_idx_from_id(party_id)]
+        &self.enc_vsot_msgs5[get_idx_from_id(self.get_pid(), party_id)]
     }
 }
 

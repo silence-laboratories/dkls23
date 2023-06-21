@@ -1,3 +1,4 @@
+//! Distributed key generation protocol.
 use k256::{
     elliptic_curve::{group::GroupEncoding, subtle::ConstantTimeEq, PrimeField},
     schnorr::CryptoRngCore,
@@ -32,10 +33,10 @@ use sl_mpc_mate::{
 };
 
 use super::{
-    check_secret_recovery,
+    check_secret_recovery, get_idx_from_id,
     messages::{KeyGenCompleteMsg, KeygenMsg1, KeygenMsg4},
     types::KeygenParams,
-    HasVsotMsg, KeyEntropy, KeygenError, KeygenPartyKeys, KeygenPartyPublicKeys,
+    HasVsotMsg, KeyEntropy, KeygenError, PartyKeys, PartyPublicKeys,
 };
 
 /// LABEL for the keygen protocol
@@ -144,7 +145,7 @@ impl KeygenParty<Init> {
         n: usize,
         party_id: usize,
         rank: usize,
-        keys: &KeygenPartyKeys,
+        keys: &PartyKeys,
         soft_spoken_k: u8,
         rng: &mut impl CryptoRngCore,
     ) -> Result<Self, KeygenError> {
@@ -158,7 +159,8 @@ impl KeygenParty<Init> {
         n: usize,
         party_id: usize,
         rank: usize,
-        party_keys: &KeygenPartyKeys,
+        party_keys: &PartyKeys,
+
         soft_spoken_k: u8,
         rand_params: KeyEntropy,
     ) -> Result<Self, KeygenError> {
@@ -183,7 +185,7 @@ impl KeygenParty<Init> {
 }
 
 impl Round for KeygenParty<Init> {
-    type Input = Vec<KeygenPartyPublicKeys>;
+    type Input = Vec<PartyPublicKeys>;
     type Output = Result<(KeygenParty<R1>, KeygenMsg1), KeygenError>;
 
     fn process(self, pubkeys: Self::Input) -> Self::Output {
@@ -249,7 +251,7 @@ impl Round for KeygenParty<R1> {
         for message in &messages {
             let party_pubkey_idx = message.get_pid();
 
-            let KeygenPartyPublicKeys { verify_key, .. } =
+            let PartyPublicKeys { verify_key, .. } =
                 &self.params.party_pubkeys_list[party_pubkey_idx];
 
             let message_hash = hash_msg1(
@@ -278,8 +280,7 @@ impl Round for KeygenParty<R1> {
         }
 
         // TODO: Should parties be initialized with rank_list and x_i_list? Ask Vlad.
-        let final_sid =
-            calculate_final_session_id(messages.iter().map(|msg| msg.get_pid()), &sid_i_list);
+        let final_sid = calculate_final_session_id(&party_id_list, &sid_i_list);
 
         // Setup transcript for DLog proofs.
         let mut dlog_transcript = Transcript::new_dlog_proof(
@@ -938,7 +939,7 @@ impl Round for KeygenParty<R6> {
                 let vsot_msg =
                     VSOTMsg5::from_bytes(&vsot_msg).ok_or(KeygenError::InvalidVSOTPlaintext)?;
                 let receiver_output = receiver.process(vsot_msg)?;
-                let pprf_output_idx = message.get_idx_from_id(self.params.party_id);
+                let pprf_output_idx = get_idx_from_id(message.get_pid(), self.params.party_id);
                 let enc_pprf_output = &message.enc_pprf_outputs[pprf_output_idx];
 
                 let pprf_output = enc_pprf_output.enc_data.decrypt_to_vec(
@@ -946,7 +947,6 @@ impl Round for KeygenParty<R6> {
                     sender_public_key,
                     &self.params.encryption_keypair.secret_key,
                 )?;
-
                 let pprf_output = Vec::<PPRFOutput>::from_bytes(&pprf_output)
                     .ok_or(KeygenError::InvalidPPRFPlaintext)?;
 
@@ -1217,6 +1217,7 @@ fn validate_input_messages<M: HasFromParty>(
         return Err(KeygenError::InvalidMessageLength);
     }
 
+    // TODO: should we sort?
     messages.sort_by_key(|msg| msg.get_pid());
 
     messages
@@ -1233,7 +1234,7 @@ fn process_vsot_instances<CM, NM, M, VSOT, VSOTNEXT>(
     other_party_ids: rayon::slice::Iter<usize>,
     messages: &[M],
     party_id: usize,
-    party_pubkeys_list: &[KeygenPartyPublicKeys],
+    party_pubkeys_list: &[PartyPublicKeys],
     secret_key: &sl_mpc_mate::nacl::BoxPrivKey,
 ) -> Result<(Vec<VSOTNEXT>, Vec<EncryptedData>), KeygenError>
 where

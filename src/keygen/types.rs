@@ -35,7 +35,7 @@ pub struct KeygenParams {
     pub(crate) encryption_keypair: sl_mpc_mate::nacl::KeyPair,
 
     /// List of all parties' public keys
-    pub party_pubkeys_list: Vec<KeygenPartyPublicKeys>,
+    pub party_pubkeys_list: Vec<PartyPublicKeys>,
 
     pub(crate) rand_params: KeyEntropy,
 }
@@ -75,7 +75,7 @@ impl KeyEntropy {
 /// Set of a party's keys that can be reused
 /// for independent execution of DKG
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct KeygenPartyKeys {
+pub struct PartyKeys {
     /// Public key for verifying signatures.
     pub verify_key: SignPubkey,
 
@@ -85,11 +85,11 @@ pub struct KeygenPartyKeys {
     pub(crate) encryption_keypair: KeyPair,
 }
 
-impl PersistentObject for KeygenPartyKeys {}
+impl PersistentObject for PartyKeys {}
 
 /// Datatype for all of the participants public keys (verification, encryption)
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
-pub struct KeygenPartyPublicKeys {
+pub struct PartyPublicKeys {
     /// The public key for signature verification.
     pub verify_key: SignPubkey,
 
@@ -97,14 +97,13 @@ pub struct KeygenPartyPublicKeys {
     pub encryption_key: sl_mpc_mate::nacl::BoxPubkey,
 }
 
-impl PersistentObject for KeygenPartyPublicKeys {}
+impl PersistentObject for PartyPublicKeys {}
 
-impl KeygenPartyKeys {
+impl PartyKeys {
     /// Create a new set of party keys
     #[allow(clippy::new_without_default)]
     pub fn new(rng: &mut impl CryptoRngCore) -> Self {
         // TODO: Is rng needed here?
-
         let mut seed = [0u8; 32];
         rng.fill_bytes(&mut seed);
 
@@ -122,8 +121,8 @@ impl KeygenPartyKeys {
     }
 
     /// Extract public keys
-    pub fn public_keys(&self) -> KeygenPartyPublicKeys {
-        KeygenPartyPublicKeys {
+    pub fn public_keys(&self) -> PartyPublicKeys {
+        PartyPublicKeys {
             verify_key: self.verify_key,
             encryption_key: self.encryption_keypair.public_key.clone(),
         }
