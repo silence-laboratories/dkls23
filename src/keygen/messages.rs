@@ -189,6 +189,7 @@ pub struct KeygenMsg6 {
 
 /// Keyshare of a party.
 #[allow(unused)]
+#[derive(Clone)]
 pub struct Keyshare {
     /// Threshold value
     pub threshold: usize,

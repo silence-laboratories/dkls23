@@ -7,8 +7,11 @@ edition = "2021"
 
 [dependencies]
 # TODO: update with git path later
-sl-mpc-mate = {git = "https://gitlab.com/com.silencelaboratories/sl-crypto", branch = "main", features =["nacl"]}
-sl-oblivious = {git = "https://gitlab.com/com.silencelaboratories/sl-crypto", branch = "main" }
+# sl-mpc-mate = {git = "https://gitlab.com/com.silencelaboratories/sl-crypto", branch = "main", features =["nacl"]}
+# sl-oblivious = {git = "https://gitlab.com/com.silencelaboratories/sl-crypto", branch = "main" }
+sl-mpc-mate = { path = "../sl-crypto/crates/sl-mpc-mate", features =["nacl"]}
+sl-oblivious = { path = "../sl-crypto/crates/sl-oblivious" }
+
 k256 = {version = "0.13", features= ["ecdsa", "serde"]}
 merlin = "3.0.0"
 rand = "0.8"
@@ -17,6 +20,21 @@ rayon ="1"
 serde_arrays = "0.1.0"
 thiserror = "1"
 
+tracing = "0.1.37"
+tracing-tracy = "0.10.2"
+# tracy-client = { version = "0.15.1" }
+# profiling = { version = "1.0.8", features = [ "profile-with-tracy" ] }
 
 [dev-dependencies]
 hex ="0.4.3"
+
+[workspace]
+members = [
+  ".",
+  "wrapper/node"
+]
+
+[profile.release]
+lto = true
+# strip = "symbols"
+debug = true

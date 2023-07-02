@@ -1,30 +1,28 @@
 //! Distributed sign generation protocol.
 
-use std::{
-    collections::{HashMap, HashSet},
-    hash::Hash,
-};
+use std::collections::{HashMap, HashSet};
 
 use k256::{
     ecdsa::Signature,
     elliptic_curve::{
-        generic_array::GenericArray, group::GroupEncoding, point::AffineCoordinates,
-        subtle::ConstantTimeEq, Field, PrimeField,
+        group::GroupEncoding, point::AffineCoordinates, subtle::ConstantTimeEq, PrimeField,
     },
     sha2::{Digest, Sha256},
-    AffinePoint, FieldBytes, ProjectivePoint, Scalar, Secp256k1, U256,
+    ProjectivePoint, Scalar, Secp256k1, U256,
 };
+
 use rand::{rngs::StdRng, CryptoRng, Rng, RngCore, SeedableRng};
+
 use sl_mpc_mate::{
     math::birkhoff_coeffs,
-    nacl::{encrypt_data, sign_message, verify_signature, EncryptedData, HasSignature},
-    traits::{HasFromParty, HasToParty, PersistentObject, Round, ToScalar},
+    nacl::{encrypt_data, sign_message, verify_signature, EncryptedData},
+    traits::{HasFromParty, PersistentObject, Round, ToScalar},
     HashBytes, SessionId,
 };
-use sl_oblivious::soft_spoken_mod::{Round1Output, L};
+use sl_oblivious::soft_spoken_mod::Round1Output;
 
 use crate::{
-    keygen::{get_idx_from_id, messages::Keyshare, PartyKeys, PartyPublicKeys},
+    keygen::{get_idx_from_id, messages::Keyshare, PartyKeys},
     sign::{
         pairwise_mta::{MtaRecR1, MtaRound2Output, PairwiseMtaRec, PairwiseMtaSender},
         SignMsg1, SignMsg2, SignMsg3, SignMsg4,
@@ -33,6 +31,7 @@ use crate::{
 };
 
 use super::{pairwise_mta::MtaSendR0, SignEntropy, SignError, SignParams, SignPartyPublicKeys};
+
 /// Distributed Signer Party
 pub struct SignerParty<T> {
     params: SignParams,
@@ -47,7 +46,7 @@ pub struct R1 {
     commitments: HashMap<usize, (SessionId, HashBytes)>,
     big_r_i: ProjectivePoint,
     party_id_list: Vec<usize>,
-    party_id_map: HashMap<usize, usize>,
+    //    party_id_map: HashMap<usize, usize>,
 }
 
 /// Round 2 state of Signer party
@@ -61,7 +60,7 @@ pub struct R2 {
     big_x_i: ProjectivePoint,
     remaining_parties: HashSet<usize>,
     big_r_i: ProjectivePoint,
-    party_id_map: HashMap<usize, usize>,
+    //    party_id_map: HashMap<usize, usize>,
     commitments: HashMap<usize, (SessionId, HashBytes)>,
     sender_additive_shares: Vec<[Scalar; 2]>,
 }
@@ -71,12 +70,10 @@ pub struct R2 {
 pub struct R3 {
     final_session_id: SessionId,
     mta_receivers: HashMap<usize, PairwiseMtaRec<MtaRecR1>>,
-    mta_senders: HashMap<usize, PairwiseMtaSender<MtaSendR0>>,
     digest_i: HashBytes,
     x_i: Scalar,
     big_x_i: ProjectivePoint,
     big_r_i: ProjectivePoint,
-    party_id_map: HashMap<usize, usize>,
     commitments: HashMap<usize, (SessionId, HashBytes)>,
     sender_additive_shares: Vec<[Scalar; 2]>,
 }
@@ -93,11 +90,12 @@ pub struct R4 {
 pub struct R5 {
     final_session_id: SessionId,
     big_r: ProjectivePoint,
-    recid: u8,
+    //    recid: u8,
     s_0: Scalar,
     s_1: Scalar,
     msg_hash: [u8; 32],
 }
+
 impl SignerParty<Init> {
     /// Create a new signer party
     pub fn new<R: CryptoRng + RngCore>(keyshare: Keyshare, rng: &mut R) -> Self {
@@ -132,7 +130,7 @@ impl Round for SignerParty<Init> {
     type Output = Result<(SignerParty<R1>, SignMsg1), SignError>;
 
     fn process(self, public_keys: Self::Input) -> Self::Output {
-        let (public_keys, party_id_map, party_id_list) = validate_pubkeys(
+        let (public_keys, _party_id_map, party_id_list) = validate_pubkeys(
             public_keys,
             self.params.keyshare.threshold,
             self.params.keyshare.total_parties,
@@ -147,7 +145,7 @@ impl Round for SignerParty<Init> {
         let commitment_r_i = hash_commitment_r_i(
             &params.rand_params.session_id,
             &big_r_i,
-            params.rand_params.blind_factor,
+            &params.rand_params.blind_factor,
         );
 
         let mut commitments = HashMap::new();
@@ -158,9 +156,9 @@ impl Round for SignerParty<Init> {
         );
 
         let msg_hash = hash_msg_1(
-            params.rand_params.session_id,
+            &params.rand_params.session_id,
             params.keyshare.party_id,
-            commitment_r_i,
+            &commitment_r_i,
         );
 
         let signature = sign_message(&params.party_keys.signing_key, &msg_hash)?;
@@ -177,7 +175,7 @@ impl Round for SignerParty<Init> {
                 commitments,
                 big_r_i,
                 party_id_list,
-                party_id_map,
+                //                party_id_map,
             },
         };
 
@@ -198,13 +196,14 @@ impl Round for SignerParty<R1> {
         )?;
 
         let mut commitments = self.state.commitments;
+
         for msg in msgs1.iter() {
             let pubkey = self
                 .params
                 .get_pubkey_for_party(msg.from_party)
                 .ok_or(SignError::InvalidMsgPartyId)?;
 
-            let msg_hash = hash_msg_1(msg.session_id, msg.get_pid(), msg.commitment_r_i);
+            let msg_hash = hash_msg_1(&msg.session_id, msg.get_pid(), &msg.commitment_r_i);
             verify_signature(&msg_hash, &msg.signature, &pubkey.verify_key)?;
             commitments.insert(msg.get_pid(), (msg.session_id, msg.commitment_r_i));
         }
@@ -221,6 +220,7 @@ impl Round for SignerParty<R1> {
             .collect::<Vec<_>>();
 
         let current_pid = self.params.party_id;
+
         // TODO: Accept this as input
         let mut rng = rand::rngs::OsRng;
 
@@ -243,9 +243,8 @@ impl Round for SignerParty<R1> {
                 .map(|(idx, sender_id)| {
                     // TODO: REMOVE this clone later
                     // Use vec of options and .take() instead
-                    let sender_ot_results = self.params.keyshare.seed_ot_senders
-                        [get_idx_from_id(current_pid, *sender_id)]
-                    .clone();
+                    let sender_ot_results = &self.params.keyshare.seed_ot_senders
+                        [get_idx_from_id(current_pid, *sender_id)];
 
                     let mut h = Sha256::new();
                     h.update(b"SL-DKLS-PAIRWISE-MTA");
@@ -257,10 +256,13 @@ impl Round for SignerParty<R1> {
                     let mta_session_id = SessionId::new(h.finalize().into());
 
                     let mut seed_rng = StdRng::from_seed(rec_seeds[idx]);
+
                     let mta_receiver =
                         PairwiseMtaRec::new(mta_session_id, sender_ot_results, &mut seed_rng);
+
                     let (mta_receivers, mta_msg_1) =
-                        mta_receiver.process(self.params.rand_params.phi_i);
+                        mta_receiver.process(&self.params.rand_params.phi_i);
+
                     let sender_pubkeys = self
                         .params
                         .get_pubkey_for_party(*sender_id)
@@ -298,9 +300,8 @@ impl Round for SignerParty<R1> {
             .iter()
             .enumerate()
             .map(|(idx, receiver_id)| {
-                let seed_ot_results = self.params.keyshare.seed_ot_receivers
-                    [get_idx_from_id(current_pid, *receiver_id)]
-                .clone();
+                let seed_ot_results = &self.params.keyshare.seed_ot_receivers
+                    [get_idx_from_id(current_pid, *receiver_id)];
 
                 let mut h = Sha256::new();
                 h.update(b"SL-DKLS-PAIRWISE-MTA");
@@ -318,14 +319,15 @@ impl Round for SignerParty<R1> {
                 )
             })
             .collect::<HashMap<usize, PairwiseMtaSender<MtaSendR0>>>();
+
         let mut h = Sha256::new();
         let mut keys = commitments.keys().collect::<Vec<_>>();
         keys.sort();
         for key in keys {
-            let (sid_i, commitment_i) = commitments[key];
+            let (sid_i, commitment_i) = &commitments[key];
             h.update((*key as u32).to_be_bytes());
-            h.update(sid_i.as_ref());
-            h.update(commitment_i.as_ref());
+            h.update(sid_i);
+            h.update(commitment_i);
         }
 
         let digest_i = HashBytes(h.finalize().into());
@@ -347,7 +349,7 @@ impl Round for SignerParty<R1> {
             mta_senders,
             remaining_parties: other_parties.iter().copied().collect(),
             big_r_i: self.state.big_r_i,
-            party_id_map: self.state.party_id_map,
+            //            party_id_map: self.state.party_id_map,
             commitments,
             sender_additive_shares: vec![],
         };
@@ -525,8 +527,8 @@ impl SignerParty<R2> {
                 x_i: self.state.x_i,
                 digest_i: self.state.digest_i,
                 mta_receivers: self.state.mta_receivers,
-                mta_senders: self.state.mta_senders,
-                party_id_map: self.state.party_id_map,
+                //                mta_senders: self.state.mta_senders,
+                //                party_id_map: self.state.party_id_map,
                 commitments: self.state.commitments,
                 big_r_i: self.state.big_r_i,
                 sender_additive_shares: self.state.sender_additive_shares,
@@ -558,12 +560,13 @@ impl Round for SignerParty<R3> {
         let mut sum_gamma_1 = ProjectivePoint::IDENTITY;
         let mut sum_big_t_0 = Scalar::ZERO;
         let mut sum_big_t_1 = Scalar::ZERO;
+
         // TODO: with capacity
         let mut receiver_additive_shares = Vec::new();
 
         let mut mta_receivers = self.state.mta_receivers;
 
-        for msg3 in messages {
+        for msg3 in &messages {
             if msg3.to_party != self.params.party_id {
                 continue;
             }
@@ -598,6 +601,7 @@ impl Round for SignerParty<R3> {
                 &sender_keys.encryption_key,
                 &receiver_keys.encryption_keypair.secret_key,
             )?;
+
             let mta_msg2 =
                 MtaRound2Output::from_bytes(&msg_bytes).ok_or(SignError::InvalidPlaintext)?;
 
@@ -663,20 +667,20 @@ impl Round for SignerParty<R3> {
                 .get(&sender_id)
                 .ok_or(SignError::InvalidMsgPartyId)?;
 
-            if !verify_commitment_r_i(sid_i, &big_r_j, blind_factor, commitment.0) {
+            if !verify_commitment_r_i(sid_i, &big_r_j, &blind_factor, commitment.0) {
                 return Err(SignError::InvalidCommitment);
             }
 
-            if self.state.digest_i.ct_eq(digest_j.as_ref()).unwrap_u8() != 1 {
+            if self.state.digest_i.ct_eq(&digest_j).unwrap_u8() != 1 {
                 return Err(SignError::InvalidDigest);
             }
 
-            big_r_star += big_r_j;
-            sum_x_j += big_x_j;
-            sum_gamma_0 += gamma0;
-            sum_gamma_1 += gamma1;
-            sum_big_t_0 += receiver_additive_shares_i[0];
-            sum_big_t_1 += receiver_additive_shares_i[1];
+            big_r_star += &big_r_j;
+            sum_x_j += &big_x_j;
+            sum_gamma_0 += &gamma0;
+            sum_gamma_1 += &gamma1;
+            sum_big_t_0 += &receiver_additive_shares_i[0];
+            sum_big_t_1 += &receiver_additive_shares_i[1];
         }
 
         let big_t_0 = ProjectivePoint::GENERATOR * sum_big_t_0;
@@ -735,21 +739,29 @@ impl Round for SignerParty<R4> {
     fn process(self, msg_hash: Self::Input) -> Self::Output {
         let mut sum0 = Scalar::ZERO;
         let mut sum1 = Scalar::ZERO;
+
         for i in 0..self.params.keyshare.threshold - 1 {
-            let sender_shares = self.state.sender_additive_shares[i];
-            let receiver_shares = self.state.receiver_additive_shares[i];
+            let sender_shares = &self.state.sender_additive_shares[i];
+            let receiver_shares = &self.state.receiver_additive_shares[i];
             sum0 += sender_shares[0] + receiver_shares[0];
             sum1 += sender_shares[1] + receiver_shares[1];
         }
+
         let r_point = self.state.big_r.to_affine();
         let r_x = Scalar::from_repr(r_point.x()).unwrap();
-        let recid = r_point.y_is_odd().unwrap_u8();
+        //        let recid = r_point.y_is_odd().unwrap_u8();
         let mut s_0 = r_x * (self.state.x_i * self.params.rand_params.phi_i + sum0);
         let s_1 = self.params.rand_params.k_i * self.params.rand_params.phi_i + sum1;
 
-        let m = U256::from_be_slice(msg_hash.as_slice()).to_scalar::<Secp256k1>();
+        let m = U256::from_be_slice(&msg_hash).to_scalar::<Secp256k1>();
         s_0 = m * self.params.rand_params.phi_i + s_0;
-        let msg4_hash = hash_msg_4(&self.state.final_session_id, self.params.party_id, s_0, s_1);
+
+        let msg4_hash = hash_msg_4(
+            &self.state.final_session_id,
+            self.params.party_id,
+            &s_0,
+            &s_1,
+        );
 
         let signature = sign_message(&self.params.party_keys.signing_key, &msg4_hash)?;
 
@@ -766,7 +778,7 @@ impl Round for SignerParty<R4> {
             state: R5 {
                 final_session_id: self.state.final_session_id,
                 big_r: self.state.big_r,
-                recid,
+                //                recid,
                 s_0,
                 s_1,
                 msg_hash,
@@ -785,7 +797,8 @@ impl Round for SignerParty<R5> {
     fn process(self, messages: Self::Input) -> Self::Output {
         let mut sum_s_0 = self.state.s_0;
         let mut sum_s_1 = self.state.s_1;
-        for msg in messages {
+
+        for msg in &messages {
             if msg.from_party == self.params.party_id {
                 continue;
             }
@@ -796,34 +809,31 @@ impl Round for SignerParty<R5> {
             let msg4_hash = hash_msg_4(
                 &self.state.final_session_id,
                 msg.from_party,
-                msg.s_0,
-                msg.s_1,
+                &msg.s_0,
+                &msg.s_1,
             );
 
             verify_signature(&msg4_hash, &msg.signature, &verify_key)?;
             sum_s_0 += msg.s_0;
             sum_s_1 += msg.s_1;
         }
+
         let r = self.state.big_r.to_affine().x();
         let sum_s_1_inv = sum_s_1.invert().unwrap();
         let sig = sum_s_0 * sum_s_1_inv;
 
-        let sign = parse_raw_sign(r.as_ref(), sig.to_bytes().as_ref())?;
+        let sign = parse_raw_sign(&r, &sig.to_bytes())?;
 
         verify_final_signature(
-            self.state.msg_hash.as_ref(),
+            &self.state.msg_hash,
             &sign,
-            self.params
-                .keyshare
-                .public_key
-                .to_affine()
-                .to_bytes()
-                .as_ref(),
+            &self.params.keyshare.public_key.to_affine().to_bytes(),
         )?;
 
         Ok(sign)
     }
 }
+
 /// State of the signer party in the R2 round
 pub enum R2State {
     /// The signer party is still in the R2 round, hasn't processed
@@ -846,7 +856,7 @@ fn get_pubkey_for_party(
 fn hash_commitment_r_i(
     session_id: &SessionId,
     big_r_i: &ProjectivePoint,
-    blind_factor: [u8; 32],
+    blind_factor: &[u8; 32],
 ) -> HashBytes {
     let mut hasher = Sha256::new();
     hasher.update(session_id.as_ref());
@@ -855,14 +865,15 @@ fn hash_commitment_r_i(
     HashBytes(hasher.finalize().into())
 }
 
-fn hash_msg_1(sid: SessionId, pid: usize, commitment_r_i: HashBytes) -> HashBytes {
+fn hash_msg_1(sid: &SessionId, pid: usize, commitment_r_i: &HashBytes) -> HashBytes {
     let mut hasher = Sha256::new();
     hasher.update(b"SignMsg1");
-    hasher.update(sid.as_ref());
+    hasher.update(sid.0);
     hasher.update((pid as u32).to_be_bytes());
     hasher.update(commitment_r_i.as_ref());
     HashBytes(hasher.finalize().into())
 }
+
 fn hash_msg_2(
     sid: &SessionId,
     receiver_id: usize,
@@ -878,6 +889,7 @@ fn hash_msg_2(
     HashBytes(hasher.finalize().into())
 }
 
+#[inline(never)]
 fn validate_input_messages<M: HasFromParty>(
     mut msgs: Vec<M>,
     threshold: usize,
@@ -1015,6 +1027,7 @@ fn hash_msg_3(
     enc_gamma1: &EncryptedData,
 ) -> HashBytes {
     let mut hasher = Sha256::new();
+
     hasher.update(b"SignMsg3");
     hasher.update(sid.as_ref());
     hasher.update((receiver_id as u32).to_be_bytes());
@@ -1026,23 +1039,26 @@ fn hash_msg_3(
     hasher.update(enc_blind_factor.to_bytes().unwrap());
     hasher.update(enc_gamma0.to_bytes().unwrap());
     hasher.update(enc_gamma1.to_bytes().unwrap());
+
     HashBytes(hasher.finalize().into())
 }
 
-fn hash_msg_4(sid: &SessionId, from_pid: usize, s_0: Scalar, s_1: Scalar) -> HashBytes {
+fn hash_msg_4(sid: &SessionId, from_pid: usize, s_0: &Scalar, s_1: &Scalar) -> HashBytes {
     let mut hasher = Sha256::new();
+
     hasher.update(b"SignMsg4");
-    hasher.update(sid.as_ref());
+    hasher.update(sid.0);
     hasher.update((from_pid as u32).to_be_bytes());
     hasher.update(s_0.to_bytes());
     hasher.update(s_1.to_bytes());
+
     HashBytes(hasher.finalize().into())
 }
 
 fn verify_commitment_r_i(
     sid: &SessionId,
     big_r_i: &ProjectivePoint,
-    blind_factor: [u8; 32],
+    blind_factor: &[u8; 32],
     commitment: [u8; 32],
 ) -> bool {
     let compare_commitment = hash_commitment_r_i(sid, big_r_i, blind_factor);

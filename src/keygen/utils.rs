@@ -1,5 +1,5 @@
 use k256::{NonZeroScalar, ProjectivePoint};
-use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+// use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use sl_mpc_mate::{
     cooridinator::Coordinator,
     math::birkhoff_coeffs,
@@ -7,9 +7,13 @@ use sl_mpc_mate::{
     recv_broadcast,
     traits::{HasFromParty, PersistentObject, Round},
 };
+
+use sl_oblivious::soft_spoken_mod::SOFT_SPOKEN_K;
+
+#[cfg(test)]
 use sl_oblivious::{
     soft_spoken::{ReceiverOTSeed, SenderOTSeed},
-    soft_spoken_mod::{KAPPA_DIV_SOFT_SPOKEN_K, SOFT_SPOKEN_K, SOFT_SPOKEN_Q},
+    soft_spoken_mod::{KAPPA_DIV_SOFT_SPOKEN_K, SOFT_SPOKEN_Q},
 };
 
 use crate::utils::Init;
@@ -47,24 +51,21 @@ pub fn setup_keygen<const T: usize, const N: usize>(
 }
 
 /// Execute one round of DKG protocol, execute parties in parallel
+#[inline(never)]
 pub fn run_round<I, N, R, M, E>(coord: &mut Coordinator, actors: Vec<R>, round: usize) -> Vec<N>
 where
     R: Round<Input = Vec<I>, Output = std::result::Result<(N, M), E>>,
     I: PersistentObject + Clone + Sync,
     M: PersistentObject,
     E: std::fmt::Debug,
-    Vec<R>: IntoParallelIterator<Item = R>,
+//    Vec<R>: IntoParallelIterator<Item = R>,
     N: Send,
 {
     let msgs = recv_broadcast(coord, round);
 
     let (actors, msgs): (Vec<N>, Vec<M>) = actors
-        .into_par_iter()
-        .map(|actor| {
-            let (actor, msg) = actor.process(msgs.clone()).unwrap();
-
-            (actor, msg)
-        })
+        .into_iter()
+        .map(|actor| actor.process(msgs.clone()).unwrap())
         .unzip();
 
     if round < coord.max_round() {
@@ -72,6 +73,7 @@ where
             coord.send(round + 1, msg.to_bytes().unwrap()).unwrap();
         })
     }
+
     actors
 }
 
@@ -155,6 +157,7 @@ pub(crate) fn check_secret_recovery(
         .ok_or(KeygenError::PublicKeyMismatch)
 }
 
+#[cfg(test)]
 pub(crate) fn check_all_but_one_seeds(
     seed_ot_sender: &SenderOTSeed,
     seed_ot_receiver: &ReceiverOTSeed,

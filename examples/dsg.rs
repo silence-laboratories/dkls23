@@ -1,29 +1,47 @@
-use std::hash;
-
-use dkls23::{
-    keygen::{process_keygen, run_round},
-    sign::{R2State, SignMsg2, SignerParty},
-};
 use k256::sha2::{Digest, Sha256};
 use rand::seq::IteratorRandom;
+
 use sl_mpc_mate::{
     cooridinator::Coordinator,
     recv_broadcast,
     traits::{HasFromParty, HasToParty, PersistentObject, Round},
 };
 
+use dkls23::{
+    keygen::{messages::Keyshare, process_keygen, run_round},
+    sign::{R2State, SignMsg2, SignerParty},
+};
+
+fn gen_keyshares<const T: usize, const N: usize>() -> [Keyshare; N] {
+    let (_, keyshares) = process_keygen::<T, N>(None);
+
+    keyshares
+}
+
 fn main() {
-    let (_, keyshares) = process_keygen::<3, 5>(None);
+    let keyshares = gen_keyshares::<3, 5>();
 
     let mut rng = rand::thread_rng();
+
     let subset: Vec<_> = keyshares.into_iter().choose_multiple(&mut rng, 3);
+
+    let start = std::time::Instant::now();
+
+    for _ in 0..100 {
+        dsg(subset.as_ref());
+    }
+
+    println!("Time taken: {:?}", start.elapsed());
+}
+
+fn dsg(subset: &[Keyshare]) {
+    let mut rng = rand::thread_rng();
 
     let mut coord = Coordinator::new(3, 3);
     let mut parties = vec![];
 
-    let start = std::time::Instant::now();
-    for keyshare in subset {
-        let party = SignerParty::new(keyshare, &mut rng);
+    for keyshare in subset.iter() {
+        let party = SignerParty::new(keyshare.clone(), &mut rng);
         let pubkeys = party.get_public_keys();
         coord.send(0, pubkeys.to_bytes().unwrap()).unwrap();
         parties.push(party);
@@ -36,6 +54,7 @@ fn main() {
 
     let mut sign_msgs3_list = vec![];
     let mut parties3 = vec![];
+
     for mut party in parties2 {
         let pid = party.get_pid();
         let msgs = get_party_messages(pid, &msgs);
@@ -76,12 +95,10 @@ fn main() {
     }
 
     for party in parties5 {
-        let sign = party.process(msgs4.clone()).unwrap();
+        let _sign = party.process(msgs4.clone()).unwrap();
 
-        println!("Signature: {:?}", sign.to_string())
+        // println!("Signature: {:?}", sign.to_string())
     }
-
-    println!("Time taken: {:?}", start.elapsed());
 }
 
 fn get_party_messages<M: HasToParty + HasFromParty + Clone>(

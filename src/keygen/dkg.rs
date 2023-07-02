@@ -25,7 +25,7 @@ use sl_oblivious::{
 
 use digest::Digest;
 use sl_mpc_mate::{
-    math::{birkhoff_coeffs, feldman_verify, polynomial_coeff_multipliers, GroupPolynomial},
+    math::{feldman_verify, polynomial_coeff_multipliers, GroupPolynomial},
     nacl::{encrypt_data, sign_message, verify_signature, EncryptedData, HasSignature},
     random_bytes,
     traits::{HasFromParty, PersistentObject, Round},

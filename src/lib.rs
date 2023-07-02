@@ -7,6 +7,8 @@ pub mod keygen;
 /// DKLs23 signing protocol
 pub mod sign;
 
+pub use sl_mpc_mate::traits::{HasFromParty, PersistentObject, Round};
+
 /// Utilities
 pub mod utils {
     use k256::{
@@ -17,7 +19,7 @@ pub mod utils {
     };
     use sl_mpc_mate::{
         nacl::{BoxPrivKey, BoxPubkey, EncryptedData},
-        traits::PersistentObject,
+        // traits::PersistentObject,
         SessionId,
     };
 

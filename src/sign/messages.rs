@@ -1,5 +1,3 @@
-use std::hash::Hash;
-
 use k256::Scalar;
 use serde::{Deserialize, Serialize};
 use sl_mpc_mate::{
