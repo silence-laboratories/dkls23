@@ -28,7 +28,7 @@ fn main() {
     let start = std::time::Instant::now();
 
     for _ in 0..100 {
-        dsg(subset.as_ref());
+        dsg(&subset);
     }
 
     println!("Time taken: {:?}", start.elapsed());
@@ -37,17 +37,17 @@ fn main() {
 fn dsg(subset: &[Keyshare]) {
     let mut rng = rand::thread_rng();
 
-    let mut coord = Coordinator::new(3, 3);
-    let mut parties = vec![];
+    let mut coord = Coordinator::new(subset.len(), 3);
+    let mut parties0 = vec![];
 
     for keyshare in subset.iter() {
         let party = SignerParty::new(keyshare.clone(), &mut rng);
         let pubkeys = party.get_public_keys();
         coord.send(0, pubkeys.to_bytes().unwrap()).unwrap();
-        parties.push(party);
+        parties0.push(party);
     }
 
-    let parties1 = run_round(&mut coord, parties, 0);
+    let parties1 = run_round(&mut coord, parties0, 0);
     let parties2 = run_round(&mut coord, parties1, 1);
 
     let msgs: Vec<Vec<SignMsg2>> = recv_broadcast(&mut coord, 2);

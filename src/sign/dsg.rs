@@ -77,6 +77,7 @@ pub struct R3 {
     commitments: HashMap<usize, (SessionId, HashBytes)>,
     sender_additive_shares: Vec<[Scalar; 2]>,
 }
+
 /// State of Signer party after processing all SignMsg3 messages
 pub struct R4 {
     final_session_id: SessionId,
@@ -228,12 +229,12 @@ impl Round for SignerParty<R1> {
         // Used to create test vectors.
         let rec_seeds: Vec<_> = other_parties
             .iter()
-            .map(|_| rng.gen::<[u8; 32]>())
+            .map(|_| rng.gen::<<StdRng as SeedableRng>::Seed>())
             .collect();
 
         let send_seeds: Vec<_> = other_parties
             .iter()
-            .map(|_| rng.gen::<[u8; 32]>())
+            .map(|_| rng.gen::<<StdRng as SeedableRng>::Seed>())
             .collect();
 
         let (mta_receivers, sign_msgs2): (HashMap<usize, PairwiseMtaRec<MtaRecR1>>, Vec<SignMsg2>) =
@@ -248,7 +249,7 @@ impl Round for SignerParty<R1> {
 
                     let mut h = Sha256::new();
                     h.update(b"SL-DKLS-PAIRWISE-MTA");
-                    h.update(final_session_id.as_ref());
+                    h.update(&final_session_id.0);
                     h.update(b"sender");
                     h.update((*sender_id as u32).to_be_bytes());
                     h.update(b"receiver");
@@ -349,7 +350,6 @@ impl Round for SignerParty<R1> {
             mta_senders,
             remaining_parties: other_parties.iter().copied().collect(),
             big_r_i: self.state.big_r_i,
-            //            party_id_map: self.state.party_id_map,
             commitments,
             sender_additive_shares: vec![],
         };
@@ -455,6 +455,7 @@ impl SignerParty<R2> {
             receiver_id,
             sender_id,
         )?;
+
         let gamma0 = ProjectivePoint::GENERATOR * additive_shares[0];
         let gamma1 = ProjectivePoint::GENERATOR * additive_shares[1];
 
@@ -512,6 +513,7 @@ impl SignerParty<R2> {
     pub fn get_remaining(&self) -> usize {
         self.state.remaining_parties.len()
     }
+
     /// Get the party id of the signer
     pub fn get_pid(&self) -> usize {
         self.params.party_id
@@ -527,8 +529,6 @@ impl SignerParty<R2> {
                 x_i: self.state.x_i,
                 digest_i: self.state.digest_i,
                 mta_receivers: self.state.mta_receivers,
-                //                mta_senders: self.state.mta_senders,
-                //                party_id_map: self.state.party_id_map,
                 commitments: self.state.commitments,
                 big_r_i: self.state.big_r_i,
                 sender_additive_shares: self.state.sender_additive_shares,
@@ -1004,7 +1004,7 @@ fn get_birkhoff_coefficients(
         .map(|pid| (keyshare.x_i_list[*pid], keyshare.rank_list[*pid]))
         .collect::<Vec<_>>();
 
-    let betta_vec = birkhoff_coeffs(&params);
+    let betta_vec = birkhoff_coeffs::<Secp256k1>(&params);
 
     sign_party_ids
         .iter()

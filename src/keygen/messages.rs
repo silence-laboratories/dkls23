@@ -9,6 +9,7 @@ use sl_mpc_mate::{
 };
 use sl_oblivious::{
     serialization::serde_projective_point,
+    serialization::serde_projective_point_vec,
     soft_spoken::{ReceiverOTSeed, SenderOTSeed},
     zkproofs::DLogProof,
 };
@@ -189,7 +190,7 @@ pub struct KeygenMsg6 {
 
 /// Keyshare of a party.
 #[allow(unused)]
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Keyshare {
     /// Threshold value
     pub threshold: usize,
@@ -197,15 +198,13 @@ pub struct Keyshare {
     pub total_parties: usize,
     /// Party Id of the sender
     pub party_id: usize,
-    pub(crate) x_i: NonZeroScalar,
     /// Participants rank
     pub rank: usize,
-    pub(crate) s_i: Scalar,
+
     /// Public key of the generated key.
+    #[serde(with = "serde_projective_point")]
     pub public_key: ProjectivePoint,
-    pub(crate) big_s_list: Vec<ProjectivePoint>,
-    pub(crate) x_i_list: Vec<NonZeroScalar>,
-    pub(crate) rank_list: Vec<usize>,
+
     ///
     pub seed_ot_receivers: Vec<ReceiverOTSeed>,
     ///
@@ -214,6 +213,13 @@ pub struct Keyshare {
     pub sent_seed_list: Vec<[u8; 32]>,
     /// Seed values received from the other parties
     pub rec_seed_list: Vec<[u8; 32]>,
+
+    pub(crate) x_i: NonZeroScalar,
+    pub(crate) s_i: Scalar,
+    #[serde(with = "serde_projective_point_vec")]
+    pub(crate) big_s_list: Vec<ProjectivePoint>,
+    pub(crate) x_i_list: Vec<NonZeroScalar>,
+    pub(crate) rank_list: Vec<usize>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -226,6 +232,7 @@ pub struct KeyGenCompleteMsg {
     pub public_key: AffinePoint,
 }
 
+impl PersistentObject for Keyshare {}
 impl PersistentObject for KeygenMsg1 {}
 impl PersistentObject for KeygenMsg2 {}
 impl PersistentObject for KeygenMsg3 {}

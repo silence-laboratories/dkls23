@@ -31,6 +31,7 @@ pub struct SignEntropy {
     pub(crate) k_i: Scalar,
     pub(crate) blind_factor: [u8; 32],
 }
+
 impl SignEntropy {
     /// Generate all the random values used in the sign protocol
     pub fn generate<R: CryptoRng + RngCore>(rng: &mut R) -> Self {
@@ -48,13 +49,16 @@ impl SignEntropy {
 pub struct SignPartyPublicKeys {
     /// The party's id
     pub party_id: usize,
+
     /// The public key for signature verification.
     pub verify_key: SignPubkey,
 
     /// Public key for encryption
     pub encryption_key: sl_mpc_mate::nacl::BoxPubkey,
 }
+
 impl PersistentObject for SignPartyPublicKeys {}
+
 /// Distributed key generation errors
 #[derive(Error, Debug)]
 pub enum SignError {
@@ -114,4 +118,8 @@ pub enum SignError {
     /// k256 error
     #[error("k256 error: {0}")]
     K256Error(#[from] k256::ecdsa::Error),
+
+    /// Invalid message format
+    #[error("invalid message format")]
+    InvalidMessage
 }
