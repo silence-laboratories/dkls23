@@ -96,6 +96,9 @@ xflags::xflags! {
             /// Interface to listne on, 0.0.0.0 by default
             optional --host host: String
 
+            /// Listen on host:port. Ignore --port/--host options
+            repeated --listen listen: String
+
             /// Base of URL of the coordinator service
             optional --coordinator url: Url
         }

@@ -1,8 +1,10 @@
 use std::borrow::Cow;
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::SocketAddr;
 use std::time::{Duration, Instant};
 
 use k256::elliptic_curve::group::GroupEncoding;
+
+use tokio::task::JoinSet;
 
 use axum::{
     error_handling::HandleErrorLayer,
@@ -20,12 +22,8 @@ use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
 use serde::{Deserialize, Serialize};
 
-use dkls23::keygen::{
-    messages::Keyshare,
-    PartyKeys,
-};
+use dkls23::keygen::{messages::Keyshare, PartyKeys};
 use sl_mpc_mate::traits::PersistentObject;
-
 
 use crate::coord;
 use crate::flags;
@@ -210,18 +208,29 @@ fn app(state: Option<AppState>) -> Router {
 pub async fn run(opts: flags::Serve) -> anyhow::Result<()> {
     let app = app(None);
 
-    let port = opts.port.unwrap_or(8080);
+    let listen = {
+        if opts.listen.len() > 0 {
+            opts.listen
+        } else {
+            vec![format!(
+                "{}:{}",
+                opts.host.unwrap_or(String::from("0.0.0.0")),
+                opts.port.unwrap_or(8080)
+            )]
+        }
+    };
 
-    let ip_addr: Ipv4Addr = opts.host.unwrap_or(String::from("0.0.0.0")).parse()?;
+    let mut servers = JoinSet::new();
 
-    let addr = SocketAddr::from((ip_addr, port));
+    for addr in &listen {
+        let addr: SocketAddr = addr.parse()?;
 
-    tracing::debug!("listening on {}", addr);
+        tracing::info!("listening on {}", addr);
 
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service())
-        .await
-        .unwrap();
+        servers.spawn(axum::Server::bind(&addr).serve(app.clone().into_make_service()));
+    }
+
+    while let Some(_) = servers.join_next().await {}
 
     Ok(())
 }
