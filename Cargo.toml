@@ -20,11 +20,6 @@ rayon ="1"
 serde_arrays = "0.1.0"
 thiserror = "1"
 
-# tracing = "0.1.37"
-# tracing-tracy = "0.10.2"
-# tracy-client = { version = "0.15.1" }
-# profiling = { version = "1.0.8", features = [ "profile-with-tracy" ] }
-
 [dev-dependencies]
 hex ="0.4.3"
 

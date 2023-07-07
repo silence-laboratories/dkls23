@@ -1,0 +1,35 @@
+[package]
+name = "dkls-party"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1"
+dkls23 = { path = "../.." }
+sl-mpc-mate = { path = "../../../sl-crypto/crates/sl-mpc-mate", features =["nacl"]}
+sl-oblivious = { path = "../../../sl-crypto/crates/sl-oblivious" }
+rand = "0.8"
+k256 = {version = "0.13", features= ["ecdsa", "serde"]}
+reqwest = { version = "0.11", features = ["json"] }
+tokio = { version = "1", features = ["full"] }
+xflags = "0.3"
+url = "2.3"
+serde = { version = "1", features = ["derive"] }
+hex = "0.4.3"
+log = "0.4"
+env_logger = "0.10"
+sha2 = "0.10.6"
+tiny-keccak = { version = "2.0.2", features = ["keccak"] }
+axum = "0.6"
+tower = { version = "0.4", features = ["util", "timeout", "load-shed", "limit"] }
+tower-http = { version = "0.3.0", features = [
+    "limit",
+    "trace",
+    "cors"
+] }
+tower-layer = "0.3.2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+base64 = "0.13"
