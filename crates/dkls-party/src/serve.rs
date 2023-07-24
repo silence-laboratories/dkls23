@@ -111,6 +111,7 @@ struct SignResponse {
     total_recv: u32,
     total_wait: u32,
     total_time: u32, // execution time in milliseconds
+    times: Option<Vec<(u32, Duration)>>,
 }
 
 async fn handle_keygen(
@@ -166,7 +167,7 @@ async fn handle_sign(
         Some(&state.client),
     );
 
-    let sign = sign_party(&mut c, keyshare, hash_fn)
+    let (sign, times) = sign_party(&mut c, keyshare, hash_fn)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -178,6 +179,7 @@ async fn handle_sign(
         total_recv: c.total_recv as u32,
         total_wait: c.total_wait.as_millis() as u32,
         total_time,
+        times: Some(times),
     }))
 }
 

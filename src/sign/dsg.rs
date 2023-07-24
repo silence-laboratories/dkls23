@@ -1,6 +1,7 @@
 //! Distributed sign generation protocol.
 
 use std::collections::{HashMap, HashSet};
+use std::time::{Instant, Duration};
 
 use k256::{
     ecdsa::Signature,
@@ -36,6 +37,7 @@ use super::{pairwise_mta::MtaSendR0, SignEntropy, SignError, SignParams, SignPar
 pub struct SignerParty<T> {
     params: SignParams,
     state: T,
+    times: Vec<(u32, Duration)>,
 }
 
 /// Initial state of Signer party
@@ -46,7 +48,6 @@ pub struct R1 {
     commitments: HashMap<usize, (SessionId, HashBytes)>,
     big_r_i: ProjectivePoint,
     party_id_list: Vec<usize>,
-    //    party_id_map: HashMap<usize, usize>,
 }
 
 /// Round 2 state of Signer party
@@ -60,7 +61,6 @@ pub struct R2 {
     big_x_i: ProjectivePoint,
     remaining_parties: HashSet<usize>,
     big_r_i: ProjectivePoint,
-    //    party_id_map: HashMap<usize, usize>,
     commitments: HashMap<usize, (SessionId, HashBytes)>,
     sender_additive_shares: Vec<[Scalar; 2]>,
 }
@@ -97,6 +97,18 @@ pub struct R5 {
     msg_hash: [u8; 32],
 }
 
+impl<T> SignerParty<T> {
+    /// Return copy of times verctor
+    pub fn get_times(&self) -> Vec<(u32, Duration)> {
+        self.times.clone()
+    }
+}
+
+fn vec_append<T>(mut v: Vec<T>, a: T) -> Vec<T> {
+    v.push(a);
+    v
+}
+
 impl SignerParty<Init> {
     /// Create a new signer party
     pub fn new<R: CryptoRng + RngCore>(keyshare: Keyshare, rng: &mut R) -> Self {
@@ -111,6 +123,7 @@ impl SignerParty<Init> {
                 party_pubkeys: vec![],
             },
             state: Init,
+            times: vec![],
         }
     }
 
@@ -131,6 +144,8 @@ impl Round for SignerParty<Init> {
     type Output = Result<(SignerParty<R1>, SignMsg1), SignError>;
 
     fn process(self, public_keys: Self::Input) -> Self::Output {
+        let start_time = Instant::now();
+
         let (public_keys, _party_id_map, party_id_list) = validate_pubkeys(
             public_keys,
             self.params.keyshare.threshold,
@@ -176,8 +191,8 @@ impl Round for SignerParty<Init> {
                 commitments,
                 big_r_i,
                 party_id_list,
-                //                party_id_map,
             },
+            times: vec_append(self.times, (1, start_time.elapsed())),
         };
 
         Ok((next_state, msg1))
@@ -190,6 +205,8 @@ impl Round for SignerParty<R1> {
     type Output = Result<(SignerParty<R2>, Vec<SignMsg2>), SignError>;
 
     fn process(self, msgs1: Self::Input) -> Self::Output {
+        let start_time = Instant::now();
+
         let msgs1 = validate_input_messages(
             msgs1,
             self.params.keyshare.threshold,
@@ -357,6 +374,7 @@ impl Round for SignerParty<R1> {
         let next_state = SignerParty {
             params: self.params,
             state: next_round,
+            times: vec_append(self.times, (2, start_time.elapsed())),
         };
 
         Ok((next_state, sign_msgs2))
@@ -367,6 +385,8 @@ impl SignerParty<R2> {
     /// Process sign message 2 from other parties where msg.to_party is the current party
     // TODO: Should we consume self and return a new state?
     pub fn process_p2p(&mut self, sign_msg2: SignMsg2) -> Result<SignMsg3, SignError> {
+        let start_time = Instant::now();
+
         if sign_msg2.to_party != self.params.party_id {
             return Err(SignError::WrongReceipient(
                 sign_msg2.to_party,
@@ -506,6 +526,8 @@ impl SignerParty<R2> {
         self.state.remaining_parties.remove(&sign_msg2.from_party);
         self.state.sender_additive_shares.push(additive_shares);
 
+        self.times.push((3, start_time.elapsed()));
+
         Ok(sign_msg3)
     }
 
@@ -533,9 +555,11 @@ impl SignerParty<R2> {
                 big_r_i: self.state.big_r_i,
                 sender_additive_shares: self.state.sender_additive_shares,
             };
+
             let next_state = SignerParty {
                 params: self.params,
                 state: next_state,
+                times: self.times,
             };
             R2State::R2Complete(next_state)
         } else {
@@ -552,6 +576,8 @@ impl Round for SignerParty<R3> {
     /// `SignMsg3` messages from other parties for the current party,
     /// will have `t-1` messages
     fn process(self, messages: Self::Input) -> Self::Output {
+        let start_time = Instant::now();
+
         // TODO: Add some validation for messages
 
         let mut big_r_star = ProjectivePoint::IDENTITY;
@@ -717,6 +743,7 @@ impl Round for SignerParty<R3> {
                 receiver_additive_shares,
                 x_i: self.state.x_i,
             },
+            times: vec_append(self.times, (4, start_time.elapsed())),
         };
 
         Ok(next)
@@ -737,6 +764,8 @@ impl Round for SignerParty<R4> {
 
     /// Generates partial signature
     fn process(self, msg_hash: Self::Input) -> Self::Output {
+        let start_time = Instant::now();
+
         let mut sum0 = Scalar::ZERO;
         let mut sum1 = Scalar::ZERO;
 
@@ -783,6 +812,7 @@ impl Round for SignerParty<R4> {
                 s_1,
                 msg_hash,
             },
+            times: vec_append(self.times, (5, start_time.elapsed())),
         };
 
         Ok((next, sign_msg4))
@@ -795,6 +825,8 @@ impl Round for SignerParty<R5> {
     type Output = Result<Signature, SignError>;
 
     fn process(self, messages: Self::Input) -> Self::Output {
+        // let startTime = Instant::now();
+
         let mut sum_s_0 = self.state.s_0;
         let mut sum_s_1 = self.state.s_1;
 

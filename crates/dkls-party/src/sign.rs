@@ -1,5 +1,8 @@
+use std::time::{Duration, Instant};
+
 use sha2::{Digest, Sha256};
 use tiny_keccak::{Hasher, Keccak};
+use tokio::task;
 
 use dkls23::sign::{R2State, SignMsg2, SignMsg3, SignMsg4, SignerParty};
 
@@ -61,7 +64,6 @@ fn get_party_messages<M: HasToParty + HasFromParty + Clone>(
     msgs_for_party
 }
 
-
 fn hash_message(message: &[u8], hash_fn: SignHashFn) -> [u8; 32] {
     match hash_fn {
         SignHashFn::Keccak256 => {
@@ -95,7 +97,7 @@ pub async fn sign_party(
     coord: &mut Coordinator,
     share: Keyshare,
     hash_fn: SignHashFn,
-) -> anyhow::Result<Vec<u8>> {
+) -> anyhow::Result<(Vec<u8>, Vec<(u32, Duration)>)> {
     tracing::info!("enter sign_party session {}", coord.session_id());
 
     let r0 = {
@@ -134,7 +136,7 @@ pub async fn sign_party(
 
     let sign_msgs3 = msgs
         .into_iter()
-        .map(|msg| r2.process_p2p(msg).unwrap())
+        .map(|msg| task::block_in_place(|| r2.process_p2p(msg).unwrap()))
         .collect::<Vec<_>>();
 
     let r3 = if let R2State::R2Complete(party3) = r2.check_proceed() {
@@ -153,23 +155,29 @@ pub async fn sign_party(
 
     let msgs = get_party_messages(pid, &batch3);
 
-    let r4 = r3.process(msgs).unwrap();
+    let r4 = task::block_in_place(|| r3.process(msgs).unwrap());
 
-    let (r5, sign_msg4) = r4.process(hash).unwrap();
+    let (r5, sign_msg4) = task::block_in_place(|| r4.process(hash).unwrap());
 
     coord.send(sign_msg4.to_bytes().unwrap(), 4).await?;
 
-    let batch3 = coord
+    let batch4 = coord
         .recv(4, true)
         .await
         .map(|b| SignMsg4::decode_batch(&b).unwrap())
         .unwrap();
 
-    let sign = r5.process(batch3).unwrap();
+    let mut times = r5.get_times();
+
+    let r5_start = Instant::now();
+
+    let sign = task::block_in_place(|| r5.process(batch4).unwrap());
 
     log::info!("done sid {}", coord.session_id());
 
-    Ok(sign.to_der().as_bytes().to_vec())
+    times.push((6, r5_start.elapsed()));
+
+    Ok((sign.to_der().as_bytes().to_vec(), times))
 }
 
 pub async fn run_sign(opts: flags::SignGen) -> anyhow::Result<()> {
@@ -201,7 +209,15 @@ pub async fn run_sign(opts: flags::SignGen) -> anyhow::Result<()> {
 
                 tracing::info!("loaded share {}", share);
 
-                let sign = sign_party(&mut coord, keyshare, hash_fn).await?;
+                let (sign, times) = sign_party(&mut coord, keyshare, hash_fn).await?;
+
+                // for (k, v) in &coord.times {
+                //     tracing::info!("sign {} {} {:?}", session, k, v);
+                // }
+
+                for (r, d) in &times {
+                    tracing::info!("sign {} R {} {:?}", session, r, d);
+                }
 
                 Ok::<_, anyhow::Error>((sign, signature))
             })
