@@ -1,6 +1,8 @@
-#!/bin/sh
+ #!/bin/sh
 
 set -ex
+
+: ${COORD:="https://coord.fly.dev"}
 
 cmd="cargo run -p dkls-party --release --"
 
@@ -12,7 +14,7 @@ m=${1}; shift
 
 prefix="${t}x${n}"
 
-sids=$($cmd sign-sess --t ${t} --message ${m})
+sids=$($cmd sign-sess --t ${t} --message ${m} --coordinator ${COORD})
 
 
 parties=""
@@ -23,6 +25,6 @@ for sid in ${sids}; do
     parties="${parties} --party ${sid}:${share}:sign-${sid}"
 done
 
-$cmd sign-gen --t ${t} --message ${m} ${parties}
+$cmd sign-gen --t ${t} --message ${m} ${parties} --coordinator ${COORD}
 
 date
