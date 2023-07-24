@@ -350,12 +350,24 @@ impl Round for SignerParty<R1> {
 
         let digest_i = HashBytes(h.finalize().into());
         let mu_i = get_mu_i(&self.params.keyshare, &self.state.party_id_list, digest_i);
-        let betta_coeffs =
-            get_birkhoff_coefficients(&self.params.keyshare, &self.state.party_id_list);
-        let betta_i = betta_coeffs
-            .get(&self.params.party_id)
-            .expect("betta_i not found");
-        let x_i = betta_i * &self.params.keyshare.s_i + mu_i;
+
+        let coeff = match is_zero_vec(&self.params.keyshare.rank_list) {
+            true => {
+                get_lagrange_coeff(
+                    &self.params.keyshare, &self.state.party_id_list
+                )
+            }
+            false => {
+                let betta_coeffs = get_birkhoff_coefficients(
+                    &self.params.keyshare,
+                    &self.state.party_id_list
+                );
+                *betta_coeffs
+                    .get(&self.params.party_id)
+                    .expect("betta_i not found")
+            }
+        };
+        let x_i = coeff * &self.params.keyshare.s_i + mu_i;
         let big_x_i = ProjectivePoint::GENERATOR * x_i;
 
         let next_round = R2 {
@@ -1043,6 +1055,27 @@ fn get_birkhoff_coefficients(
         .zip(betta_vec.iter())
         .map(|(pid, w_i)| (*pid, *w_i))
         .collect::<HashMap<_, _>>()
+}
+
+fn is_zero_vec(buf: &Vec<usize>) -> bool {
+    buf.into_iter().all(|&b| b == 0)
+}
+
+fn get_lagrange_coeff(
+    keyshare: &Keyshare,
+    sign_party_ids: &[usize]
+) -> Scalar {
+    let mut coeff = Scalar::from(1u64);
+    let pid = keyshare.party_id;
+    let x_i = &keyshare.x_i_list[pid] as &Scalar;
+    for index in sign_party_ids {
+        let x_j = &keyshare.x_i_list[*index] as &Scalar;
+        if x_i.ct_ne(&x_j).into() {
+            let sub = x_j - x_i;
+            coeff *= *x_j * sub.invert().unwrap();
+        }
+    }
+    coeff
 }
 
 #[allow(clippy::too_many_arguments)]
