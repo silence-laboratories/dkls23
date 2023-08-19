@@ -13,7 +13,7 @@ use dkls23::{
 };
 
 fn gen_keyshares<const T: usize, const N: usize>() -> [Keyshare; N] {
-    let (_, keyshares) = process_keygen::<T, N>(None);
+    let keyshares = process_keygen::<T, N>(None);
 
     keyshares
 }

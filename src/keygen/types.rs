@@ -1,75 +1,33 @@
-use k256::{schnorr::CryptoRngCore, NonZeroScalar, Secp256k1};
+use k256::Secp256k1;
+use rand::{CryptoRng, Rng};
+use rand_chacha::ChaCha20Rng;
 use serde::{Deserialize, Serialize};
-use sl_mpc_mate::{
-    math::Polynomial,
-    nacl::{crypto_sign_seed_keypair, KeyPair, SignPrivKey, SignPubkey},
-    random_bytes,
-    traits::PersistentObject,
-    SessionId,
-};
-use sl_oblivious::vsot;
 use thiserror::Error;
 
+use sl_mpc_mate::{
+    math::Polynomial,
+    message::InvalidMessage,
+    nacl::{crypto_sign_seed_keypair, KeyPair, SignPrivKey, SignPubkey},
+    traits::PersistentObject,
+    bincode::error::{EncodeError, DecodeError},
+};
+
+use sl_oblivious::vsot;
+
+use crate::setup::keygen::ValidatedSetup;
+
 /// Parameters for the keygen protocol. Constant across all rounds.
-#[derive(Serialize, Deserialize, Clone)]
 pub struct KeygenParams {
-    /// Number of parties in the keygen protocol.
-    pub n: usize,
-    /// Threshold for the keygen protocol.
-    pub t: usize,
-    /// Party id of the party.
-    pub party_id: usize,
-    /// Rank of the party.
-    pub rank: usize,
+    /// Instance of RNG for entire execution of the protocol
+    pub rng: ChaCha20Rng,
 
-    /// Soft spoken OT k value
-    pub soft_spoken_k: u8,
-
-    /// Public key for verifying signatures.
-    pub verify_key: sl_mpc_mate::nacl::SignPubkey,
-
-    #[serde(with = "serde_arrays")]
-    pub(crate) signing_key: sl_mpc_mate::nacl::SignPrivKey,
+    ///
+    pub setup: ValidatedSetup,
 
     /// Encryption keypair
-    pub(crate) encryption_keypair: sl_mpc_mate::nacl::KeyPair,
-
-    /// List of all parties' public keys
-    pub party_pubkeys_list: Vec<PartyPublicKeys>,
-
-    pub(crate) rand_params: KeyEntropy,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-/// All random params needed for keygen
-pub struct KeyEntropy {
-    /// Threshold for the keygen protocol.
-    pub t: usize,
-    /// Number of parties in the keygen protocol.
-    pub n: usize,
-    /// Session id for the keygen protocol,
-    pub session_id: SessionId,
-    pub(crate) polynomial: Polynomial<Secp256k1>,
+    pub(crate) encryption_keypair: sl_mpc_mate::message::ReusableSecret,
+    pub(crate) polynomial: Polynomial<Secp256k1>, // u_i_k in dkg.py
     pub(crate) r_i: [u8; 32],
-    pub(crate) x_i: NonZeroScalar,
-}
-
-impl KeyEntropy {
-    /// Generate a new set of random params
-    pub fn generate(rng: &mut impl CryptoRngCore, t: usize, n: usize) -> Self {
-        let session_id = SessionId::random(rng);
-        let r_i = random_bytes(rng);
-        let polynomial = Polynomial::random(rng, t - 1);
-        let x_i = NonZeroScalar::random(rng);
-        KeyEntropy {
-            t,
-            n,
-            session_id,
-            polynomial,
-            r_i,
-            x_i,
-        }
-    }
 }
 
 /// Set of a party's keys that can be reused
@@ -102,7 +60,7 @@ impl PersistentObject for PartyPublicKeys {}
 impl PartyKeys {
     /// Create a new set of party keys
     #[allow(clippy::new_without_default)]
-    pub fn new(rng: &mut impl CryptoRngCore) -> Self {
+    pub fn new(rng: &mut (impl CryptoRng + Rng)) -> Self {
         // TODO: Is rng needed here?
         let mut seed = [0u8; 32];
         rng.fill_bytes(&mut seed);
@@ -132,41 +90,41 @@ impl PartyKeys {
 #[derive(Debug, Error)]
 /// Distributed key generation errors
 pub enum KeygenError {
-    /// Invalid Pid value
-    #[error("Invalid pid, it must be in the range [1,n]")]
-    InvalidPid,
+    // /// Invalid Pid value
+    // #[error("Invalid pid, it must be in the range [1,n]")]
+    // InvalidPid,
 
-    /// Invalid threshold t value
-    #[error("Invalid t, must be less than n")]
-    InvalidT,
+    // /// Invalid threshold t value
+    // #[error("Invalid t, must be less than n")]
+    // InvalidT,
 
-    /// Invalid hierarchical level n_i value
-    #[error("Invalid hierarchical level n_i, must be in the range [0,t-1]")]
-    InvalidLevel,
+    // /// Invalid hierarchical level n_i value
+    // #[error("Invalid hierarchical level n_i, must be in the range [0,t-1]")]
+    // InvalidLevel,
 
     /// error while serializing or deserializing
     #[error("Error while deserializing message")]
     InvalidMessage,
 
-    /// Invalid length of messages list
-    #[error("Provided messages list has invalid length")]
-    InvalidMessageLength,
+    // /// Invalid length of messages list
+    // #[error("Provided messages list has invalid length")]
+    // InvalidMessageLength,
 
     /// Given message list pid's do not match with the expected pid's.
     #[error("Incorrect participant pid's in the message list")]
     InvalidParticipantSet,
 
-    /// Libsodium errors (signing, verifying, encryption etc.)
-    #[error("Libsodium error: {0})")]
-    LibsodiumError(#[from] sl_mpc_mate::nacl::Error),
+    // /// Libsodium errors (signing, verifying, encryption etc.)
+    // #[error("Libsodium error: {0})")]
+    // LibsodiumError(#[from] sl_mpc_mate::nacl::Error),
 
-    /// Current party's session id is not in the session id list
-    #[error("Invalid session id of the current party in session id list")]
-    InvalidSelfSessionId,
+    // /// Current party's session id is not in the session id list
+    // #[error("Invalid session id of the current party in session id list")]
+    // InvalidSelfSessionId,
 
-    /// Current party's party id is not in the party id list
-    #[error("Invalid party id of the current party in party id list")]
-    InvalidSelfPartyId,
+    // /// Current party's party id is not in the party id list
+    // #[error("Invalid party id of the current party in party id list")]
+    // InvalidSelfPartyId,
 
     /// VSOT errors
     #[error("VSOT error: {0}")]
@@ -219,6 +177,30 @@ pub enum KeygenError {
     /// Invalid seed
     #[error("Invalid Seed")]
     InvalidSeed,
+
+    /// We have internal state as pairs of (PairtyID, datum)
+    /// This error is returned when we unable to find a datum
+    /// corresponding to the party-id
+    #[error("Missing piece of state")]
+    InvalidParty(u8),
+}
+
+impl From<InvalidMessage> for KeygenError {
+    fn from(_err: InvalidMessage) -> Self {
+        KeygenError::InvalidMessage
+    }
+}
+
+impl From<EncodeError> for KeygenError {
+    fn from(_err: EncodeError) -> Self {
+        KeygenError::InvalidMessage
+    }
+}
+
+impl From<DecodeError> for KeygenError {
+    fn from(_err: DecodeError) -> Self {
+        KeygenError::InvalidMessage
+    }
 }
 
 #[cfg(test)]
@@ -273,15 +255,16 @@ mod tests {
 
         assert_eq!(result, Scalar::from(54_u64));
     }
+
     #[test]
     fn test_derivative_coeffs() {
         // f(x) = 1 + 2x + 3x^2 + 4x^3
         let g = ProjectivePoint::GENERATOR;
         let u_i_k = vec![
-            g * Scalar::from(1_u64),
-            g * Scalar::from(2_u64),
-            g * Scalar::from(3_u64),
-            g * Scalar::from(4_u64),
+            (g * Scalar::from(1_u64)).into(),
+            (g * Scalar::from(2_u64)).into(),
+            (g * Scalar::from(3_u64)).into(),
+            (g * Scalar::from(4_u64)).into(),
         ];
 
         let poly = GroupPolynomial::<Secp256k1>::new(u_i_k);

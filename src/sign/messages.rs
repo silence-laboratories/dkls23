@@ -1,7 +1,7 @@
 use k256::Scalar;
 use serde::{Deserialize, Serialize};
 use sl_mpc_mate::{
-    impl_basemessage,
+    // impl_basemessage,
     nacl::{EncryptedData, Signature},
     traits::{HasToParty, PersistentObject},
     HashBytes, SessionId,
@@ -215,4 +215,4 @@ impl PersistentObject for SignMsg4 {}
 
 // impl_basemessage!(Msg1, Msg2, Msg3, Msg4, Msg5, Msg6, Msg7, Msg8, Msg9, Msg10);
 
-impl_basemessage!(SignMsg1, SignMsg2, SignMsg3, SignMsg4);
+// impl_basemessage!(SignMsg1, SignMsg2, SignMsg3, SignMsg4);

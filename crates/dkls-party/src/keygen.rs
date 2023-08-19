@@ -1,3 +1,5 @@
+use rand::prelude::*;
+
 use k256::elliptic_curve::group::GroupEncoding;
 use tokio::task;
 
@@ -64,8 +66,9 @@ pub async fn keygen_party(
 
     let init = {
         let mut rng = rand::thread_rng();
+        let seed: [u8; 32] = rng.gen();
 
-        KeygenParty::new(t as _, n as _, pid as _, n_i as _, &party_keys, 4, &mut rng)?
+        KeygenParty::new(t as _, n as _, pid as _, n_i as _, &party_keys, seed)?
     };
 
     tracing::info!("keygen: pid {pid} sent pubkeys");

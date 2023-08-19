@@ -1,0 +1,14 @@
+[package]
+name = "msg-relay-svc"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+msg-relay = { path = "../msg-relay" }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros"] }
+axum = { version = "0.6" }
+tower-http = { version = "0.3.0", features = ["trace", "cors"] }
+tower-layer = "0.3.2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

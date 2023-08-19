@@ -1,7 +1,7 @@
 use k256::Scalar;
-use rand::{CryptoRng, RngCore};
+use rand::{prelude::*, CryptoRng};
 use serde::{Deserialize, Serialize};
-use sl_mpc_mate::{nacl::SignPubkey, random_bytes, traits::PersistentObject, SessionId};
+use sl_mpc_mate::{nacl::SignPubkey, traits::PersistentObject, SessionId};
 use thiserror::Error;
 
 use crate::keygen::{messages::Keyshare, PartyKeys};
@@ -34,12 +34,12 @@ pub struct SignEntropy {
 
 impl SignEntropy {
     /// Generate all the random values used in the sign protocol
-    pub fn generate<R: CryptoRng + RngCore>(rng: &mut R) -> Self {
+    pub fn generate<R: CryptoRng + Rng>(rng: &mut R) -> Self {
         Self {
             session_id: SessionId::random(rng),
             phi_i: Scalar::generate_biased(rng),
             k_i: Scalar::generate_biased(rng),
-            blind_factor: random_bytes(rng),
+            blind_factor: rng.gen(),
         }
     }
 }

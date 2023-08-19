@@ -1,7 +1,7 @@
 //! Distributed sign generation protocol.
 
 use std::collections::{HashMap, HashSet};
-use std::time::{Instant, Duration};
+use std::time::{Duration, Instant};
 
 use k256::{
     ecdsa::Signature,
@@ -17,9 +17,10 @@ use rand::{rngs::StdRng, CryptoRng, Rng, RngCore, SeedableRng};
 use sl_mpc_mate::{
     math::birkhoff_coeffs,
     nacl::{encrypt_data, sign_message, verify_signature, EncryptedData},
-    traits::{HasFromParty, PersistentObject, Round, ToScalar},
+    traits::{HasFromParty, PersistentObject, Round},
     HashBytes, SessionId,
 };
+
 use sl_oblivious::soft_spoken_mod::Round1Output;
 
 use crate::{
@@ -329,6 +330,7 @@ impl Round for SignerParty<R1> {
                 h.update(b"receiver");
                 h.update((*receiver_id as u32).to_be_bytes());
                 let mta_session_id = SessionId::new(h.finalize().into());
+
                 let mut seed_rng = StdRng::from_seed(send_seeds[idx]);
 
                 (
@@ -352,16 +354,10 @@ impl Round for SignerParty<R1> {
         let mu_i = get_mu_i(&self.params.keyshare, &self.state.party_id_list, digest_i);
 
         let coeff = match is_zero_vec(&self.params.keyshare.rank_list) {
-            true => {
-                get_lagrange_coeff(
-                    &self.params.keyshare, &self.state.party_id_list
-                )
-            }
+            true => get_lagrange_coeff(&self.params.keyshare, &self.state.party_id_list),
             false => {
-                let betta_coeffs = get_birkhoff_coefficients(
-                    &self.params.keyshare,
-                    &self.state.party_id_list
-                );
+                let betta_coeffs =
+                    get_birkhoff_coefficients(&self.params.keyshare, &self.state.party_id_list);
                 *betta_coeffs
                     .get(&self.params.party_id)
                     .expect("betta_i not found")
@@ -721,8 +717,8 @@ impl Round for SignerParty<R3> {
             sum_big_t_1 += &receiver_additive_shares_i[1];
         }
 
-        let big_t_0 = ProjectivePoint::GENERATOR * sum_big_t_0;
-        let big_t_1 = ProjectivePoint::GENERATOR * sum_big_t_1;
+        let big_t_0 = &ProjectivePoint::GENERATOR * &sum_big_t_0;
+        let big_t_1 = &ProjectivePoint::GENERATOR * &sum_big_t_1;
         let big_x_star_i = self.params.keyshare.public_key + (-self.state.big_x_i);
         // new var
         let big_r = big_r_star + self.state.big_r_i;
@@ -734,13 +730,13 @@ impl Round for SignerParty<R3> {
             ));
         }
 
-        if sum_gamma_0 != (big_x_star_i * self.params.rand_params.phi_i + (-big_t_0)) {
+        if sum_gamma_0 != (&big_x_star_i * &self.params.rand_params.phi_i + (-&big_t_0)) {
             return Err(SignError::FailedCheck(
                 "sum_gamma_0 != (self.phi_i * big_x_star_i + (-big_t))".to_string(),
             ));
         }
 
-        if sum_gamma_1 != (big_r_star * self.params.rand_params.phi_i + (-big_t_1)) {
+        if sum_gamma_1 != (&big_r_star * &self.params.rand_params.phi_i + (-big_t_1)) {
             return Err(SignError::FailedCheck(
                 "sum_gamma_1 != (self.phi_i * big_r_star + (-big_t_1)".to_string(),
             ));
@@ -784,18 +780,18 @@ impl Round for SignerParty<R4> {
         for i in 0..self.params.keyshare.threshold - 1 {
             let sender_shares = &self.state.sender_additive_shares[i];
             let receiver_shares = &self.state.receiver_additive_shares[i];
-            sum0 += sender_shares[0] + receiver_shares[0];
-            sum1 += sender_shares[1] + receiver_shares[1];
+            sum0 += &sender_shares[0] + &receiver_shares[0];
+            sum1 += &sender_shares[1] + &receiver_shares[1];
         }
 
         let r_point = self.state.big_r.to_affine();
         let r_x = Scalar::from_repr(r_point.x()).unwrap();
         //        let recid = r_point.y_is_odd().unwrap_u8();
-        let mut s_0 = r_x * (self.state.x_i * self.params.rand_params.phi_i + sum0);
-        let s_1 = self.params.rand_params.k_i * self.params.rand_params.phi_i + sum1;
+        let mut s_0 = r_x * (&self.state.x_i * &self.params.rand_params.phi_i + &sum0);
+        let s_1 = &self.params.rand_params.k_i * &self.params.rand_params.phi_i + &sum1;
 
         let m = U256::from_be_slice(&msg_hash).to_scalar::<Secp256k1>();
-        s_0 = m * self.params.rand_params.phi_i + s_0;
+        s_0 = m * &self.params.rand_params.phi_i + &s_0;
 
         let msg4_hash = hash_msg_4(
             &self.state.final_session_id,
@@ -858,8 +854,8 @@ impl Round for SignerParty<R5> {
             );
 
             verify_signature(&msg4_hash, &msg.signature, &verify_key)?;
-            sum_s_0 += msg.s_0;
-            sum_s_1 += msg.s_1;
+            sum_s_0 += &msg.s_0;
+            sum_s_1 += &msg.s_1;
         }
 
         let r = self.state.big_r.to_affine().x();
@@ -1061,10 +1057,7 @@ fn is_zero_vec(buf: &Vec<usize>) -> bool {
     buf.into_iter().all(|&b| b == 0)
 }
 
-fn get_lagrange_coeff(
-    keyshare: &Keyshare,
-    sign_party_ids: &[usize]
-) -> Scalar {
+fn get_lagrange_coeff(keyshare: &Keyshare, sign_party_ids: &[usize]) -> Scalar {
     let mut coeff = Scalar::from(1u64);
     let pid = keyshare.party_id;
     let x_i = &keyshare.x_i_list[pid] as &Scalar;

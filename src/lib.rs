@@ -4,10 +4,13 @@
 /// DKLs23 keygen protocol
 pub mod keygen;
 
-/// DKLs23 signing protocol
-pub mod sign;
+// // /// DKLs23 signing protocol
+// pub mod sign;
 
-pub use sl_mpc_mate::traits::{HasFromParty, PersistentObject, Round};
+/// Setup message creation/parsing
+pub mod setup;
+
+// pub use sl_mpc_mate::traits::{HasFromParty, PersistentObject, Round};
 
 /// Utilities
 pub mod utils {

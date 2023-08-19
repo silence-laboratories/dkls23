@@ -6,9 +6,8 @@ fn main() -> Result<(), KeygenError> {
     const N: usize = 5;
 
     let start = std::time::Instant::now();
-    // Abstract from user later
-    let soft_spoken_k = 2;
-    let (parties, mut coord) = setup_keygen::<T, N>(None, soft_spoken_k)?;
+
+    let (parties, mut coord) = setup_keygen::<T, N>(None)?;
     let parties1 = run_round(&mut coord, parties, 0);
     let parties2 = run_round(&mut coord, parties1, 1);
     let parties3 = run_round(&mut coord, parties2, 2);

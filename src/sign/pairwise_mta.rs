@@ -1,15 +1,17 @@
 use k256::{
     elliptic_curve::{
         bigint::Encoding,
+        generic_array::GenericArray,
+        ops::Reduce,
         subtle::{Choice, ConditionallySelectable},
     },
     schnorr::CryptoRngCore,
-    Scalar, Secp256k1, U256,
+    Scalar, U256,
 };
 use serde::{Deserialize, Serialize};
 
 use sl_mpc_mate::{
-    traits::{PersistentObject, Round, ToScalar},
+    traits::{PersistentObject, Round},
     SessionId,
 };
 use sl_oblivious::{
@@ -29,7 +31,7 @@ fn generate_gadget_vec() -> Box<[Scalar; L]> {
         .enumerate()
         .take(KAPPA)
         .for_each(|(i, g)| {
-            *g = (U256::ONE << i).to_scalar::<Secp256k1>();
+            *g = Scalar::reduce(U256::ONE << i);
         });
 
     let mut h = Hasher::new();
@@ -42,10 +44,8 @@ fn generate_gadget_vec() -> Box<[Scalar; L]> {
         .skip(KAPPA)
         .for_each(|(i, g)| {
             h.update((i as u16).to_be_bytes().as_ref());
-            let digest = h.finalize();
-            let digest = U256::from_be_slice(digest.as_bytes());
-            let digest_scalar = digest.to_scalar::<Secp256k1>();
-            *g = digest_scalar;
+            let digest = GenericArray::from_slice(h.finalize().as_bytes());
+            *g = Reduce::<U256>::reduce_bytes(digest);
         });
 
     Box::new(gadget_vec)
@@ -164,7 +164,7 @@ impl PairwiseMtaRec<MtaRecR0> {
 
 impl Round for PairwiseMtaRec<MtaRecR1> {
     type Input = MtaRound2Output;
-    type Output = Result<[Scalar; 2], String>;
+    type Output = Result<[Scalar; 2], &'static str>;
 
     #[inline(never)]
     fn process(self, round2_output: Self::Input) -> Self::Output {
@@ -191,7 +191,7 @@ impl Round for PairwiseMtaRec<MtaRecR1> {
         chi.iter_mut().enumerate().for_each(|(k, chi_k)| {
             h.update(format!("chi_{}", k).as_bytes());
             let digest: [u8; 32] = h.finalize().into();
-            *chi_k = U256::from_be_slice(&digest).to_scalar::<Secp256k1>();
+            *chi_k = Scalar::reduce(U256::from_be_slice(&digest));
         });
 
         let mut output_additive_shares = [Scalar::ZERO; 2];
@@ -225,7 +225,7 @@ impl Round for PairwiseMtaRec<MtaRecR1> {
         let r_hash_digest: [u8; 32] = r_hash.finalize().into();
 
         if round2_output.r != r_hash_digest {
-            Err("Consistency check failed".into())
+            Err("Consistency check failed")
         } else {
             Ok(output_additive_shares)
         }
@@ -235,15 +235,16 @@ impl Round for PairwiseMtaRec<MtaRecR1> {
 ///
 pub struct PairwiseMtaSender<T> {
     session_id: SessionId,
-    //    seed_ot_results: ReceiverOTSeed,
     gadget_vec: Box<[Scalar; L]>,
     state: T,
 }
+
 ///
 pub struct MtaSendR0 {
     a_hat: Scalar,
     cot_sender: SoftSpokenOTSender,
 }
+
 ///
 impl PairwiseMtaSender<MtaSendR0> {
     ///
@@ -316,7 +317,7 @@ impl Round for PairwiseMtaSender<MtaSendR0> {
         chi.iter_mut().enumerate().for_each(|(k, chi_k)| {
             hasher.update(format!("chi_{}", k).as_bytes());
             let digest: [u8; 32] = hasher.finalize().into();
-            *chi_k = U256::from_be_bytes(digest).to_scalar::<Secp256k1>();
+            *chi_k = Scalar::reduce(U256::from_be_bytes(digest));
         });
 
         let mut sender_additive_shares = [Scalar::ZERO; 2];
@@ -363,7 +364,8 @@ impl PersistentObject for MtaRound2Output {}
 
 #[cfg(test)]
 mod tests {
-    use k256::Scalar;
+    use super::*;
+
     use sl_mpc_mate::{traits::Round, SessionId};
     use sl_oblivious::soft_spoken_mod::generate_all_but_one_seed_ot;
 
