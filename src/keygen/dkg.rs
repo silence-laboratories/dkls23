@@ -18,8 +18,8 @@ use sl_oblivious::{
     soft_spoken_mod::SOFT_SPOKEN_K,
     utils::TranscriptProtocol,
     vsot::{
-        InitRec, RecR1, RecR2, SendR1, SendR2, VSOTError, VSOTMsg1, VSOTMsg5, VSOTReceiver,
-        VSOTSender,
+        InitRec, RecR1, RecR2, SendR1, SendR2, VSOTError, VSOTMsg1, VSOTMsg2, VSOTMsg5,
+        VSOTReceiver, VSOTSender,
     },
     zkproofs::DLogProof,
 };
@@ -56,9 +56,11 @@ pub type Seed = <ChaCha20Rng as SeedableRng>::Seed;
 
 type Pairs<T> = Vec<(u8, T)>;
 
-/// Keygen logic for a single party
+/// Keygen participant's state
 pub struct KeygenParty<T> {
+    // common state
     params: KeygenParams,
+    // round specific
     state: T,
 }
 
@@ -89,6 +91,8 @@ pub struct R2 {
     x_i_list: Pairs<NonZeroScalar>,
     sid_i_list: Pairs<SessionId>,
     enc_pub_key: Pairs<PublicKey>,
+
+    pending_p2p: Pairs<(VSOTMsg2, Scalar)>,
 }
 
 /// State of a keygen party after processing the second message.
@@ -101,6 +105,9 @@ pub struct R3 {
     big_f_vec: GroupPolynomial<Secp256k1>,
     big_f_i_vecs: Pairs<GroupPolynomial<Secp256k1>>,
     enc_pub_key: Pairs<PublicKey>,
+
+    d_i_list: Pairs<Scalar>,
+    vsot_next_senders: Pairs<VSOTSender<SendR2>>,
 }
 
 /// State of a keygen party after processing the third message.
@@ -108,9 +115,9 @@ pub struct R4 {
     wait_queue: WaitQueue<u8>,
 
     final_session_id: SessionId,
-    vsot_receivers: Vec<VSOTReceiver<RecR1>>,
-    vsot_senders: Vec<VSOTSender<SendR2>>,
-    x_i_list: Vec<NonZeroScalar>,
+    vsot_receivers: Pairs<VSOTReceiver<RecR1>>,
+    vsot_senders: Pairs<VSOTSender<SendR2>>,
+    x_i_list: Pairs<NonZeroScalar>,
     s_i: Scalar,
     public_key: ProjectivePoint,
     big_f_vec: GroupPolynomial<Secp256k1>,
@@ -170,7 +177,7 @@ impl KeygenParty<R1> {
 
         let session_id = SessionId::new(rng.gen());
         let r_i = rng.gen();
-        let polynomial = Polynomial::random(&mut rng, t as usize - 1);
+        let polynomial = Polynomial::random(&mut rng, t as usize - 1); // u_i_k
         let x_i = NonZeroScalar::random(&mut rng);
 
         let enc_keys = ReusableSecret::random_from_rng(&mut rng);
@@ -191,7 +198,7 @@ impl KeygenParty<R1> {
             wait_queue.wait(&msg_id, p);
         });
 
-        let big_f_i_vec = params.polynomial.commit(); // big_i_vector in dkg.py
+        let big_f_i_vec = params.polynomial.commit(); // big_f_i_vector in dkg.py
 
         let commitment = hash_commitment(
             &session_id,
@@ -209,20 +216,14 @@ impl KeygenParty<R1> {
             enc_pk: Opaque::from(PublicKey::from(&params.encryption_keypair).to_bytes()),
         };
 
-        let msg1_id = MsgId::new(
-            params.setup.instance(),
-            params.setup.verifying_key().as_bytes(),
-            None,
-            DKG_MSG_R1,
-        );
-
-        let mut msg = Builder::<Signed>::allocate(&msg1_id, 10, &msg1);
-
-        msg.encode(&msg1).unwrap(); // FIXME
-
         env.publish(
-            msg.sign(params.setup.signing_key())
-                .expect("missing payload"),
+            Builder::<Signed>::encode(
+                &params.setup.msg_id(None, DKG_MSG_R1),
+                10,
+                params.setup.signing_key(),
+                &msg1,
+            )
+            .unwrap(),
         );
 
         KeygenParty {
@@ -258,7 +259,6 @@ impl state::State for KeygenParty<R1> {
         // We wait for the message, so we were able to create a message
         // id for it that implies that we have corresponding public key
         // could verify signature of the message.
-        //
         let reader = msg.verify(
             params
                 .setup
@@ -372,8 +372,6 @@ impl state::State for KeygenParty<R1> {
 
         // Generate message for each other party.
 
-        // let mut wait_queue = WaitQueue::<(u8, bool)>::new();
-
         let sender_pk = params.setup.signing_key().verifying_key().to_bytes();
 
         let vsot_senders = params
@@ -393,7 +391,7 @@ impl state::State for KeygenParty<R1> {
                 (p, id)
             })
             .map(|(p, id)| (p, params.rng.gen(), id, find_pair(&enc_pub_key, p).unwrap()))
-            //            .par_bridge()
+            // .par_bridge()
             .map(|(p, seed, msg_id, enc_pk)| {
                 let mut rng = ChaCha20Rng::from_seed(seed); // TODO check!!!
 
@@ -423,7 +421,7 @@ impl state::State for KeygenParty<R1> {
 
         let msg2 = KeygenMsg2 {
             session_id: Opaque::from(&final_session_id),
-            big_f_i_vector: big_f_i_vec.clone(),
+            big_f_i_vector: big_f_i_vec.clone(), // TODO remove clone()
             r_i: Opaque::from(&params.r_i),
             dlog_proofs_i: dlog_proofs,
         };
@@ -457,6 +455,8 @@ impl state::State for KeygenParty<R1> {
                 x_i_list,
                 sid_i_list,
                 enc_pub_key,
+
+                pending_p2p: vec![],
             },
             params,
         };
@@ -540,32 +540,7 @@ impl state::State for KeygenParty<R2> {
             let x_i = find_pair(&state.x_i_list, party_id)?;
             let d_i = params.polynomial.derivative_at(rank as usize, &x_i);
 
-            let msg3 = KeygenMsg3 {
-                vsot_msg2,
-                d_i: Opaque::from(d_i),
-                session_id: Opaque::from(&state.final_session_id),
-                big_f_vec: state.big_f_i_vecs[0].1.clone(), // TODO explain why
-            };
-
-            let sender_pk = params.setup.signing_key().verifying_key().to_bytes();
-            let vk = params.setup.party_verifying_key(party_id).unwrap();
-
-            let msg3_id = MsgId::new(
-                params.setup.instance(),
-                &sender_pk,
-                Some(vk.as_bytes()),
-                DKG_MSG_R3,
-            );
-
-            let output = Builder::<Encrypted>::encode_and_encrypt(
-                &msg3_id,
-                100,
-                &params.encryption_keypair,
-                find_pair(&state.enc_pub_key, party_id)?,
-                &msg3,
-            )?;
-
-            env.publish(output);
+            state.pending_p2p.push((party_id, (vsot_msg2, d_i)));
         }
 
         // If wait queue is not empty, wait for a next message
@@ -581,18 +556,41 @@ impl state::State for KeygenParty<R2> {
             vsot_next_receivers,
             vsot_senders,
             enc_pub_key,
+            mut pending_p2p,
             ..
         } = state;
 
+        // 6.d
         let mut big_f_vec = GroupPolynomial::new(
             (0..params.setup.threshold())
                 .map(|_| ProjectivePoint::IDENTITY.into())
                 .collect(),
         );
-
         for (_, v) in &big_f_i_vecs {
             big_f_vec.add_mut(v);
         }
+
+        // now we are send to send P2P messages
+        pending_p2p
+            .into_iter()
+            .try_for_each(|(party_id, (vsot_msg2, d_i))| {
+                let msg3 = KeygenMsg3 {
+                    vsot_msg2,
+                    d_i: Opaque::from(d_i),
+                    session_id: Opaque::from(&state.final_session_id),
+                    big_f_vec: big_f_vec.clone(),
+                };
+
+                env.publish(Builder::<Encrypted>::encode(
+                    &params.setup.msg_id(Some(party_id), DKG_MSG_R3),
+                    100,
+                    &params.encryption_keypair,
+                    find_pair(&enc_pub_key, party_id)?,
+                    &msg3,
+                )?);
+
+                Ok::<_, KeygenError>(())
+            })?;
 
         let mut wait_queue = WaitQueue::new();
 
@@ -612,6 +610,13 @@ impl state::State for KeygenParty<R2> {
             wait_queue.wait(&msg3_id, p);
         });
 
+        let my_party_id = params.setup.party_id();
+
+        let x_i = find_pair(&x_i_list, my_party_id)?;
+        let d_i = params
+            .polynomial
+            .derivative_at(params.setup.part_rank(my_party_id).unwrap() as usize, &x_i);
+
         let state = R3 {
             wait_queue,
             final_session_id,
@@ -621,6 +626,9 @@ impl state::State for KeygenParty<R2> {
             big_f_vec,
             big_f_i_vecs,
             enc_pub_key,
+
+            d_i_list: vec![(my_party_id, d_i)],
+            vsot_next_senders: vec![],
         };
 
         // println!("R2 done");
@@ -629,141 +637,156 @@ impl state::State for KeygenParty<R2> {
     }
 }
 
-// impl state::State for KeygenParty<R3> {
-//     type Next = KeygenParty<R4>;
-//     type Error = KeygenError;
+impl state::State for KeygenParty<R3> {
+    type Next = KeygenParty<R4>;
+    type Error = KeygenError;
 
-//     fn process(self, env: &mut dyn state::Env, msg: &mut Message) -> state::StateResult<Self> {
-//         let Self {
-//             mut state,
-//             mut params,
-//         } = self;
+    fn process(self, env: &mut dyn state::Env, msg: &mut Message) -> state::StateResult<Self> {
+        let Self {
+            mut state,
+            mut params,
+        } = self;
 
-//         // messages.par_iter().try_for_each(|msg| {
-//         //     let msg3_hash = hash_msg3(
-//         //         &self.state.final_session_id,
-//         //         &msg.big_f_vec,
-//         //         &msg.encrypted_d_i_vec,
-//         //         &msg.enc_vsot_msgs2,
-//         //     );
+        // make sure that we wait for this message.
+        let party_id = state
+            .wait_queue
+            .remove(&msg.id())
+            .ok_or(KeygenError::InvalidMessage)?;
 
-//         //     let verify_key = &self.params.party_pubkeys_list[msg.get_pid()].verify_key;
+        let msg3: KeygenMsg3 = msg.decrypt_and_borrow_decode(
+            MESSAGE_HEADER_SIZE,
+            &params.encryption_keypair,
+            find_pair(&state.enc_pub_key, party_id)?,
+        )?;
 
-//         //     verify_signature(&msg3_hash, msg.get_signature(), verify_key)?;
+        (msg3.big_f_vec == state.big_f_vec)
+            .then_some(())
+            .ok_or(KeygenError::BigFVecMismatch)?;
 
-//         //     (msg.big_f_vec == self.state.big_f_vec)
-//         //         .then_some(())
-//         //         .ok_or(KeygenError::BigFVecMismatch)?;
+        state.d_i_list.push((party_id, *msg3.d_i));
 
-//         //     Ok::<(), KeygenError>(())
-//         // })?;
+        let sender = pop_pair(&mut state.vsot_senders, party_id)?;
 
-//         let f_i_vals = messages
-//             .iter()
-//             .map(|msg| {
-//                 let encrypted_d_i = &msg.encrypted_d_i_vec[self.params.party_id];
-//                 let nonce = &encrypted_d_i.nonce;
-//                 let d_i_bytes = encrypted_d_i.enc_data.decrypt_to_vec(
-//                     nonce,
-//                     &self.params.party_pubkeys_list[msg.get_pid()].encryption_key,
-//                     &self.params.encryption_keypair.secret_key,
-//                 )?;
+        let (sender, vsot_msg3) = sender.process(msg3.vsot_msg2)?;
 
-//                 let f_i = Scalar::from_repr(*FieldBytes::from_slice(&d_i_bytes));
+        state.vsot_next_senders.push((party_id, sender));
 
-//                 if f_i.is_none().into() {
-//                     return Err(KeygenError::InvalidDiPlaintext);
-//                 }
-//                 Ok(f_i.unwrap())
-//             })
-//             .collect::<Result<Vec<_>, KeygenError>>()?;
+        env.publish(Builder::<Encrypted>::encode(
+            &params.setup.msg_id(Some(party_id), DKG_MSG_R4),
+            100,
+            &params.encryption_keypair,
+            find_pair(&state.enc_pub_key, party_id)?,
+            &vsot_msg3,
+        )?);
 
-//         if f_i_vals.len() != self.params.n {
-//             return Err(KeygenError::InvalidFiLen);
-//         }
+        if !state.wait_queue.is_empty() {
+            return Ok(state::Output::Loop(KeygenParty { params, state }));
+        }
 
-//         for (big_f_i_vec, f_i_val) in self.state.big_f_i_vecs.iter().zip(f_i_vals.iter()) {
-//             let coeffs = big_f_i_vec.derivative_coeffs(self.params.rank);
+        let R3 {
+            final_session_id,
+            mut d_i_list,
+            x_i_list,
+            big_f_vec,
+            mut big_f_i_vecs,
+            vsot_receivers,
+            vsot_next_senders,
+            ..
+        } = state;
 
-//             let valid = feldman_verify(
-//                 &coeffs,
-//                 &self.state.x_i_list[self.params.party_id],
-//                 f_i_val,
-//                 &ProjectivePoint::GENERATOR,
-//             )
-//             .expect("u_i_k cannot be empty");
+        let wait_queue = WaitQueue::new();
 
-//             if !valid {
-//                 return Err(KeygenError::FailedFelmanVerify);
-//             }
-//         }
+        // let f_i_vals = messages
+        //     .iter()
+        //     .map(|msg| {
+        //         let encrypted_d_i = &msg.encrypted_d_i_vec[self.params.party_id];
+        //         let nonce = &encrypted_d_i.nonce;
+        //         let d_i_bytes = encrypted_d_i.enc_data.decrypt_to_vec(
+        //             nonce,
+        //             &self.params.party_pubkeys_list[msg.get_pid()].encryption_key,
+        //             &self.params.encryption_keypair.secret_key,
+        //         )?;
 
-//         let public_key = self.state.big_f_vec[0];
-//         let s_i: Scalar = f_i_vals.iter().sum();
-//         let big_s_i = ProjectivePoint::GENERATOR * s_i;
+        //         let f_i = Scalar::from_repr(*FieldBytes::from_slice(&d_i_bytes));
 
-//         let mut transcript = Transcript::new_dlog_proof(
-//             &self.state.final_session_id,
-//             self.params.party_id,
-//             DLOG_PROOF2_LABEL,
-//             DKG_LABEL,
-//         );
+        //         if f_i.is_none().into() {
+        //             return Err(KeygenError::InvalidDiPlaintext);
+        //         }
+        //         Ok(f_i.unwrap())
+        //     })
+        //     .collect::<Result<Vec<_>, KeygenError>>()?;
 
-//         let proof = DLogProof::prove(
-//             &s_i,
-//             &ProjectivePoint::GENERATOR,
-//             &mut transcript,
-//             &mut params.rng,
-//         );
-//         let senders = self.state.vsot_senders.into_par_iter();
+        // if f_i_vals.len() != self.params.n {
+        //     return Err(KeygenError::InvalidFiLen);
+        // }
 
-//         let (next_senders, enc_vsot_msgs3) = process_vsot_instances(
-//             senders,
-//             self.state.other_parties.par_iter(),
-//             &messages,
-//             self.params.party_id,
-//             &self.params.party_pubkeys_list,
-//             &self.params.encryption_keypair.secret_key,
-//         )?;
+        d_i_list.sort_by_key(|(p, _)| *p);
+        big_f_i_vecs.sort_by_key(|(p, _)| *p);
 
-//         // let msg4_hash = hash_msg4(
-//         //     &self.state.final_session_id,
-//         //     &public_key,
-//         //     &big_s_i,
-//         //     &proof,
-//         //     &enc_vsot_msgs3,
-//         // );
+        for ((_, big_f_i_vec), (_, f_i_val)) in big_f_i_vecs.iter().zip(&d_i_list) {
+            let coeffs = big_f_i_vec.derivative_coeffs(params.setup.party_rank() as usize);
 
-//         // let signature = sign_message(&self.params.signing_key, &msg4_hash)?;
+            let valid = feldman_verify(
+                &coeffs,
+                find_pair(&x_i_list, params.setup.party_id())?,
+                f_i_val,
+                &ProjectivePoint::GENERATOR,
+            )
+            .expect("u_i_k cannot be empty");
 
-//         let state = R4 {
-//             final_session_id: self.state.final_session_id,
-//             vsot_receivers: self.state.vsot_receivers,
-//             vsot_senders: next_senders,
-//             public_key,
-//             s_i,
-//             // rank_list: self.state.rank_list,
-//             x_i_list: self.state.x_i_list,
-//             big_f_vec: self.state.big_f_vec,
-//             // other_parties: self.state.other_parties,
-//         };
+            if !valid {
+                return Err(KeygenError::FailedFelmanVerify);
+            }
+        }
 
-//         // let msg4 = KeygenMsg4 {
-//         //     session_id: self.state.final_session_id,
-//         //     public_key,
-//         //     big_s_i,
-//         //     dlog_proof: proof,
-//         //     enc_vsot_msgs3,
-//         // };
+        let public_key = big_f_vec.get(0).unwrap().clone(); // FIXME dup data
+        let s_i: Scalar = d_i_list.iter().map(|(_, p)| p).sum();
+        let big_s_i = ProjectivePoint::GENERATOR * s_i;
 
-//         // let next_state = KeygenParty {
-//         //     params,
-//         //     state: new_state,
-//         // };
+        let mut transcript = Transcript::new_dlog_proof(
+            &final_session_id,
+            params.setup.party_id() as usize,
+            DLOG_PROOF2_LABEL,
+            DKG_LABEL,
+        );
 
-//         Ok(state::Output::Next(KeygenParty { params, state }))
-//     }
-// }
+        let proof = DLogProof::prove(
+            &s_i,
+            &ProjectivePoint::GENERATOR,
+            &mut transcript,
+            &mut params.rng,
+        );
+
+        // let senders = self.state.vsot_senders.into_par_iter();
+
+        let msg4 = KeygenMsg4 {
+            session_id: Opaque::from(&final_session_id),
+            public_key: Opaque::from(public_key),
+            big_s_i: Opaque::from(big_s_i),
+            dlog_proof: proof,
+        };
+
+        Builder::<Signed>::encode(
+            &params.setup.msg_id(None, DKG_MSG_R4),
+            100,
+            params.setup.signing_key(),
+            &msg4,
+        )?;
+
+        let state = R4 {
+            wait_queue,
+            final_session_id,
+            vsot_receivers,
+            vsot_senders: vsot_next_senders,
+            public_key,
+            s_i,
+            x_i_list,
+            big_f_vec,
+        };
+
+        Ok(state::Output::Next(KeygenParty { params, state }))
+    }
+}
 
 // impl Round for KeygenParty<R4> {
 //     type Input = Vec<KeygenMsg4>;
@@ -1162,57 +1185,6 @@ fn verfiy_dlog_proofs<'a>(
     Ok(())
 }
 
-// /// Rust voodoo to process all the senders/receivers of a party
-// fn process_vsot_instances<CM, NM, M, VSOT, VSOTNEXT>(
-//     vsot_instances: rayon::vec::IntoIter<VSOT>,
-//     other_party_ids: rayon::slice::Iter<usize>,
-//     messages: &[M],
-//     party_id: usize,
-//     party_pubkeys_list: &[PartyPublicKeys],
-//     secret_key: &sl_mpc_mate::nacl::BoxPrivKey,
-// ) -> Result<(Vec<VSOTNEXT>, Vec<EncryptedData>), KeygenError>
-// where
-//     VSOT: Round<Input = CM, Output = Result<(VSOTNEXT, NM), VSOTError>> + Send,
-//     CM: PersistentObject,
-//     VSOTNEXT: Send,
-//     M: HasVsotMsg + Sync,
-//     NM: PersistentObject,
-// {
-//     let (next_receivers, enc_vsot_msgs): (Vec<VSOTNEXT>, Vec<EncryptedData>) = vsot_instances
-//         .zip(other_party_ids)
-//         .map(|(receiver, sender_party_id)| {
-//             // idx is the position of current parties receiver for each sender.
-//             let message = &messages[*sender_party_id];
-
-//             let enc_vsot_msg = message.get_vsot_msg(party_id);
-//             let sender_public_key = &party_pubkeys_list[*sender_party_id].encryption_key;
-//             let vsot_msg = enc_vsot_msg
-//                 .enc_data
-//                 .decrypt_to_vec(&enc_vsot_msg.nonce, sender_public_key, secret_key)
-//                 .unwrap(); // FIXME ?;
-
-//             let vsot_msg = CM::from_bytes(&vsot_msg).ok_or(KeygenError::InvalidVSOTPlaintext)?;
-
-//             let (new_receiver, vsot_msg) = receiver.process(vsot_msg)?;
-
-//             let enc_vsot_msg = encrypt_data(
-//                 vsot_msg.to_bytes().unwrap(),
-//                 sender_public_key,
-//                 secret_key,
-//                 *sender_party_id,
-//                 party_id,
-//             )
-//             .unwrap(); // FiXME ?;
-
-//             Ok::<_, KeygenError>((new_receiver, enc_vsot_msg))
-//         })
-//         .collect::<Result<Vec<_>, KeygenError>>()?
-//         .into_iter()
-//         .unzip();
-
-//     Ok((next_receivers, enc_vsot_msgs))
-// }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1317,7 +1289,8 @@ mod tests {
     async fn r1() {
         let coord = Coord::new();
 
-        type Proto = Next<KeygenParty<R1>, Final<KeygenParty<R2>>>;
+        type Proto = Next<KeygenParty<R1>, Next<KeygenParty<R2>, Final<KeygenParty<R3>>>>;
+        // type Proto = Next<KeygenParty<R1>, Final<KeygenParty<R2>>>;
         // type Proto = Final<KeygenParty<R1>>;
 
         let parties = setup_keygen::<2, 3>(None, &coord)
@@ -1336,6 +1309,10 @@ mod tests {
         });
 
         while let Some(fini) = tasks.join_next().await {
+            if let Err(ref err) = fini {
+                println!("error {err:?}");
+            }
+
             assert!(fini.is_ok());
         }
     }

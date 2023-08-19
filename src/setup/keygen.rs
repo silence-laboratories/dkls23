@@ -2,7 +2,7 @@
 
 use bincode::{
     de::{read::Reader, Decoder},
-    enc::{Encoder},
+    enc::Encoder,
     error::{DecodeError, EncodeError},
     Decode, Encode,
 };
@@ -10,7 +10,6 @@ use bincode::{
 use sl_mpc_mate::message::*;
 
 use crate::setup::Magic;
-
 
 /// Distributed key generation setup message.
 ///
@@ -91,8 +90,7 @@ impl Decode for Setup {
         for i in 0..n as usize {
             let pk = Opaque::<[u8; PUBLIC_KEY_LENGTH]>::decode(decoder)?.0;
 
-            let pk = VerifyingKey::from_bytes(&pk)
-                .map_err(|_| DecodeError::Other("bad PK"))?;
+            let pk = VerifyingKey::from_bytes(&pk).map_err(|_| DecodeError::Other("bad PK"))?;
 
             parties.push((ranks[i], pk));
         }
@@ -189,7 +187,27 @@ impl ValidatedSetup {
             .iter()
             .enumerate()
             .filter(|(idx, _)| *idx as u8 != self.party_id)
-            .map(|(idx, (_rank, vk))| (idx as u8, vk) )
+            .map(|(idx, (_rank, vk))| (idx as u8, vk))
+    }
+
+    /// Generate ID of a message from this party to some other (or broadcast)
+    pub fn msg_id(&self, receiver: Option<u8>, tag: MessageTag) -> MsgId {
+        let sender_vk = self.signing_key.verifying_key();
+        let receiver_vk = receiver
+            .and_then(|p| self.party_verifying_key(p))
+            .map(|vk| vk.as_bytes());
+
+        MsgId::new(self.instance(), sender_vk.as_bytes(), receiver_vk, tag)
+    }
+
+    /// Generate ID of a message from given party
+    pub fn msg_id_from(&self, sender_vk: &VerifyingKey, receiver: Option<u8>, tag: MessageTag) -> MsgId {
+        // let sender_vk = self.party_verifying_key(sender_id).unwrap();
+        let receiver_vk = receiver
+            .and_then(|p| self.party_verifying_key(p)) // FIXME
+            .map(|vk| vk.as_bytes());
+
+        MsgId::new(self.instance(), sender_vk.as_bytes(), receiver_vk, tag)
     }
 
     ///
