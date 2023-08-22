@@ -24,10 +24,10 @@ pub struct KeygenParams {
     ///
     pub setup: ValidatedSetup,
 
-    /// Encryption keypair
-    pub(crate) encryption_keypair: sl_mpc_mate::message::ReusableSecret,
-    pub(crate) polynomial: Polynomial<Secp256k1>, // u_i_k in dkg.py
-    pub(crate) r_i: [u8; 32],
+    // Encryption keypair
+    // pub(crate) encryption_keypair: sl_mpc_mate::message::ReusableSecret,
+    // pub(crate) polynomial: Polynomial<Secp256k1>, // u_i_k in dkg.py
+    // pub(crate) r_i: [u8; 32],
 }
 
 /// Set of a party's keys that can be reused
@@ -172,7 +172,7 @@ pub enum KeygenError {
 
     #[error("PPRF error")]
     /// PPRF error
-    PPRFError(String),
+    PPRFError(&'static str),
 
     /// Invalid seed
     #[error("Invalid Seed")]

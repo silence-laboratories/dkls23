@@ -1,5 +1,5 @@
-//
-
+//!
+//!
 use bincode::{
     de::{read::Reader, Decoder},
     enc::Encoder,
@@ -123,7 +123,7 @@ impl Setup {
     }
 
     ///
-    pub fn part_rank(&self, party: u8) -> Option<u8> {
+    pub fn party_rank(&self, party: u8) -> Option<u8> {
         self.parties.get(party as usize).map(|(rank, _)| *rank)
     }
 
@@ -166,8 +166,8 @@ impl ValidatedSetup {
     }
 
     /// Own rank
-    pub fn party_rank(&self) -> u8 {
-        self.part_rank(self.party_id).unwrap()
+    pub fn rank(&self) -> u8 {
+        self.party_rank(self.party_id).unwrap()
     }
 
     /// Signing key for this Setup

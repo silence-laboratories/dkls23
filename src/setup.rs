@@ -1,5 +1,8 @@
-///!
-///
+//!
+//! Protocol setup message
+//!
+
+use std::ops::Deref;
 
 use sl_mpc_mate::message::MessageTag;
 
@@ -13,6 +16,25 @@ pub enum Magic {
 
     /// Distributed Signature Generation
     DSG = 2,
+}
+
+/// Rank of a party
+pub struct Rank(u8);
+
+impl Deref for Rank {
+    type Target = u8;
+
+    fn deref(&self) -> &u8 {
+        &self.0
+    }
+}
+
+/// Unique index of a participant of a MPC protocol
+pub struct PartyId(u8);
+
+impl PartyId {
+    /// Max number of participants of an MPC protocol
+    pub const MAX: Self = PartyId(57);
 }
 
 /// Setup for DKG

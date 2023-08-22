@@ -11,8 +11,7 @@ pub const DLOG_PROOF1_LABEL: &[u8] = b"SilenceLaboratories-DKG-DLOG-PROOF1";
 /// LABEL for the DLOG proof 2
 pub const DLOG_PROOF2_LABEL: &[u8] = b"SilenceLaboratories-DKG-DLOG-PROOF2";
 
-/// Message handled by KeygenParty<R1>
-/// Broadcast message.
+/// Broadcast message KeygenMsg1
 pub const DKG_MSG_R1: MessageTag = MessageTag::tag(1);
 
 /// Message handled by KeygenParty<R2>.
@@ -30,3 +29,6 @@ pub const DKG_MSG_R5: MessageTag = MessageTag::tag(5);
 
 /// Message handled by KeygenParty<R6>
 pub const DKG_MSG_R6: MessageTag = MessageTag::tag(6);
+
+/// broadcast message KeyGenCompleteMsg
+pub const DKG_MSG_R7: MessageTag = MessageTag::tag(7);

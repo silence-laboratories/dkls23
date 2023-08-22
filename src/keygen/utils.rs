@@ -130,10 +130,6 @@ where
     actors
 }
 
-pub(crate) trait HasVsotMsg: HasFromParty {
-    fn get_vsot_msg(&self, party_id: usize) -> &EncryptedData;
-}
-
 /// Get the index of the message for the given party id.
 /// This is indexing is when a party wants to get message from id list, it's own id is not included in the list.
 /// # Note
@@ -167,43 +163,43 @@ pub fn get_idx_from_id(current_party_id: usize, for_party_id: usize) -> usize {
 //         .unwrap()
 // }
 
-// pub(crate) fn check_secret_recovery(
-//     x_i_list: &[NonZeroScalar],
-//     rank_list: &[usize],
-//     big_s_list: &[ProjectivePoint],
-//     public_key: &ProjectivePoint,
-// ) -> Result<(), KeygenError> {
-//     // Checking if secret recovery works
-//     let mut party_params_list = x_i_list
-//         .iter()
-//         .zip(rank_list)
-//         .zip(big_s_list)
-//         .collect::<Vec<((&NonZeroScalar, &usize), &ProjectivePoint)>>();
+pub(crate) fn check_secret_recovery(
+    x_i_list: &[NonZeroScalar],
+    rank_list: &[usize],
+    big_s_list: &[ProjectivePoint],
+    public_key: &ProjectivePoint,
+) -> Result<(), KeygenError> {
+    // Checking if secret recovery works
+    let mut party_params_list = x_i_list
+        .iter()
+        .zip(rank_list)
+        .zip(big_s_list)
+        .collect::<Vec<((&NonZeroScalar, &usize), &ProjectivePoint)>>();
 
-//     party_params_list.sort_by_key(|((_, n_i), _)| *n_i);
+    party_params_list.sort_by_key(|((_, n_i), _)| *n_i);
 
-//     let params = party_params_list
-//         .iter()
-//         .map(|((x_i, n_i), _)| (**x_i, **n_i))
-//         .collect::<Vec<_>>();
+    let params = party_params_list
+        .iter()
+        .map(|((x_i, n_i), _)| (**x_i, **n_i))
+        .collect::<Vec<_>>();
 
-//     let sorted_big_s_list = party_params_list
-//         .iter()
-//         .map(|((_, _), big_s_i)| *big_s_i)
-//         .collect::<Vec<_>>();
+    let sorted_big_s_list = party_params_list
+        .iter()
+        .map(|((_, _), big_s_i)| *big_s_i)
+        .collect::<Vec<_>>();
 
-//     let betta_vector = birkhoff_coeffs(params.as_slice());
-//     let public_key_point = sorted_big_s_list
-//         .iter()
-//         .zip(betta_vector.iter())
-//         .fold(ProjectivePoint::IDENTITY, |acc, (point, betta_i)| {
-//             acc + *point * betta_i
-//         });
+    let betta_vector = birkhoff_coeffs(params.as_slice());
+    let public_key_point = sorted_big_s_list
+        .iter()
+        .zip(betta_vector.iter())
+        .fold(ProjectivePoint::IDENTITY, |acc, (point, betta_i)| {
+            acc + *point * betta_i
+        });
 
-//     (public_key == &public_key_point)
-//         .then_some(())
-//         .ok_or(KeygenError::PublicKeyMismatch)
-// }
+    (public_key == &public_key_point)
+        .then_some(())
+        .ok_or(KeygenError::PublicKeyMismatch)
+}
 
 // #[cfg(test)]
 // pub(crate) fn check_all_but_one_seeds(

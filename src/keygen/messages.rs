@@ -11,43 +11,43 @@ use sl_mpc_mate::{
 };
 
 use sl_oblivious::{
-    soft_spoken::{ReceiverOTSeed, SenderOTSeed},
-    vsot::VSOTMsg2,
+    soft_spoken::{ReceiverOTSeed, SenderOTSeed, PPRFOutput},
+    vsot::{VSOTMsg2, VSOTMsg5},
     zkproofs::DLogProof,
 };
 
 /// Type for the key generation protocol's message 1.
-#[derive(bincode::Encode, bincode::BorrowDecode)]
-pub struct KeygenMsg1<'a> {
+#[derive(bincode::Encode, bincode::Decode)]
+pub struct KeygenMsg1 {
     /// Sesssion id
-    pub session_id: Opaque<&'a SessionId>,
+    pub session_id: Opaque<SessionId>,
 
     /// Participant point x_i
     pub x_i: Opaque<Scalar, PF>, // FIXME: NonZeroScalar,
 
     /// Participants commitment
-    pub commitment: Opaque<&'a HashBytes>,
+    pub commitment: Opaque<HashBytes>,
 
     /// Participant encryption public key
     pub enc_pk: Opaque<[u8; 32]>,
 }
 
 /// Type for the key generation protocol's message 2.
-#[derive(bincode::Encode, bincode::BorrowDecode)]
+#[derive(bincode::Encode, bincode::Decode)]
 #[bincode(
     bounds = "C: CurveArithmetic, C::ProjectivePoint: GroupEncoding",
-    borrow_decode_bounds = "'__de: 'a, C: CurveArithmetic, C::ProjectivePoint: GroupEncoding"
+    // borrow_decode_bounds = "'__de: 'a, C: CurveArithmetic, C::ProjectivePoint: GroupEncoding"
 )]
-pub struct KeygenMsg2<'a, C = Secp256k1>
+pub struct KeygenMsg2<C = Secp256k1>
 where
     C: CurveArithmetic,
     C::ProjectivePoint: GroupEncoding,
 {
     /// Sesssion id
-    pub session_id: Opaque<&'a SessionId>,
+    pub session_id: Opaque<SessionId>,
 
     /// Random 32 bytes
-    pub r_i: Opaque<&'a [u8; 32]>,
+    pub r_i: Opaque<[u8; 32]>,
 
     /// Participants Fik values
     pub big_f_i_vector: GroupPolynomial<C>,
@@ -57,10 +57,10 @@ where
 }
 
 /// Type for the key generation protocol's message 3.
-#[derive(Clone, Debug, bincode::Encode, bincode::BorrowDecode)]
-pub struct KeygenMsg3<'a> {
+#[derive(Clone, Debug, bincode::Encode, bincode::Decode)]
+pub struct KeygenMsg3 {
     /// Session id
-    pub session_id: Opaque<&'a SessionId>,
+    pub session_id: Opaque<SessionId>,
 
     /// Participants Fi values
     pub big_f_vec: GroupPolynomial<Secp256k1>,
@@ -73,10 +73,10 @@ pub struct KeygenMsg3<'a> {
 }
 
 /// Type for the key generation protocol's message 4.
-#[derive(Clone, Debug, bincode::Encode, bincode::BorrowDecode)]
-pub struct KeygenMsg4<'a> {
+#[derive(Clone, Debug, bincode::Encode, bincode::Decode)]
+pub struct KeygenMsg4 {
     /// Session id
-    pub session_id: Opaque<&'a SessionId>,
+    pub session_id: Opaque<SessionId>,
 
     /// Big s_i value
     pub big_s_i: Opaque<ProjectivePoint, GR>,
@@ -91,30 +91,31 @@ pub struct KeygenMsg4<'a> {
     // pub enc_vsot_msgs3: Vec<EncryptedData>,
 }
 
-/// Type for the key generation protocol's message 5.
-#[derive(Clone, Debug)]
-pub struct KeygenMsg5 {
-    /// Session id
-    pub session_id: SessionId,
+// /// Type for the key generation protocol's message 5.
+// #[derive(Clone, Debug)]
+// pub struct KeygenMsg5 {
+//     /// Session id
+//     pub session_id: SessionId,
 
-    // /// Encrypted VSOT msg 3
-    // pub enc_vsot_msgs4: Vec<EncryptedData>,
-}
+//     // /// Encrypted VSOT msg 3
+//     // pub enc_vsot_msgs4: Vec<EncryptedData>,
+// }
 
 /// Type for the key generation protocol's message 5.
-#[derive(Clone)]
+#[derive(Clone, bincode::Encode, bincode::Decode)]
 pub struct KeygenMsg6 {
     /// Session id
-    pub session_id: SessionId,
+    pub session_id: Opaque<SessionId>,
 
-    // /// Encrypted VSOT msg 3
-    // pub enc_vsot_msgs5: Vec<EncryptedData>,
+    /// VSOT msg 5
+    pub vsot_msg5: VSOTMsg5,
 
-    // /// Encrypted pprf outputs
-    // pub enc_pprf_outputs: Vec<EncryptedData>,
+    /// Encrypted pprf outputs
+    pub pprf_output: Vec<PPRFOutput>,
 
     // /// Encrypted seed_i_j values
     // pub enc_seed_i_j_list: Vec<EncryptedData>,
+    pub seed_i_j: Option<[u8; 32]>
 }
 
 /// Keyshare of a party.
@@ -149,8 +150,8 @@ pub struct Keyshare {
     pub rec_seed_list: Vec<[u8; 32]>,
 
     pub(crate) x_i: NonZeroScalar,
-    pub(crate) s_i: Scalar,
-    pub(crate) big_s_list: Vec<ProjectivePoint>,
+    pub(crate) s_i: Opaque<Scalar, PF>,
+    pub(crate) big_s_list: Vec<Opaque<ProjectivePoint, GR>>,
     pub(crate) x_i_list: Vec<NonZeroScalar>,
     pub(crate) rank_list: Vec<u8>,
 }
