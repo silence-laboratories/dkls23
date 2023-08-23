@@ -572,6 +572,7 @@ pub async fn run(
     }
 
     let mut seed_ot_receivers = vec![];
+    let mut rec_seed_list = vec![];
 
     let mut js = recv_p2p_messages(&setup, DKG_MSG_R6, &relay);
     while let Some(msg) = js.join_next().await {
@@ -591,6 +592,9 @@ pub async fn run(
         .map_err(KeygenError::PPRFError)?;
 
         seed_ot_receivers.push((party_id, all_but_one_receiver_seed));
+        if let Some(seed_j_i) = msg.seed_i_j {
+            rec_seed_list.push(seed_j_i);
+        }
     }
 
     let share = Keyshare {
@@ -607,7 +611,7 @@ pub async fn run(
         sent_seed_list: seed_i_j_list,
         seed_ot_receivers: remove_ids(seed_ot_receivers),
         seed_ot_senders: remove_ids(seed_ot_senders),
-        rec_seed_list: vec![],
+        rec_seed_list,
     };
 
     Ok(share)
