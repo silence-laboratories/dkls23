@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-sl-mpc-mate = { path = "../../../sl-crypto/crates/sl-mpc-mate", features =["nacl"]}
+sl-mpc-mate = { path = "../../../sl-crypto/crates/sl-mpc-mate" }
 futures-util = { version = "0.3.28" }
 tokio = { version = "1", features = ["rt", "sync"] }
 axum = { version = "0.6", features = [ "ws" ] }

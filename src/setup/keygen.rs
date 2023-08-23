@@ -9,7 +9,7 @@ use bincode::{
 
 use sl_mpc_mate::message::*;
 
-use crate::setup::Magic;
+use crate::setup::{Magic, PartyInfo};
 
 /// Distributed key generation setup message.
 ///
@@ -154,30 +154,28 @@ impl std::ops::Deref for ValidatedSetup {
     }
 }
 
-impl ValidatedSetup {
-    ///
-    pub fn instance(&self) -> &InstanceId {
+impl PartyInfo for ValidatedSetup {
+    fn instance(&self) -> &InstanceId {
         &self.instance
     }
 
-    /// Own party ID (or index)
-    pub fn party_id(&self) -> u8 {
+    fn party_id(&self) -> u8 {
         self.party_id
     }
 
-    /// Own rank
-    pub fn rank(&self) -> u8 {
-        self.party_rank(self.party_id).unwrap()
-    }
-
-    /// Signing key for this Setup
-    pub fn signing_key(&self) -> &SigningKey {
+    fn signing_key(&self) -> &SigningKey {
         &self.signing_key
     }
 
-    /// Public key
-    pub fn verifying_key(&self) -> VerifyingKey {
+    fn verifying_key(&self) -> VerifyingKey {
         self.signing_key.verifying_key()
+    }
+}
+
+impl ValidatedSetup {
+    /// Own rank
+    pub fn rank(&self) -> u8 {
+        self.party_rank(self.party_id).unwrap()
     }
 
     ///
@@ -201,7 +199,12 @@ impl ValidatedSetup {
     }
 
     /// Generate ID of a message from given party
-    pub fn msg_id_from(&self, sender_vk: &VerifyingKey, receiver: Option<u8>, tag: MessageTag) -> MsgId {
+    pub fn msg_id_from(
+        &self,
+        sender_vk: &VerifyingKey,
+        receiver: Option<u8>,
+        tag: MessageTag,
+    ) -> MsgId {
         // let sender_vk = self.party_verifying_key(sender_id).unwrap();
         let receiver_vk = receiver
             .and_then(|p| self.party_verifying_key(p)) // FIXME

@@ -4,7 +4,7 @@
 
 use std::ops::Deref;
 
-use sl_mpc_mate::message::MessageTag;
+use sl_mpc_mate::message::{MessageTag, SigningKey, VerifyingKey, InstanceId};
 
 /// Tag for all setup messages
 pub const SETUP_MESSAGE_TAG: MessageTag = MessageTag::tag(0);
@@ -37,8 +37,21 @@ impl PartyId {
     pub const MAX: Self = PartyId(57);
 }
 
+
 /// Setup for DKG
 pub mod keygen;
 
-// /// Setup for DSG
-// pub mod sign;
+/// Setup for DSG
+pub mod sign;
+
+
+pub trait PartyInfo {
+    fn instance(&self)  -> &InstanceId;
+    fn party_id(&self) -> u8;
+
+    /// Signing key for this Setup
+    fn signing_key(&self) -> &SigningKey;
+
+    /// Public key
+    fn verifying_key(&self) -> VerifyingKey;
+}

@@ -11,20 +11,22 @@ use k256::{
     sha2::{Digest, Sha256},
     ProjectivePoint, Scalar, Secp256k1, U256,
 };
-
 use rand::{rngs::StdRng, CryptoRng, Rng, RngCore, SeedableRng};
+use rand_chacha::ChaCha20Rng;
 
 use sl_mpc_mate::{
+    coord::MessageRelay,
+    message::*,
     math::birkhoff_coeffs,
-    nacl::{encrypt_data, sign_message, verify_signature, EncryptedData},
-    traits::{HasFromParty, PersistentObject, Round},
-    HashBytes, SessionId,
+    HashBytes,
+    SessionId,
 };
 
 use sl_oblivious::soft_spoken_mod::Round1Output;
 
 use crate::{
-    keygen::{get_idx_from_id, messages::Keyshare, PartyKeys},
+    keygen::{get_idx_from_id, messages::Keyshare},
+    setup::sign::ValidatedSetup,
     sign::{
         pairwise_mta::{MtaRecR1, MtaRound2Output, PairwiseMtaRec, PairwiseMtaSender},
         SignMsg1, SignMsg2, SignMsg3, SignMsg4,
@@ -33,6 +35,8 @@ use crate::{
 };
 
 use super::{pairwise_mta::MtaSendR0, SignEntropy, SignError, SignParams, SignPartyPublicKeys};
+
+const DSG_MSG_R1: MessageTag = MessageTag::tag(1);
 
 /// Distributed Signer Party
 pub struct SignerParty<T> {
@@ -110,34 +114,76 @@ fn vec_append<T>(mut v: Vec<T>, a: T) -> Vec<T> {
     v
 }
 
-impl SignerParty<Init> {
-    /// Create a new signer party
-    pub fn new<R: CryptoRng + RngCore>(keyshare: Keyshare, rng: &mut R) -> Self {
-        let party_keys = PartyKeys::new(rng);
+/// Seed for our RNG
+pub type Seed = <ChaCha20Rng as SeedableRng>::Seed;
 
-        Self {
-            params: SignParams {
-                party_id: keyshare.party_id,
-                keyshare,
-                rand_params: SignEntropy::generate(rng),
-                party_keys,
-                party_pubkeys: vec![],
-            },
-            state: Init,
-            times: vec![],
-        }
-    }
+type Pairs<T> = Vec<(u8, T)>;
 
-    /// Get the public keys of the signer party
-    pub fn get_public_keys(&self) -> SignPartyPublicKeys {
-        let pubkeys = self.params.party_keys.public_keys();
-        SignPartyPublicKeys {
-            party_id: self.params.party_id,
-            verify_key: pubkeys.verify_key,
-            encryption_key: pubkeys.encryption_key,
-        }
-    }
+pub async fn run(setup: ValidatedSetup, seed: Seed, relay: MessageRelay) -> Result<(), SignError> {
+
+    let mut rng = ChaCha20Rng::from_seed(seed);
+
+    let mut commitments = vec![];
+    let enc_pub_keys = vec![];
+
+    let session_id: SessionId = SessionId::random(&mut rng);
+    let phi_i: Scalar = Scalar::generate_biased(&mut rng);
+    let k_i: Scalar = Scalar::generate_biased(&mut rng);
+    let blind_factor: [u8; 32] = rng.gen();
+
+    let enc_keys = ReusableSecret::random_from_rng(&mut rng);
+
+    let big_r_i = ProjectivePoint::GENERATOR * k_i;
+    let commitment_r_i = hash_commitment_r_i(
+        &session_id,
+        &big_r_i,
+        &blind_factor,
+    );
+
+    commitments.push((setup.party_id(), (session_id, commitment_r_i)));
+
+    relay.send(Builder::<Signed>::encode(
+        &setup.msg_id(None, DSG_MSG_R1),
+        10,
+        setup.signing_key(),
+        &SignMsg1 {
+            session_id,
+            commitment_r_i,
+            enc_pk: Opaque::from(PublicKey::from(&enc_keys).to_bytes()),
+        },
+    )?);
+
+    Ok(())
 }
+
+// impl SignerParty<Init> {
+//     /// Create a new signer party
+//     pub fn new<R: CryptoRng + RngCore>(keyshare: Keyshare, rng: &mut R) -> Self {
+//         let party_keys = PartyKeys::new(rng);
+
+//         Self {
+//             params: SignParams {
+//                 party_id: keyshare.party_id,
+//                 keyshare,
+//                 rand_params: SignEntropy::generate(rng),
+//                 party_keys,
+//                 party_pubkeys: vec![],
+//             },
+//             state: Init,
+//             times: vec![],
+//         }
+//     }
+
+//     /// Get the public keys of the signer party
+//     pub fn get_public_keys(&self) -> SignPartyPublicKeys {
+//         let pubkeys = self.params.party_keys.public_keys();
+//         SignPartyPublicKeys {
+//             party_id: self.params.party_id,
+//             verify_key: pubkeys.verify_key,
+//             encryption_key: pubkeys.encryption_key,
+//         }
+//     }
+// }
 
 impl Round for SignerParty<Init> {
     type Input = Vec<SignPartyPublicKeys>;
@@ -178,10 +224,10 @@ impl Round for SignerParty<Init> {
             &commitment_r_i,
         );
 
-        let signature = sign_message(&params.party_keys.signing_key, &msg_hash)?;
+        // let signature = sign_message(&params.party_keys.signing_key, &msg_hash)?;
         let msg1 = SignMsg1 {
-            from_party: params.keyshare.party_id,
-            signature,
+            // from_party: params.keyshare.party_id,
+            // signature,
             session_id: params.rand_params.session_id,
             commitment_r_i,
         };
@@ -350,7 +396,7 @@ impl Round for SignerParty<R1> {
             h.update(commitment_i);
         }
 
-        let digest_i = HashBytes(h.finalize().into());
+        let digest_i = HashBytes::new(h.finalize().into());
         let mu_i = get_mu_i(&self.params.keyshare, &self.state.party_id_list, digest_i);
 
         let coeff = match is_zero_vec(&self.params.keyshare.rank_list) {
@@ -902,7 +948,7 @@ fn hash_commitment_r_i(
     hasher.update(session_id.as_ref());
     hasher.update(big_r_i.to_bytes());
     hasher.update(blind_factor);
-    HashBytes(hasher.finalize().into())
+    HashBytes::new(hasher.finalize().into())
 }
 
 fn hash_msg_1(sid: &SessionId, pid: usize, commitment_r_i: &HashBytes) -> HashBytes {
@@ -911,7 +957,7 @@ fn hash_msg_1(sid: &SessionId, pid: usize, commitment_r_i: &HashBytes) -> HashBy
     hasher.update(sid.0);
     hasher.update((pid as u32).to_be_bytes());
     hasher.update(commitment_r_i.as_ref());
-    HashBytes(hasher.finalize().into())
+    HashBytes::new(hasher.finalize().into())
 }
 
 fn hash_msg_2(
@@ -926,7 +972,7 @@ fn hash_msg_2(
     hasher.update((receiver_id as u32).to_be_bytes());
     hasher.update((sender_id as u32).to_be_bytes());
     hasher.update(enc_mta_msg_1.to_bytes().unwrap());
-    HashBytes(hasher.finalize().into())
+    HashBytes::new(hasher.finalize().into())
 }
 
 #[inline(never)]
@@ -1098,7 +1144,7 @@ fn hash_msg_3(
     hasher.update(enc_gamma0.to_bytes().unwrap());
     hasher.update(enc_gamma1.to_bytes().unwrap());
 
-    HashBytes(hasher.finalize().into())
+    HashBytes::new(hasher.finalize().into())
 }
 
 fn hash_msg_4(sid: &SessionId, from_pid: usize, s_0: &Scalar, s_1: &Scalar) -> HashBytes {
@@ -1110,7 +1156,7 @@ fn hash_msg_4(sid: &SessionId, from_pid: usize, s_0: &Scalar, s_1: &Scalar) -> H
     hasher.update(s_0.to_bytes());
     hasher.update(s_1.to_bytes());
 
-    HashBytes(hasher.finalize().into())
+    HashBytes::new(hasher.finalize().into())
 }
 
 fn verify_commitment_r_i(
@@ -1122,4 +1168,10 @@ fn verify_commitment_r_i(
     let compare_commitment = hash_commitment_r_i(sid, big_r_i, blind_factor);
 
     commitment.ct_eq(&compare_commitment).into()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn r0() {}
 }

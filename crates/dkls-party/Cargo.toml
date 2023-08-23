@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1"
 dkls23 = { path = "../.." }
-sl-mpc-mate = { path = "../../../sl-crypto/crates/sl-mpc-mate", features =["nacl"]}
+sl-mpc-mate = { path = "../../../sl-crypto/crates/sl-mpc-mate" }
 sl-oblivious = { path = "../../../sl-crypto/crates/sl-oblivious" }
 rand = "0.8"
 k256 = {version = "0.13", features= ["ecdsa", "serde"]}

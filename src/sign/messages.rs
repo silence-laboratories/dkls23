@@ -1,51 +1,46 @@
 use k256::Scalar;
-use serde::{Deserialize, Serialize};
-use sl_mpc_mate::{
-    // impl_basemessage,
-    nacl::{EncryptedData, Signature},
-    traits::{HasToParty, PersistentObject},
-    HashBytes, SessionId,
-};
+use sl_mpc_mate::{message::*, HashBytes, SessionId};
 
 /// Type for the sign gen message 1.
-#[derive(Serialize, Deserialize, Clone)]
+// #[derive(Serialize, Deserialize, Clone)]
+#[derive(bincode::Encode, bincode::Decode)]
 pub struct SignMsg1 {
-    /// Participant Id of the sender
-    pub from_party: usize,
-    /// Signature
-    #[serde(with = "serde_arrays")]
-    pub signature: Signature,
     /// Sesssion id
     pub session_id: SessionId,
+
     /// Commitment hash
     pub commitment_r_i: HashBytes,
+
+    /// Participant encryption public key
+    pub enc_pk: Opaque<[u8; 32]>,
 }
 
 /// Type for the sign gen message 2.
-#[derive(Serialize, Deserialize, Clone)]
+// #[derive(Serialize, Deserialize, Clone)]
 pub struct SignMsg2 {
     /// Participant Id of the sender
     pub from_party: usize,
     /// Participant Id of the receiver
     pub to_party: usize,
-    /// Signature
-    #[serde(with = "serde_arrays")]
-    pub signature: Signature,
+
+    // /// Signature
+    // // #[serde(with = "serde_arrays")]
+    // pub signature: Signature,
     /// Sesssion id
     pub session_id: SessionId,
-    /// Encrypted mta message
-    pub enc_mta_msg1: EncryptedData,
+    // /// Encrypted mta message
+    // pub enc_mta_msg1: EncryptedData,
 }
 
 /// Type for the sign gen message 3.
-#[derive(Serialize, Deserialize, Clone)]
+// #[derive(Serialize, Deserialize, Clone)]
 pub struct SignMsg3 {
     /// Participant Id of the sender
     pub from_party: usize,
     /// Participant Id of the receiver
     pub to_party: usize,
     /// Signature
-    #[serde(with = "serde_arrays")]
+    // #[serde(with = "serde_arrays")]
     pub signature: Signature,
     /// Sesssion id
     pub session_id: SessionId,
@@ -65,20 +60,20 @@ pub struct SignMsg3 {
     pub enc_gamma1: EncryptedData,
 }
 
-impl HasToParty for SignMsg2 {
-    fn get_receiver(&self) -> usize {
-        self.to_party
-    }
-}
+// impl HasToParty for SignMsg2 {
+//     fn get_receiver(&self) -> usize {
+//         self.to_party
+//     }
+// }
 
-impl HasToParty for SignMsg3 {
-    fn get_receiver(&self) -> usize {
-        self.to_party
-    }
-}
+// impl HasToParty for SignMsg3 {
+//     fn get_receiver(&self) -> usize {
+//         self.to_party
+//     }
+// }
 
 /// Type for the sign gen message 4.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+// #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SignMsg4 {
     /// Sesssion id
     pub session_id: SessionId,
@@ -89,7 +84,7 @@ pub struct SignMsg4 {
     /// Participant Id of the sender
     pub from_party: usize,
     /// Signature
-    #[serde(with = "serde_arrays")]
+    // #[serde(with = "serde_arrays")]
     pub signature: Signature,
 }
 
@@ -200,10 +195,10 @@ pub struct SignMsg4 {
 //     pub signature: Vec<u8>,
 // }
 
-impl PersistentObject for SignMsg1 {}
-impl PersistentObject for SignMsg2 {}
-impl PersistentObject for SignMsg3 {}
-impl PersistentObject for SignMsg4 {}
+// impl PersistentObject for SignMsg1 {}
+// impl PersistentObject for SignMsg2 {}
+// impl PersistentObject for SignMsg3 {}
+// impl PersistentObject for SignMsg4 {}
 // impl PersistentObject for Msg5 {}
 // impl PersistentObject for Msg6 {}
 // impl PersistentObject for Msg7 {}

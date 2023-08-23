@@ -14,6 +14,8 @@ pub mod messages;
 ///
 pub mod constants;
 
+pub use messages::Keyshare;
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;

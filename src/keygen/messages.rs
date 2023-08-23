@@ -113,7 +113,7 @@ pub struct KeygenMsg6 {
     /// Encrypted pprf outputs
     pub pprf_output: Vec<PPRFOutput>,
 
-    // /// Encrypted seed_i_j values
+    /// seed_i_j values
     // pub enc_seed_i_j_list: Vec<EncryptedData>,
     pub seed_i_j: Option<[u8; 32]>
 }

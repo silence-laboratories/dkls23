@@ -1,6 +1,5 @@
 use k256::Scalar;
 use rand::{prelude::*, CryptoRng};
-use serde::{Deserialize, Serialize};
 use sl_mpc_mate::{nacl::SignPubkey, traits::PersistentObject, SessionId};
 use thiserror::Error;
 
@@ -45,7 +44,7 @@ impl SignEntropy {
 }
 
 /// Datatype for all of the participants public keys (verification, encryption)
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
+// #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
 pub struct SignPartyPublicKeys {
     /// The party's id
     pub party_id: usize,
@@ -57,7 +56,7 @@ pub struct SignPartyPublicKeys {
     pub encryption_key: sl_mpc_mate::nacl::BoxPubkey,
 }
 
-impl PersistentObject for SignPartyPublicKeys {}
+// impl PersistentObject for SignPartyPublicKeys {}
 
 /// Distributed key generation errors
 #[derive(Error, Debug)]

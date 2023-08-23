@@ -8,7 +8,6 @@ use k256::{
     schnorr::CryptoRngCore,
     Scalar, U256,
 };
-use serde::{Deserialize, Serialize};
 
 use sl_mpc_mate::{
     traits::{PersistentObject, Round},
@@ -354,13 +353,13 @@ impl Round for PairwiseMtaSender<MtaSendR0> {
 }
 
 /// Round 2 output in Pairwise Mta protocol
-#[derive(Clone, Debug, Serialize, Deserialize)]
+// #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MtaRound2Output {
     cot_round_2_output: Box<Round2Output>,
     r: [u8; 32],
     u: Scalar,
 }
-impl PersistentObject for MtaRound2Output {}
+// impl PersistentObject for MtaRound2Output {}
 
 #[cfg(test)]
 mod tests {

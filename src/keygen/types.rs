@@ -1,14 +1,11 @@
 use k256::Secp256k1;
 use rand::{CryptoRng, Rng};
 use rand_chacha::ChaCha20Rng;
-use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use sl_mpc_mate::{
     math::Polynomial,
     message::InvalidMessage,
-    nacl::{crypto_sign_seed_keypair, KeyPair, SignPrivKey, SignPubkey},
-    traits::PersistentObject,
     bincode::error::{EncodeError, DecodeError},
 };
 
@@ -16,107 +13,17 @@ use sl_oblivious::vsot;
 
 use crate::setup::keygen::ValidatedSetup;
 
-/// Parameters for the keygen protocol. Constant across all rounds.
-pub struct KeygenParams {
-    /// Instance of RNG for entire execution of the protocol
-    pub rng: ChaCha20Rng,
-
-    ///
-    pub setup: ValidatedSetup,
-
-    // Encryption keypair
-    // pub(crate) encryption_keypair: sl_mpc_mate::message::ReusableSecret,
-    // pub(crate) polynomial: Polynomial<Secp256k1>, // u_i_k in dkg.py
-    // pub(crate) r_i: [u8; 32],
-}
-
-/// Set of a party's keys that can be reused
-/// for independent execution of DKG
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct PartyKeys {
-    /// Public key for verifying signatures.
-    pub verify_key: SignPubkey,
-
-    #[serde(with = "serde_arrays")]
-    pub(crate) signing_key: SignPrivKey,
-
-    pub(crate) encryption_keypair: KeyPair,
-}
-
-impl PersistentObject for PartyKeys {}
-
-/// Datatype for all of the participants public keys (verification, encryption)
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Debug)]
-pub struct PartyPublicKeys {
-    /// The public key for signature verification.
-    pub verify_key: SignPubkey,
-
-    /// Public key for encryption
-    pub encryption_key: sl_mpc_mate::nacl::BoxPubkey,
-}
-
-impl PersistentObject for PartyPublicKeys {}
-
-impl PartyKeys {
-    /// Create a new set of party keys
-    #[allow(clippy::new_without_default)]
-    pub fn new(rng: &mut (impl CryptoRng + Rng)) -> Self {
-        // TODO: Is rng needed here?
-        let mut seed = [0u8; 32];
-        rng.fill_bytes(&mut seed);
-
-        let (verify_key, signing_key) = crypto_sign_seed_keypair(&seed);
-
-        rng.fill_bytes(&mut seed);
-
-        let encryption_keypair = KeyPair::from_seed(&seed);
-
-        Self {
-            signing_key,
-            verify_key,
-            encryption_keypair,
-        }
-    }
-
-    /// Extract public keys
-    pub fn public_keys(&self) -> PartyPublicKeys {
-        PartyPublicKeys {
-            verify_key: self.verify_key,
-            encryption_key: self.encryption_keypair.public_key.clone(),
-        }
-    }
-}
 
 #[derive(Debug, Error)]
 /// Distributed key generation errors
 pub enum KeygenError {
-    // /// Invalid Pid value
-    // #[error("Invalid pid, it must be in the range [1,n]")]
-    // InvalidPid,
-
-    // /// Invalid threshold t value
-    // #[error("Invalid t, must be less than n")]
-    // InvalidT,
-
-    // /// Invalid hierarchical level n_i value
-    // #[error("Invalid hierarchical level n_i, must be in the range [0,t-1]")]
-    // InvalidLevel,
-
     /// error while serializing or deserializing
     #[error("Error while deserializing message")]
     InvalidMessage,
 
-    // /// Invalid length of messages list
-    // #[error("Provided messages list has invalid length")]
-    // InvalidMessageLength,
-
     /// Given message list pid's do not match with the expected pid's.
     #[error("Incorrect participant pid's in the message list")]
     InvalidParticipantSet,
-
-    // /// Libsodium errors (signing, verifying, encryption etc.)
-    // #[error("Libsodium error: {0})")]
-    // LibsodiumError(#[from] sl_mpc_mate::nacl::Error),
 
     // /// Current party's session id is not in the session id list
     // #[error("Invalid session id of the current party in session id list")]

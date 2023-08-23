@@ -1,31 +1,85 @@
-use std::time::Duration;
+use k256::{elliptic_curve::group::GroupEncoding, AffinePoint};
+
+use bincode::{
+    de::{read::Reader, Decoder},
+    enc::{write::Writer, Encoder},
+    error::{DecodeError, EncodeError},
+    Decode, Encode,
+};
 
 use sl_mpc_mate::message::*;
 
-use arrayref::array_ref;
-
-use crate::setup::Magic;
+use crate::{keygen::Keyshare, setup::Magic};
 
 /// A key generation setup message.
 ///
 /// struct SetupMessage {
 ///     uint32      algo;
-///     uint8       t;
-///     partyid     u8[t]
+///     t           u8;
+///     publicKey   u8[33];  // affine point
 ///     pkey        opaque<32*t>;
 /// }
 ///
+#[derive(Clone)]
 pub struct Setup {
-    parties: Vec<(u8, [u8; PUBLIC_KEY_LENGTH])>,
+    public_key: AffinePoint,
+    parties: Vec<[u8; PUBLIC_KEY_LENGTH]>,
 }
 
-#[rustfmt::skip]
-fn setup_payload_size(t: u8) -> usize {
-    let t = t as usize;
-    4 +                   // algo, setup message "magic"
-    1 +                   // T
-    t +                   // party IDs
-    PUBLIC_KEY_LENGTH * t // public key of each party
+impl Encode for Setup {
+    fn encode<E: Encoder>(&self, encoder: &mut E) -> Result<(), EncodeError> {
+        (Magic::DSG as u32).encode(encoder)?;
+
+        (self.parties.len() as u8).encode(encoder)?;
+
+        self.public_key.to_bytes().encode(encoder)?;
+
+        for pk in &self.parties {
+            encoder.writer().write(pk)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl Decode for Setup {
+    fn decode<D: Decoder>(decoder: &mut D) -> Result<Self, DecodeError> {
+        let magic = u32::decode(decoder)?;
+
+        if magic != Magic::DSG as u32 {
+            return Err(DecodeError::Other("bag magic"));
+        }
+
+        let t = u8::decode(decoder)?;
+
+        if t < 2 {
+            return Err(DecodeError::Other("bad T"));
+        }
+
+        let public_key = <[u8; 33]>::decode(decoder)?;
+        let public_key = AffinePoint::from_bytes(&public_key.into());
+        let public_key = if bool::from(public_key.is_some()) {
+            public_key.unwrap()
+        } else {
+            return Err(DecodeError::Other("bad PK"));
+        };
+
+        let mut parties = Vec::with_capacity(t as usize);
+
+        for _ in 0..t {
+            // let pk = <[u8; PUBLIC_KEY_LENGTH]>::decode(decoder)?;
+            let mut pk = [0u8; PUBLIC_KEY_LENGTH];
+            decoder.reader().read(&mut pk)?;
+            parties.push(pk);
+        }
+
+        // TODO validate parties public keys
+
+        Ok(Setup {
+            parties,
+            public_key,
+        })
+    }
 }
 
 impl Setup {
@@ -36,14 +90,16 @@ impl Setup {
 
     ///
     pub fn public_key(&self, party: u8) -> Option<&[u8; PUBLIC_KEY_LENGTH]> {
-        self.parties.get(party as usize).map(|(_, pk)| pk)
+        self.parties.get(party as usize)
     }
 }
 
 ///
 pub struct ValidatedSetup {
+    instance: InstanceId,
     setup: Setup,
     signing_key: SigningKey,
+    keyshare: Keyshare,
 }
 
 impl std::ops::Deref for ValidatedSetup {
@@ -57,45 +113,52 @@ impl std::ops::Deref for ValidatedSetup {
 ///
 impl ValidatedSetup {
     ///
+    pub fn instance(&self) -> &InstanceId {
+        &self.instance
+    }
+
+    ///
+    pub fn keyshare(&self) -> &Keyshare {
+        &self.keyshare
+    }
+
+    ///
+    pub fn party_id(&self) -> u8 {
+        self.keyshare.party_id
+    }
+
+    ///
     pub fn decode<F>(
         message_buffer: &mut [u8],
+        instance: &InstanceId,
+        verify_key: &VerifyingKey,
         signing_key: SigningKey,
         user_validator: F,
     ) -> Option<ValidatedSetup>
     where
-        F: FnOnce(&Setup, u8, &Message<Signed>) -> bool,
+        F: FnOnce(&Setup, &Message) -> Option<Keyshare>,
     {
-        let mut setup_msg = Message::<Signed>::from_buffer(message_buffer).ok()?;
+        let setup_msg = Message::from_buffer(message_buffer).ok()?;
 
-        if setup_msg.decode::<u32>().ok()? != Magic::DSG as u32 {
-            return None;
-        }
+        // let setup = setup_msg.verify_and_decode(verify_key).ok()?;
 
-        let t: u8 = setup_msg.decode().ok()?;
+        let reader = setup_msg.verify(verify_key).ok()?;
 
-        if t < 2 {
-            return None;
-        }
+        let setup: Setup = MessageReader::decode(reader).ok()?;
 
-        let (ids, pk) = setup_msg
-            .slice(t as usize * (1 + PUBLIC_KEY_LENGTH))
-            .ok()?
-            .split_at(t as usize);
+        let vk = signing_key.verifying_key();
 
-        let pk = |p: usize| {
-            let start = p * PUBLIC_KEY_LENGTH;
-            array_ref![pk, start, PUBLIC_KEY_LENGTH]
-        };
+        // one of PK is our one
+        setup.parties.iter().find(|pk| vk.as_bytes() == *pk)?;
 
-        let setup = Setup {
-            parties: (0..t as usize).map(|p| (ids[p], *pk(p))).collect(),
-        };
+        let keyshare = user_validator(&setup, &setup_msg)?;
 
-        if !user_validator(&setup, 0, &setup_msg) {
-            return None;
-        }
-
-        Some(ValidatedSetup { setup, signing_key })
+        Some(ValidatedSetup {
+            setup,
+            instance: *instance,
+            signing_key,
+            keyshare,
+        })
     }
 
     /// Signing key for this Setup
@@ -106,48 +169,50 @@ impl ValidatedSetup {
 
 ///
 pub struct SetupBuilder {
-    parties: Vec<(u8, [u8; PUBLIC_KEY_LENGTH])>,
+    public_key: AffinePoint,
+    parties: Vec<[u8; PUBLIC_KEY_LENGTH]>,
 }
 
 impl SetupBuilder {
     /// Create new builder
-    pub fn new() -> SetupBuilder {
-        Self { parties: vec![] }
+    pub fn new(public_key: AffinePoint) -> SetupBuilder {
+        Self {
+            public_key,
+            parties: vec![],
+        }
     }
 
     /// Add party witj given rank and public key
-    pub fn add_party(mut self, rank: u8, pk: &[u8; PUBLIC_KEY_LENGTH]) -> Self {
-        self.parties.push((rank, *pk));
+    pub fn add_party(mut self, pk: [u8; PUBLIC_KEY_LENGTH]) -> Self {
+        self.parties.push(pk);
         self
     }
 
     ///
-    pub fn build(self, id: MsgId, ttl: u32, t: u8, key: &SigningKey) -> Option<Vec<u8>> {
-        if self.parties.len() >= u8::MAX as usize {
+    pub fn build(self, id: MsgId, ttl: u32, key: &SigningKey) -> Option<Vec<u8>> {
+        let Self {
+            public_key,
+            parties,
+        } = self;
+
+        if parties.len() >= u8::MAX as usize {
             return None;
         }
 
-        let n = self.parties.len() as u8;
+        let t = parties.len() as u8;
 
-        if t < 2 || t >= n {
+        if t < 2 {
             return None;
         }
 
-        let mut msg =
-            Builder::<Signed>::allocate(id, Duration::new(ttl as u64, 0), setup_payload_size(n));
+        let setup = Setup {
+            public_key,
+            parties,
+        };
 
-        let magic = Magic::DKG as u32;
-        msg.encode(&magic.to_le_bytes()).ok()?;
-        msg.encode(&n).ok()?;
-        msg.encode(&t).ok()?;
+        let mut msg = Builder::<Signed>::allocate(&id, ttl, &setup);
 
-        for (rank, _) in &self.parties {
-            msg.encode(rank).ok()?;
-        }
-
-        for (_, pk) in &self.parties {
-            msg.encode(pk).ok()?;
-        }
+        msg.encode(&setup).ok()?;
 
         msg.sign(key).ok()
     }

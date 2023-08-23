@@ -1,4 +1,3 @@
-#![allow(unused_imports, dead_code)]
 //! Distributed key generation protocol.
 //
 
@@ -33,30 +32,14 @@ use sl_mpc_mate::{
 };
 
 use crate::{
-    keygen::{
-        check_secret_recovery,
-        constants::*,
-        // get_idx_from_id,
-        messages::*,
-        types::KeygenParams,
-        KeygenError,
-    },
-    setup::keygen::ValidatedSetup,
-    // utils::get_hash,
+    keygen::{check_secret_recovery, constants::*, messages::*, KeygenError},
+    setup::{keygen::ValidatedSetup, PartyInfo},
 };
 
 /// Seed for our RNG
 pub type Seed = <ChaCha20Rng as SeedableRng>::Seed;
 
 type Pairs<T> = Vec<(u8, T)>;
-
-/// Keygen participant's state
-pub struct KeygenParty<T> {
-    // common state
-    params: KeygenParams,
-    // round specific
-    state: T,
-}
 
 fn find_pair<T>(pairs: &[(u8, T)], party_id: u8) -> Result<&T, KeygenError> {
     pairs
@@ -139,7 +122,7 @@ fn decode_signed_message<T: bincode::Decode>(
     let (mut msg, party_id) = msg.map_err(|_| KeygenError::InvalidMessage)??; // it's ugly, I know
 
     let msg = Message::from_buffer(&mut msg)?;
-    let msg = msg.verify_and_decode::<T>(&setup.party_verifying_key(party_id).unwrap())?;
+    let msg = msg.verify_and_decode(&setup.party_verifying_key(party_id).unwrap())?;
 
     Ok((msg, party_id))
 }
@@ -152,7 +135,7 @@ fn decode_encrypted_message<T: bincode::Decode>(
     let (mut msg, party_id) = msg.map_err(|_| KeygenError::InvalidMessage)??; // it's ugly, I know
 
     let mut msg = Message::from_buffer(&mut msg)?;
-    let msg = msg.decrypt_and_decode::<T>(
+    let msg = msg.decrypt_and_decode(
         MESSAGE_HEADER_SIZE,
         secret,
         find_pair(enc_pub_keys, party_id)?,

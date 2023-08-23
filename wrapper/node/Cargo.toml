@@ -7,7 +7,7 @@ version = "0.0.0"
 crate-type = ["cdylib"]
 
 [dependencies]
-sl-mpc-mate = { path = "../../../sl-crypto/crates/sl-mpc-mate", features =["nacl"]}
+sl-mpc-mate = { path = "../../../sl-crypto/crates/sl-mpc-mate" }
 dkls23 = { path = "../.." }
 rand = "0.8"
 k256 = {version = "0.13", features= ["ecdsa", "serde"]}
