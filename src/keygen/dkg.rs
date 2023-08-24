@@ -72,7 +72,7 @@ fn recv_p2p_messages(
     setup: &ValidatedSetup,
     tag: MessageTag,
     relay: &MessageRelay,
-) -> JoinSet<Result<(Vec<u8>, u8), KeygenError>> {
+) -> JoinSet<Result<(Vec<u8>, u8), InvalidMessage>> {
     let mut js = JoinSet::new();
     let me = Some(setup.party_id());
     setup.other_parties_iter().for_each(|(p, vk)| {
@@ -84,8 +84,8 @@ fn recv_p2p_messages(
             let msg = relay
                 .recv(msg_id, 10)
                 .await
-                .ok_or(KeygenError::InvalidMessage)?;
-            Ok::<_, KeygenError>((msg, p))
+                .ok_or(InvalidMessage::RecvError)?;
+            Ok::<_, InvalidMessage>((msg, p))
         });
     });
 
@@ -96,10 +96,10 @@ fn recv_broadcast_messages(
     setup: &ValidatedSetup,
     tag: MessageTag,
     relay: &MessageRelay,
-) -> JoinSet<Result<(Vec<u8>, u8), KeygenError>> {
+) -> JoinSet<Result<(Vec<u8>, u8), InvalidMessage>> {
     let mut js = JoinSet::new();
     setup.other_parties_iter().for_each(|(p, vk)| {
-        // broadcast message from party `p'
+        // broadcast the message from party `p'
         let msg_id = setup.msg_id_from(vk, None, tag);
         let relay = relay.clone();
 
@@ -107,8 +107,8 @@ fn recv_broadcast_messages(
             let msg = relay
                 .recv(msg_id, 10)
                 .await
-                .ok_or(KeygenError::InvalidMessage)?;
-            Ok::<_, KeygenError>((msg, p))
+                .ok_or(InvalidMessage::RecvError)?;
+            Ok::<_, InvalidMessage>((msg, p))
         });
     });
 
@@ -116,10 +116,10 @@ fn recv_broadcast_messages(
 }
 
 fn decode_signed_message<T: bincode::Decode>(
-    msg: Result<Result<(Vec<u8>, u8), KeygenError>, JoinError>,
+    msg: Result<Result<(Vec<u8>, u8), InvalidMessage>, JoinError>,
     setup: &ValidatedSetup,
-) -> Result<(T, u8), KeygenError> {
-    let (mut msg, party_id) = msg.map_err(|_| KeygenError::InvalidMessage)??; // it's ugly, I know
+) -> Result<(T, u8), InvalidMessage> {
+    let (mut msg, party_id) = msg.map_err(|_| InvalidMessage::RecvError)??; // it's ugly, I know
 
     let msg = Message::from_buffer(&mut msg)?;
     let msg = msg.verify_and_decode(&setup.party_verifying_key(party_id).unwrap())?;
@@ -128,17 +128,17 @@ fn decode_signed_message<T: bincode::Decode>(
 }
 
 fn decode_encrypted_message<T: bincode::Decode>(
-    msg: Result<Result<(Vec<u8>, u8), KeygenError>, JoinError>,
+    msg: Result<Result<(Vec<u8>, u8), InvalidMessage>, JoinError>,
     secret: &ReusableSecret,
     enc_pub_keys: &[(u8, PublicKey)],
-) -> Result<(T, u8), KeygenError> {
-    let (mut msg, party_id) = msg.map_err(|_| KeygenError::InvalidMessage)??; // it's ugly, I know
+) -> Result<(T, u8), InvalidMessage> {
+    let (mut msg, party_id) = msg.map_err(|_| InvalidMessage::RecvError)??; // it's ugly, I know
 
     let mut msg = Message::from_buffer(&mut msg)?;
     let msg = msg.decrypt_and_decode(
         MESSAGE_HEADER_SIZE,
         secret,
-        find_pair(enc_pub_keys, party_id)?,
+        find_pair(enc_pub_keys, party_id).map_err(|_| InvalidMessage::RecvError)?,
     )?;
 
     Ok((msg, party_id))
@@ -253,7 +253,7 @@ pub async fn run(
             (
                 p,
                 VSOTReceiver::new(
-                    get_vsot_session_id(my_party_id as usize, p as usize, &final_session_id),
+                    get_vsot_session_id(p as usize, my_party_id as usize, &final_session_id),
                     &mut rng,
                 ),
             )
@@ -262,10 +262,10 @@ pub async fn run(
 
     let mut vsot_senders = setup
         .other_parties_iter()
-        .map(|(p, vk)| {
+        .map(|(p, _vk)| {
             (
                 p,
-                setup.msg_id_from(vk, Some(setup.party_id()), DKG_MSG_R2),
+                setup.msg_id_from(&setup.verifying_key(), Some(p), DKG_MSG_R2),
                 rng.gen(),
                 find_pair(&enc_pub_key, p).unwrap(),
             )
@@ -681,51 +681,12 @@ mod tests {
 
     use crate::setup::{keygen::*, SETUP_MESSAGE_TAG};
 
-    fn setup_keygen<const T: usize, const N: usize>(
-        n_i_list: Option<[usize; N]>,
-    ) -> Vec<(ValidatedSetup, [u8; 32])> {
-        let mut rng = rand::thread_rng();
-
-        let instance = InstanceId::from(rng.gen::<[u8; 32]>());
-
-        // signing key to sing the setup message
-        let setup_sk = SigningKey::from_bytes(&rng.gen());
-        let setup_vk = setup_sk.verifying_key();
-        let setup_pk = setup_vk.to_bytes();
-
-        let setup_msg_id = MsgId::new(&instance, &setup_pk, None, SETUP_MESSAGE_TAG);
-
-        // a signing key for each party.
-        let party_sk: [SigningKey; N] = array::from_fn(|_| SigningKey::from_bytes(&rng.gen()));
-
-        // Create a setup message. In a real world,
-        // this part will be created by an intiator.
-        // The setup message contail public keys of
-        // all parties that will participate in this
-        // protocol execution.
-        let mut setup = n_i_list
-            .unwrap_or([0; N])
-            .into_iter()
-            .enumerate()
-            .fold(SetupBuilder::new(), |setup, p| {
-                let vk = party_sk[p.0].verifying_key();
-                setup.add_party(p.1 as u8, &vk)
-            })
-            .build(&setup_msg_id, 100, T as u8, &setup_sk)
-            .unwrap();
-
-        party_sk
-            .into_iter()
-            .map(|party_sk| {
-                ValidatedSetup::decode(&mut setup, &instance, &setup_vk, party_sk, |_, _, _| true)
-                    .unwrap()
-            })
-            .map(|setup| (setup, rng.gen()))
-            .collect::<Vec<_>>()
-    }
+    use crate::keygen::utils::setup_keygen;
 
     #[test]
-    fn r0() {}
+    fn r0() {
+        assert!(true);
+    }
 
     // (flavor = "multi_thread")
     #[tokio::test(flavor = "multi_thread")]
@@ -738,11 +699,26 @@ mod tests {
         }
 
         while let Some(fini) = parties.join_next().await {
+            let fini = fini.unwrap();
+
             if let Err(ref err) = fini {
                 println!("error {err:?}");
             }
 
             assert!(fini.is_ok());
+
+            let share = fini.unwrap();
+
+            println!(
+                "PK {}",
+                share
+                    .public_key
+                    .to_bytes()
+                    .iter()
+                    .map(|v| format!("{:02X}", v))
+                    .collect::<Vec<_>>()
+                    .join(".")
+            );
         }
     }
 }

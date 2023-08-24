@@ -44,9 +44,12 @@ pub mod keygen;
 /// Setup for DSG
 pub mod sign;
 
-
+///
 pub trait PartyInfo {
+    ///
     fn instance(&self)  -> &InstanceId;
+
+    ///
     fn party_id(&self) -> u8;
 
     /// Signing key for this Setup

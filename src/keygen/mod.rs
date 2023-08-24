@@ -16,6 +16,8 @@ pub mod constants;
 
 pub use messages::Keyshare;
 
+
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
@@ -28,9 +30,7 @@ mod tests {
     // use super::process_keygen;
 
     #[test]
-    fn keygen_r1() {
-
-    }
+    fn keygen_r1() {}
 
     // #[test]
     // fn test_keygen() {

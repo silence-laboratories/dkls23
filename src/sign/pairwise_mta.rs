@@ -9,10 +9,8 @@ use k256::{
     Scalar, U256,
 };
 
-use sl_mpc_mate::{
-    traits::{PersistentObject, Round},
-    SessionId,
-};
+use sl_mpc_mate::{message::*, SessionId};
+
 use sl_oblivious::{
     soft_spoken::{ReceiverOTSeed, SenderOTSeed},
     soft_spoken_mod::{
@@ -43,7 +41,8 @@ fn generate_gadget_vec() -> Box<[Scalar; L]> {
         .skip(KAPPA)
         .for_each(|(i, g)| {
             h.update((i as u16).to_be_bytes().as_ref());
-            let digest = GenericArray::from_slice(h.finalize().as_bytes());
+            let digest = h.finalize();
+            let digest = GenericArray::from_slice(digest.as_bytes());
             *g = Reduce::<U256>::reduce_bytes(digest);
         });
 
@@ -120,9 +119,6 @@ impl PairwiseMtaRec<MtaRecR0> {
 }
 
 impl PairwiseMtaRec<MtaRecR0> {
-    // type Input = Scalar;
-    // type Output = (PairwiseMtaRec<MtaRecR1>, Round1Output);
-
     ///
     pub fn process(self, beta: &Scalar) -> (PairwiseMtaRec<MtaRecR1>, Round1Output) {
         let omega = self.encode(beta);
@@ -161,12 +157,9 @@ impl PairwiseMtaRec<MtaRecR0> {
     }
 }
 
-impl Round for PairwiseMtaRec<MtaRecR1> {
-    type Input = MtaRound2Output;
-    type Output = Result<[Scalar; 2], &'static str>;
-
-    #[inline(never)]
-    fn process(self, round2_output: Self::Input) -> Self::Output {
+impl PairwiseMtaRec<MtaRecR1> {
+    ///
+    pub fn process(self, round2_output: MtaRound2Output) -> Result<[Scalar; 2], &'static str> {
         let cot_additive_shares = self
             .state
             .cot_receiver
@@ -208,7 +201,7 @@ impl Round for PairwiseMtaRec<MtaRecR1> {
             // let mut value_to_hash = -sum_chi_mul_tb;
             let j_bit = self.state.omega.extract_bit(j);
             let option0 = -sum_chi_mul_tb;
-            let option1 = option0 + round2_output.u;
+            let option1 = option0 + *round2_output.u;
 
             let value_to_hash =
                 Scalar::conditional_select(&option0, &option1, Choice::from(j_bit as u8));
@@ -265,12 +258,12 @@ impl PairwiseMtaSender<MtaSendR0> {
     }
 }
 
-impl Round for PairwiseMtaSender<MtaSendR0> {
-    type Input = (Scalar, Scalar, Round1Output);
-
-    type Output = ([Scalar; 2], MtaRound2Output);
-
-    fn process(self, (alpha1, alpha2, round1_output): Self::Input) -> Self::Output {
+impl PairwiseMtaSender<MtaSendR0> {
+    ///
+    pub fn process(
+        self,
+        (alpha1, alpha2, round1_output): (Scalar, Scalar, Round1Output),
+    ) -> ([Scalar; 2], MtaRound2Output) {
         let mut alice_input = [[Scalar::ZERO; 3]; ETA];
 
         alice_input.iter_mut().for_each(|input| {
@@ -345,7 +338,7 @@ impl Round for PairwiseMtaSender<MtaSendR0> {
         let output = MtaRound2Output {
             r,
             cot_round_2_output: round2_output,
-            u,
+            u: Opaque::from(u),
         };
 
         (sender_additive_shares, output)
@@ -353,19 +346,18 @@ impl Round for PairwiseMtaSender<MtaSendR0> {
 }
 
 /// Round 2 output in Pairwise Mta protocol
-// #[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Debug, bincode::Encode, bincode::Decode)]
 pub struct MtaRound2Output {
     cot_round_2_output: Box<Round2Output>,
     r: [u8; 32],
-    u: Scalar,
+    u: Opaque<Scalar, PF>,
 }
-// impl PersistentObject for MtaRound2Output {}
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    use sl_mpc_mate::{traits::Round, SessionId};
+    use sl_mpc_mate::SessionId;
     use sl_oblivious::soft_spoken_mod::generate_all_but_one_seed_ot;
 
     use super::{PairwiseMtaRec, PairwiseMtaSender};
@@ -373,10 +365,15 @@ mod tests {
     #[test]
     fn test_pairwise() {
         let mut rng = rand::thread_rng();
+
         let (sender_ot_seed, receiver_ot_seed) = generate_all_but_one_seed_ot(&mut rng);
+
         let session_id = SessionId::random(&mut rng);
+
         let sender = PairwiseMtaSender::new(session_id, &receiver_ot_seed, &mut rng);
+
         let receiver = PairwiseMtaRec::new(session_id, &sender_ot_seed, &mut rng);
+
         let (alpha1, alpha2, beta) = (
             Scalar::generate_biased(&mut rng),
             Scalar::generate_biased(&mut rng),
@@ -384,7 +381,9 @@ mod tests {
         );
 
         let (receiver, round1_output) = receiver.process(&beta);
+
         let (sender_shares, round2_output) = sender.process((alpha1, alpha2, round1_output));
+
         let receiver_shares = receiver.process(round2_output).unwrap();
 
         let t_0 = receiver_shares[0] + sender_shares[0];

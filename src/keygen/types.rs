@@ -11,7 +11,7 @@ use sl_mpc_mate::{
 
 use sl_oblivious::vsot;
 
-use crate::setup::keygen::ValidatedSetup;
+use crate::{BadPartyIndex, setup::keygen::ValidatedSetup};
 
 
 #[derive(Debug, Error)]
@@ -106,6 +106,12 @@ impl From<EncodeError> for KeygenError {
 
 impl From<DecodeError> for KeygenError {
     fn from(_err: DecodeError) -> Self {
+        KeygenError::InvalidMessage
+    }
+}
+
+impl From<BadPartyIndex> for KeygenError {
+    fn from(_err: BadPartyIndex) ->  Self {
         KeygenError::InvalidMessage
     }
 }

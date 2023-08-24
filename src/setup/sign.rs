@@ -1,3 +1,4 @@
+#![allow(dead_code, unused_imports)]
 use k256::{elliptic_curve::group::GroupEncoding, AffinePoint};
 
 use bincode::{
@@ -23,7 +24,7 @@ use crate::{keygen::Keyshare, setup::Magic};
 #[derive(Clone)]
 pub struct Setup {
     public_key: AffinePoint,
-    parties: Vec<[u8; PUBLIC_KEY_LENGTH]>,
+    parties: Vec<VerifyingKey>,
 }
 
 impl Encode for Setup {
@@ -32,10 +33,10 @@ impl Encode for Setup {
 
         (self.parties.len() as u8).encode(encoder)?;
 
-        self.public_key.to_bytes().encode(encoder)?;
+        encoder.writer().write(&self.public_key.to_bytes())?;
 
         for pk in &self.parties {
-            encoder.writer().write(pk)?;
+            encoder.writer().write(pk.as_bytes())?;
         }
 
         Ok(())
@@ -61,15 +62,19 @@ impl Decode for Setup {
         let public_key = if bool::from(public_key.is_some()) {
             public_key.unwrap()
         } else {
-            return Err(DecodeError::Other("bad PK"));
+            return Err(DecodeError::Other("bad keyshare PK"));
         };
 
         let mut parties = Vec::with_capacity(t as usize);
 
         for _ in 0..t {
-            // let pk = <[u8; PUBLIC_KEY_LENGTH]>::decode(decoder)?;
-            let mut pk = [0u8; PUBLIC_KEY_LENGTH];
-            decoder.reader().read(&mut pk)?;
+            // let mut pk = [0u8; PUBLIC_KEY_LENGTH];
+            // decoder.reader().read(&mut pk)?;
+
+            let pk = <[u8; PUBLIC_KEY_LENGTH]>::decode(decoder)?;
+            let pk =
+                VerifyingKey::from_bytes(&pk).map_err(|_| DecodeError::Other("bad party PK"))?;
+
             parties.push(pk);
         }
 
@@ -88,9 +93,9 @@ impl Setup {
         self.parties.len() as u8
     }
 
-    ///
-    pub fn public_key(&self, party: u8) -> Option<&[u8; PUBLIC_KEY_LENGTH]> {
-        self.parties.get(party as usize)
+    /// Return Verifying key of a party by its index
+    pub fn party_verifying_key(&self, party_idx: usize) -> Option<&VerifyingKey> {
+        self.parties.get(party_idx)
     }
 }
 
@@ -100,6 +105,7 @@ pub struct ValidatedSetup {
     setup: Setup,
     signing_key: SigningKey,
     keyshare: Keyshare,
+    party_idx: usize,
 }
 
 impl std::ops::Deref for ValidatedSetup {
@@ -123,8 +129,47 @@ impl ValidatedSetup {
     }
 
     ///
-    pub fn party_id(&self) -> u8 {
-        self.keyshare.party_id
+    pub fn party_idx(&self) -> usize {
+        self.party_idx
+    }
+
+    // pub fn party_id(&self) -> u8 {
+    //     self.keyshare.party_id
+    // }
+
+    ///
+    pub fn other_parties_iter(&self) -> impl Iterator<Item = (usize, &VerifyingKey)> {
+        self.setup
+            .parties
+            .iter()
+            .enumerate()
+            .filter(|(idx, _)| *idx != self.party_idx)
+            .map(|(idx, vk)| (idx, vk))
+    }
+
+    /// Generate ID of a message from this party to some other (or broadcast)
+    pub fn msg_id(&self, receiver: Option<usize>, tag: MessageTag) -> MsgId {
+        let sender_vk = self.signing_key.verifying_key();
+        let receiver_vk = receiver
+            .and_then(|p| self.party_verifying_key(p))
+            .map(|vk| vk.as_bytes());
+
+        MsgId::new(self.instance(), sender_vk.as_bytes(), receiver_vk, tag)
+    }
+
+    /// Generate ID of a message from given party
+    pub fn msg_id_from(
+        &self,
+        sender_vk: &VerifyingKey,
+        receiver: Option<usize>,
+        tag: MessageTag,
+    ) -> MsgId {
+        // let sender_vk = self.party_verifying_key(sender_id).unwrap();
+        let receiver_vk = receiver
+            .and_then(|p| self.party_verifying_key(p)) // FIXME
+            .map(|vk| vk.as_bytes());
+
+        MsgId::new(self.instance(), sender_vk.as_bytes(), receiver_vk, tag)
     }
 
     ///
@@ -149,7 +194,7 @@ impl ValidatedSetup {
         let vk = signing_key.verifying_key();
 
         // one of PK is our one
-        setup.parties.iter().find(|pk| vk.as_bytes() == *pk)?;
+        let party_idx = setup.parties.iter().position(|pk| &vk == pk)?;
 
         let keyshare = user_validator(&setup, &setup_msg)?;
 
@@ -158,6 +203,7 @@ impl ValidatedSetup {
             instance: *instance,
             signing_key,
             keyshare,
+            party_idx,
         })
     }
 
@@ -170,26 +216,26 @@ impl ValidatedSetup {
 ///
 pub struct SetupBuilder {
     public_key: AffinePoint,
-    parties: Vec<[u8; PUBLIC_KEY_LENGTH]>,
+    parties: Vec<VerifyingKey>,
 }
 
 impl SetupBuilder {
     /// Create new builder
-    pub fn new(public_key: AffinePoint) -> SetupBuilder {
+    pub fn new(public_key: &AffinePoint) -> SetupBuilder {
         Self {
-            public_key,
+            public_key: public_key.clone(),
             parties: vec![],
         }
     }
 
     /// Add party witj given rank and public key
-    pub fn add_party(mut self, pk: [u8; PUBLIC_KEY_LENGTH]) -> Self {
-        self.parties.push(pk);
+    pub fn add_party(mut self, vk: VerifyingKey) -> Self {
+        self.parties.push(vk);
         self
     }
 
     ///
-    pub fn build(self, id: MsgId, ttl: u32, key: &SigningKey) -> Option<Vec<u8>> {
+    pub fn build(self, id: &MsgId, ttl: u32, key: &SigningKey) -> Option<Vec<u8>> {
         let Self {
             public_key,
             parties,
@@ -210,7 +256,7 @@ impl SetupBuilder {
             parties,
         };
 
-        let mut msg = Builder::<Signed>::allocate(&id, ttl, &setup);
+        let mut msg = Builder::<Signed>::allocate(id, ttl, &setup);
 
         msg.encode(&setup).ok()?;
 

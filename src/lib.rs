@@ -1,16 +1,19 @@
 //! DKLs23 rust implementation
 #![deny(missing_docs, unsafe_code)]
 
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
+
 /// DKLs23 keygen protocol
 pub mod keygen;
 
-// /// DKLs23 signing protocol
-// pub mod sign;
+/// DKLs23 signing protocol
+pub mod sign;
 
 /// Setup message creation/parsing
 pub mod setup;
 
-// pub use sl_mpc_mate::traits::{HasFromParty, PersistentObject, Round};
+pub use sl_mpc_mate::{coord::MessageRelay, message::*};
 
 /// Utilities
 pub mod utils {
@@ -97,3 +100,12 @@ pub mod utils {
         Ok(())
     }
 }
+
+/// Seed for our RNG
+pub type Seed = <ChaCha20Rng as SeedableRng>::Seed;
+
+pub(crate) type Pairs<T> = Vec<(u8, T)>;
+
+///
+#[derive(Debug)]
+pub struct BadPartyIndex;
