@@ -145,11 +145,11 @@ pub(crate) fn setup_keygen<const T: usize, const N: usize>(
 }
 
 #[cfg(test)]
-pub(crate) async fn gen_keyshares() -> Vec<Keyshare> {
+pub(crate) async fn gen_keyshares(n_i_list: Option<[usize; 3]>) -> Vec<Keyshare> {
     let coord = sl_mpc_mate::coord::SimpleMessageRelay::new();
 
     let mut parties = tokio::task::JoinSet::new();
-    for (setup, seed) in setup_keygen::<2, 3>(None).into_iter() {
+    for (setup, seed) in setup_keygen::<2, 3>(n_i_list).into_iter() {
         parties.spawn(crate::keygen::run(setup, seed, coord.connect()));
     }
 
@@ -161,7 +161,7 @@ pub(crate) async fn gen_keyshares() -> Vec<Keyshare> {
         } else {
             match fini.unwrap() {
                 Err(err) => panic!("err {:?}", err),
-                Ok(share) => shares.push(share)
+                Ok(share) => shares.push(share),
             }
         }
     }
