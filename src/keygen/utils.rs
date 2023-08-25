@@ -73,11 +73,11 @@ pub(crate) fn check_secret_recovery(
             acc + *point * betta_i
         });
 
-    println!("Checking public key!");
     (public_key == &public_key_point)
         .then_some(())
         .ok_or(KeygenError::PublicKeyMismatch)
 }
+
 
 // #[cfg(test)]
 // pub(crate) fn check_all_but_one_seeds(

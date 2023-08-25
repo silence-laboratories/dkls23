@@ -177,12 +177,12 @@ impl ValidatedSetup {
     pub fn rank(&self) -> u8 {
         self.party_rank(self.party_id).unwrap()
     }
-
     pub fn all_party_ranks(&self) -> Vec<(u8, u8)> {
-        self.setup
-            .parties
+        self.parties
             .iter()
-            .map(|(rank, _)| (self.party_id, *rank))
+            .enumerate()
+            // TODO: usize as u8 might be a problem if there are more than 255 parties
+            .map(|(id, (rank, _))| (id as u8, *rank))
             .collect()
     }
 

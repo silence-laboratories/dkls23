@@ -208,7 +208,6 @@ pub async fn run(
     relay: MessageRelay,
 ) -> Result<Signature, SignError> {
     let mut rng = ChaCha20Rng::from_seed(seed);
-    println!("Setup: {:?}", setup);
 
     // For DKG part_id == part_idx.
     //
@@ -260,8 +259,6 @@ pub async fn run(
     }
 
     party_idx_to_id_map.sort_by_key(|(_, pid)| *pid);
-
-    println!("Party idx to id map: {:?}", party_idx_to_id_map);
 
     let find_party_id = |idx: usize| {
         party_idx_to_id_map
@@ -1322,7 +1319,6 @@ fn get_birkhoff_coefficients(
     keyshare: &Keyshare,
     sign_party_ids: &[(usize, u8)],
 ) -> HashMap<usize, Scalar> {
-    println!("RANK LIST: {:?}", keyshare.rank_list);
     let params = sign_party_ids
         .iter()
         .map(|(_, pid)| {
@@ -1420,10 +1416,6 @@ mod tests {
             .into_iter()
             .enumerate()
             .map(|(idx, party_sk)| {
-                println!(
-                    "Using keyshare with idx:{} and ID:{}",
-                    idx, &shares[idx].party_id
-                );
                 ValidatedSetup::decode(&mut setup, &instance, &setup_vk, party_sk, |_, _| {
                     Some(shares[idx].clone())
                 })
@@ -1431,8 +1423,6 @@ mod tests {
             })
             .map(|setup| (setup, rng.gen()))
             .collect::<Vec<_>>();
-
-        println!("setup_dsg: {:?}", list);
 
         list
     }
