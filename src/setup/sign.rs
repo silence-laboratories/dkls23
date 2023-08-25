@@ -1,5 +1,6 @@
 #![allow(dead_code, unused_imports)]
 use k256::{elliptic_curve::group::GroupEncoding, AffinePoint};
+use sha2::{Digest, Sha256};
 
 use bincode::{
     de::{read::Reader, Decoder},
@@ -8,9 +9,12 @@ use bincode::{
     Decode, Encode,
 };
 
-use sl_mpc_mate::message::*;
+use sl_mpc_mate::{message::*, HashBytes};
 
-use crate::{keygen::Keyshare, setup::Magic};
+use crate::{
+    keygen::Keyshare,
+    setup::{HashAlgo, Magic},
+};
 
 /// A key generation setup message.
 ///
@@ -19,12 +23,16 @@ use crate::{keygen::Keyshare, setup::Magic};
 ///     t           u8;
 ///     publicKey   u8[33];  // affine point
 ///     pkey        opaque<32*t>;
+///     hash_also   u32;
+///     message     Vec<u8>;
 /// }
 ///
 #[derive(Clone)]
 pub struct Setup {
     public_key: AffinePoint,
     parties: Vec<VerifyingKey>,
+    hash_algo: HashAlgo,
+    message: Vec<u8>,
 }
 
 impl Encode for Setup {
@@ -38,6 +46,10 @@ impl Encode for Setup {
         for pk in &self.parties {
             encoder.writer().write(pk.as_bytes())?;
         }
+
+        (self.hash_algo as u32).encode(encoder)?;
+
+        self.message.encode(encoder)?;
 
         Ok(())
     }
@@ -78,11 +90,26 @@ impl Decode for Setup {
             parties.push(pk);
         }
 
-        // TODO validate parties public keys
+        let hash_algo = match <u32>::decode(decoder)? {
+            0 => HashAlgo::HashU32,
+            1 => HashAlgo::Sha256,
+            2 => HashAlgo::Sha256D,
+            _ => return Err(DecodeError::Other("bad HashAlso")),
+        };
+
+        let message = <Vec<u8>>::decode(decoder)?;
+
+        if hash_algo == HashAlgo::HashU32 {
+            if message.len() != 32 {
+                return Err(DecodeError::Other("bad message length"));
+            }
+        }
 
         Ok(Setup {
             parties,
             public_key,
+            hash_algo,
+            message,
         })
     }
 }
@@ -96,6 +123,28 @@ impl Setup {
     /// Return Verifying key of a party by its index
     pub fn party_verifying_key(&self, party_idx: usize) -> Option<&VerifyingKey> {
         self.parties.get(party_idx)
+    }
+
+    /// Return hash algorithm
+    pub fn hash_algo(&self) -> HashAlgo {
+        self.hash_algo
+    }
+
+    pub fn hash(&self) -> HashBytes {
+        match self.hash_algo {
+            HashAlgo::HashU32 => {
+                let mut bytes = [0u8; 32];
+                // Decode::decode() validates length of message
+                bytes.copy_from_slice(&self.message[..32]);
+                HashBytes::new(bytes)
+            }
+
+            HashAlgo::Sha256 => {
+                HashBytes::new(Sha256::new().chain_update(&self.message).finalize().into())
+            }
+
+            _ => unimplemented!(),
+        }
     }
 }
 
@@ -217,6 +266,8 @@ impl ValidatedSetup {
 pub struct SetupBuilder {
     public_key: AffinePoint,
     parties: Vec<VerifyingKey>,
+    message: Vec<u8>,
+    hash: Option<HashAlgo>,
 }
 
 impl SetupBuilder {
@@ -225,6 +276,8 @@ impl SetupBuilder {
         Self {
             public_key: public_key.clone(),
             parties: vec![],
+            message: vec![],
+            hash: None,
         }
     }
 
@@ -234,11 +287,27 @@ impl SetupBuilder {
         self
     }
 
+    pub fn with_hash(mut self, hash: HashBytes) -> Self {
+        self.message = Vec::from(&hash[..]);
+        self.hash = Some(HashAlgo::HashU32);
+        self
+    }
+
+    pub fn with_sha256(mut self, message: Vec<u8>) -> Self {
+        self.message = message;
+        self.hash = Some(HashAlgo::Sha256);
+        self
+    }
+
     ///
     pub fn build(self, id: &MsgId, ttl: u32, key: &SigningKey) -> Option<Vec<u8>> {
+        let hash_algo = self.hash?;
+
         let Self {
             public_key,
             parties,
+            message,
+            ..
         } = self;
 
         if parties.len() >= u8::MAX as usize {
@@ -254,6 +323,8 @@ impl SetupBuilder {
         let setup = Setup {
             public_key,
             parties,
+            hash_algo,
+            message,
         };
 
         let mut msg = Builder::<Signed>::allocate(id, ttl, &setup);

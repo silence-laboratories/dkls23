@@ -42,6 +42,7 @@ use super::{pairwise_mta::MtaSendR0, SignError};
 const DSG_MSG_R1: MessageTag = MessageTag::tag(1);
 const DSG_MSG_R2: MessageTag = MessageTag::tag(2);
 const DSG_MSG_R3: MessageTag = MessageTag::tag(3);
+const DSG_MSG_R4: MessageTag = MessageTag::tag(4);
 
 fn find_pair<K: Eq, T>(pairs: &[(K, T)], party_id: K) -> Result<&T, BadPartyIndex> {
     pairs
@@ -201,7 +202,7 @@ fn decode_encrypted_message<T: bincode::Decode>(
 }
 
 ///
-pub async fn run(setup: ValidatedSetup, seed: Seed, relay: MessageRelay) -> Result<(), SignError> {
+pub async fn run(setup: ValidatedSetup, seed: Seed, relay: MessageRelay) -> Result<Signature, SignError> {
     let mut rng = ChaCha20Rng::from_seed(seed);
 
     // For DKG part_id == part_idx.
@@ -439,7 +440,63 @@ pub async fn run(setup: ValidatedSetup, seed: Seed, relay: MessageRelay) -> Resu
         ));
     }
 
-    Ok(())
+    let msg_hash = setup.hash();
+
+    let mut sum0 = Scalar::ZERO;
+    let mut sum1 = Scalar::ZERO;
+
+    for i in 0..setup.keyshare().threshold as usize - 1 {
+        let sender_shares = &sender_additive_shares[i];
+        let receiver_shares = &receiver_additive_shares[i];
+        sum0 += &sender_shares[0] + &receiver_shares[0];
+        sum1 += &sender_shares[1] + &receiver_shares[1];
+    }
+
+    let r_point = big_r.to_affine();
+    let r_x = Scalar::from_repr(r_point.x()).unwrap();
+    //        let recid = r_point.y_is_odd().unwrap_u8();
+    let mut s_0 = r_x * (&x_i * &phi_i + &sum0);
+    let s_1 = &k_i * &phi_i + &sum1;
+
+    let m = Scalar::reduce(U256::from_be_slice(&msg_hash));
+
+    s_0 = m * &phi_i + &s_0;
+
+    relay.send(Builder::<Signed>::encode(
+        &setup.msg_id(None, DSG_MSG_R4),
+        10,
+        setup.signing_key(),
+        &SignMsg4 {
+            session_id: Opaque::from(final_session_id),
+            s_0: Opaque::from(s_0),
+            s_1: Opaque::from(s_1),
+        },
+    )?);
+
+    let mut sum_s_0 = s_0;
+    let mut sum_s_1 = s_1;
+
+    let mut js = recv_broadcast_messages(&setup, DSG_MSG_R4, &relay);
+    while let Some(msg) = js.join_next().await {
+        let (msg, _party_idx) = decode_signed_message::<SignMsg4>(msg, &setup)?;
+
+        sum_s_0 += &*msg.s_0;
+        sum_s_1 += &*msg.s_1;
+    }
+
+    let r = big_r.to_affine().x();
+    let sum_s_1_inv = sum_s_1.invert().unwrap();
+    let sig = sum_s_0 * sum_s_1_inv;
+
+    let sign = parse_raw_sign(&r, &sig.to_bytes())?;
+
+    verify_final_signature(
+        &setup.hash(),
+        &sign,
+        &setup.keyshare().public_key.to_affine().to_bytes(),
+    )?;
+
+    Ok(sign)
 }
 
 // impl Round for SignerParty<R1> {
@@ -1347,6 +1404,7 @@ mod tests {
                 let vk = party_sk[p].verifying_key();
                 setup.add_party(vk)
             })
+            .with_hash(HashBytes::new([1; 32]))
             .build(&setup_msg_id, 100, &setup_sk)
             .unwrap();
 
@@ -1388,7 +1446,7 @@ mod tests {
                 println!("error {err:?}");
             }
 
-            let fini = fini.unwrap();
+            let _fini = fini.unwrap();
         }
     }
 }
