@@ -4,7 +4,7 @@
 
 use std::ops::Deref;
 
-use sl_mpc_mate::message::{MessageTag, SigningKey, VerifyingKey, InstanceId};
+use sl_mpc_mate::message::{InstanceId, MessageTag, SigningKey, VerifyingKey};
 
 /// Tag for all setup messages
 pub const SETUP_MESSAGE_TAG: MessageTag = MessageTag::tag(0);
@@ -16,6 +16,19 @@ pub enum Magic {
 
     /// Distributed Signature Generation
     DSG = 2,
+}
+
+/// How to handle message field of a DSG setup message
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum HashAlgo {
+    /// Message field contains hash
+    HashU32 = 0,
+
+    /// Calculate SHA256
+    Sha256 = 1,
+
+    /// Calculate SHA256D
+    Sha256D = 2,
 }
 
 /// Rank of a party
@@ -37,7 +50,6 @@ impl PartyId {
     pub const MAX: Self = PartyId(57);
 }
 
-
 /// Setup for DKG
 pub mod keygen;
 
@@ -47,7 +59,7 @@ pub mod sign;
 ///
 pub trait PartyInfo {
     ///
-    fn instance(&self)  -> &InstanceId;
+    fn instance(&self) -> &InstanceId;
 
     ///
     fn party_id(&self) -> u8;
