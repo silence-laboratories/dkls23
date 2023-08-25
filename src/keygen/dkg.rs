@@ -628,7 +628,7 @@ fn hash_commitment(
     let mut hasher = Sha256::new();
 
     hasher.update(b"SL-Keygen-Commitment");
-    hasher.update(&session_id);
+    hasher.update(session_id);
     hasher.update((party_id as u64).to_be_bytes());
     hasher.update((rank as u64).to_be_bytes());
     hasher.update(x_i.to_bytes());
@@ -642,15 +642,15 @@ fn hash_commitment(
     HashBytes::new(hasher.finalize().into())
 }
 
-fn get_vsot_session_id(from_party: usize, to_party: usize, session_id: &SessionId) -> SessionId {
+fn get_vsot_session_id(sender_id: usize, receiver_id: usize, session_id: &SessionId) -> SessionId {
     SessionId::new(
         Sha256::new()
             .chain_update(DKG_LABEL)
-            .chain_update(&session_id)
-            .chain_update(b"from_party")
-            .chain_update((from_party as u64).to_be_bytes())
-            .chain_update(b"to_party")
-            .chain_update((to_party as u64).to_be_bytes())
+            .chain_update(session_id)
+            .chain_update(b"sender_id")
+            .chain_update((sender_id as u64).to_be_bytes())
+            .chain_update(b"receiver_id")
+            .chain_update((receiver_id as u64).to_be_bytes())
             .chain_update(b"vsot_session_id")
             .finalize()
             .into(),
