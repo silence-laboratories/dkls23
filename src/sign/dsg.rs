@@ -202,7 +202,11 @@ fn decode_encrypted_message<T: bincode::Decode>(
 }
 
 ///
-pub async fn run(setup: ValidatedSetup, seed: Seed, relay: MessageRelay) -> Result<Signature, SignError> {
+pub async fn run(
+    setup: ValidatedSetup,
+    seed: Seed,
+    relay: MessageRelay,
+) -> Result<Signature, SignError> {
     let mut rng = ChaCha20Rng::from_seed(seed);
 
     // For DKG part_id == part_idx.
@@ -417,8 +421,8 @@ pub async fn run(setup: ValidatedSetup, seed: Seed, relay: MessageRelay) -> Resu
         sum_big_t_1 += &receiver_additive_shares_i[1];
     }
 
-    let big_t_0 = &ProjectivePoint::GENERATOR * &sum_big_t_0;
-    let big_t_1 = &ProjectivePoint::GENERATOR * &sum_big_t_1;
+    let big_t_0 = ProjectivePoint::GENERATOR * sum_big_t_0;
+    let big_t_1 = ProjectivePoint::GENERATOR * sum_big_t_1;
     let big_x_star_i = setup.keyshare().public_key + (-big_x_i);
     // new var
     let big_r = big_r_star + big_r_i;
@@ -428,13 +432,13 @@ pub async fn run(setup: ValidatedSetup, seed: Seed, relay: MessageRelay) -> Resu
         return Err(SignError::FailedCheck("sum_x_j != big_x_star_i"));
     }
 
-    if sum_gamma_0 != (&big_x_star_i * &phi_i + (-&big_t_0)) {
+    if sum_gamma_0 != (big_x_star_i * phi_i + (-&big_t_0)) {
         return Err(SignError::FailedCheck(
             "sum_gamma_0 != (self.phi_i * big_x_star_i + (-big_t))",
         ));
     }
 
-    if sum_gamma_1 != (&big_r_star * &phi_i + (-big_t_1)) {
+    if sum_gamma_1 != (big_r_star * phi_i + (-big_t_1)) {
         return Err(SignError::FailedCheck(
             "sum_gamma_1 != (self.phi_i * big_r_star + (-big_t_1)",
         ));
@@ -1408,7 +1412,7 @@ mod tests {
             .build(&setup_msg_id, 100, &setup_sk)
             .unwrap();
 
-        party_sk
+        let list = party_sk
             .into_iter()
             .enumerate()
             .map(|(idx, party_sk)| {
@@ -1418,7 +1422,9 @@ mod tests {
                 .unwrap()
             })
             .map(|setup| (setup, rng.gen()))
-            .collect::<Vec<_>>()
+            .collect::<Vec<_>>();
+
+        list
     }
 
     #[test]

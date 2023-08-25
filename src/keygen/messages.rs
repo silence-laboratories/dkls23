@@ -3,15 +3,10 @@ use k256::{
     AffinePoint, NonZeroScalar, ProjectivePoint, Scalar, Secp256k1,
 };
 
-use sl_mpc_mate::{
-    math::GroupPolynomial,
-    message::*,
-    HashBytes,
-    SessionId,
-};
+use sl_mpc_mate::{math::GroupPolynomial, message::*, HashBytes, SessionId};
 
 use sl_oblivious::{
-    soft_spoken::{ReceiverOTSeed, SenderOTSeed, PPRFOutput},
+    soft_spoken::{PPRFOutput, ReceiverOTSeed, SenderOTSeed},
     vsot::{VSOTMsg2, VSOTMsg5},
     zkproofs::DLogProof,
 };
@@ -86,7 +81,6 @@ pub struct KeygenMsg4 {
 
     /// dlog proof
     pub dlog_proof: DLogProof,
-
     // /// Encrypted VSOT msg 3
     // pub enc_vsot_msgs3: Vec<EncryptedData>,
 }
@@ -115,7 +109,7 @@ pub struct KeygenMsg6 {
 
     /// seed_i_j values
     // pub enc_seed_i_j_list: Vec<EncryptedData>,
-    pub seed_i_j: Option<[u8; 32]>
+    pub seed_i_j: Option<[u8; 32]>,
 }
 
 /// Keyshare of a party.

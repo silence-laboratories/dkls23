@@ -1,4 +1,6 @@
 #![allow(dead_code, unused_imports)]
+use std::fmt::Formatter;
+
 use k256::{elliptic_curve::group::GroupEncoding, AffinePoint};
 use sha2::{Digest, Sha256};
 
@@ -27,7 +29,7 @@ use crate::{
 ///     message     Vec<u8>;
 /// }
 ///
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Setup {
     public_key: AffinePoint,
     parties: Vec<VerifyingKey>,
@@ -155,6 +157,16 @@ pub struct ValidatedSetup {
     signing_key: SigningKey,
     keyshare: Keyshare,
     party_idx: usize,
+}
+
+impl std::fmt::Debug for ValidatedSetup {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ValidatedSetup")
+            .field("instance", &self.instance)
+            .field("party_id", &self.keyshare.party_id)
+            .field("party_idx", &self.party_idx)
+            .finish()
+    }
 }
 
 impl std::ops::Deref for ValidatedSetup {
