@@ -202,8 +202,13 @@ fn decode_encrypted_message<T: bincode::Decode>(
 }
 
 ///
-pub async fn run(setup: ValidatedSetup, seed: Seed, relay: MessageRelay) -> Result<Signature, SignError> {
+pub async fn run(
+    setup: ValidatedSetup,
+    seed: Seed,
+    relay: MessageRelay,
+) -> Result<Signature, SignError> {
     let mut rng = ChaCha20Rng::from_seed(seed);
+    println!("Setup: {:?}", setup);
 
     // For DKG part_id == part_idx.
     //
@@ -255,6 +260,8 @@ pub async fn run(setup: ValidatedSetup, seed: Seed, relay: MessageRelay) -> Resu
     }
 
     party_idx_to_id_map.sort_by_key(|(_, pid)| *pid);
+
+    println!("Party idx to id map: {:?}", party_idx_to_id_map);
 
     let find_party_id = |idx: usize| {
         party_idx_to_id_map
@@ -417,8 +424,8 @@ pub async fn run(setup: ValidatedSetup, seed: Seed, relay: MessageRelay) -> Resu
         sum_big_t_1 += &receiver_additive_shares_i[1];
     }
 
-    let big_t_0 = &ProjectivePoint::GENERATOR * &sum_big_t_0;
-    let big_t_1 = &ProjectivePoint::GENERATOR * &sum_big_t_1;
+    let big_t_0 = ProjectivePoint::GENERATOR * sum_big_t_0;
+    let big_t_1 = ProjectivePoint::GENERATOR * sum_big_t_1;
     let big_x_star_i = setup.keyshare().public_key + (-big_x_i);
     // new var
     let big_r = big_r_star + big_r_i;
@@ -428,13 +435,13 @@ pub async fn run(setup: ValidatedSetup, seed: Seed, relay: MessageRelay) -> Resu
         return Err(SignError::FailedCheck("sum_x_j != big_x_star_i"));
     }
 
-    if sum_gamma_0 != (&big_x_star_i * &phi_i + (-&big_t_0)) {
+    if sum_gamma_0 != (big_x_star_i * phi_i + (-&big_t_0)) {
         return Err(SignError::FailedCheck(
             "sum_gamma_0 != (self.phi_i * big_x_star_i + (-big_t))",
         ));
     }
 
-    if sum_gamma_1 != (&big_r_star * &phi_i + (-big_t_1)) {
+    if sum_gamma_1 != (big_r_star * phi_i + (-big_t_1)) {
         return Err(SignError::FailedCheck(
             "sum_gamma_1 != (self.phi_i * big_r_star + (-big_t_1)",
         ));
@@ -1315,6 +1322,7 @@ fn get_birkhoff_coefficients(
     keyshare: &Keyshare,
     sign_party_ids: &[(usize, u8)],
 ) -> HashMap<usize, Scalar> {
+    println!("RANK LIST: {:?}", keyshare.rank_list);
     let params = sign_party_ids
         .iter()
         .map(|(_, pid)| {
@@ -1408,17 +1416,25 @@ mod tests {
             .build(&setup_msg_id, 100, &setup_sk)
             .unwrap();
 
-        party_sk
+        let list = party_sk
             .into_iter()
             .enumerate()
             .map(|(idx, party_sk)| {
+                println!(
+                    "Using keyshare with idx:{} and ID:{}",
+                    idx, &shares[idx].party_id
+                );
                 ValidatedSetup::decode(&mut setup, &instance, &setup_vk, party_sk, |_, _| {
                     Some(shares[idx].clone())
                 })
                 .unwrap()
             })
             .map(|setup| (setup, rng.gen()))
-            .collect::<Vec<_>>()
+            .collect::<Vec<_>>();
+
+        println!("setup_dsg: {:?}", list);
+
+        list
     }
 
     #[test]

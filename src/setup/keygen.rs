@@ -178,6 +178,14 @@ impl ValidatedSetup {
         self.party_rank(self.party_id).unwrap()
     }
 
+    pub fn all_party_ranks(&self) -> Vec<(u8, u8)> {
+        self.setup
+            .parties
+            .iter()
+            .map(|(rank, _)| (self.party_id, *rank))
+            .collect()
+    }
+
     ///
     pub fn other_parties_iter(&self) -> impl Iterator<Item = (u8, &VerifyingKey)> {
         self.setup

@@ -42,7 +42,7 @@ pub(crate) fn get_idx_from_id(current_party_id: u8, for_party_id: u8) -> u8 {
 #[allow(dead_code)]
 pub(crate) fn check_secret_recovery(
     x_i_list: &[NonZeroScalar],
-    rank_list: &[usize],
+    rank_list: &[u8],
     big_s_list: &[ProjectivePoint],
     public_key: &ProjectivePoint,
 ) -> Result<(), KeygenError> {
@@ -51,13 +51,13 @@ pub(crate) fn check_secret_recovery(
         .iter()
         .zip(rank_list)
         .zip(big_s_list)
-        .collect::<Vec<((&NonZeroScalar, &usize), &ProjectivePoint)>>();
+        .collect::<Vec<((&NonZeroScalar, &u8), &ProjectivePoint)>>();
 
     party_params_list.sort_by_key(|((_, n_i), _)| *n_i);
 
     let params = party_params_list
         .iter()
-        .map(|((x_i, n_i), _)| (**x_i, **n_i))
+        .map(|((x_i, n_i), _)| (**x_i, **n_i as usize))
         .collect::<Vec<_>>();
 
     let sorted_big_s_list = party_params_list
@@ -73,6 +73,7 @@ pub(crate) fn check_secret_recovery(
             acc + *point * betta_i
         });
 
+    println!("Checking public key!");
     (public_key == &public_key_point)
         .then_some(())
         .ok_or(KeygenError::PublicKeyMismatch)
@@ -165,6 +166,8 @@ pub(crate) async fn gen_keyshares(n_i_list: Option<[usize; 3]>) -> Vec<Keyshare>
             }
         }
     }
+
+    shares.sort_by_key(|share| share.party_id);
 
     shares
 }

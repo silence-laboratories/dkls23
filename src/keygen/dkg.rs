@@ -217,6 +217,8 @@ pub async fn run(
     //
     // Sort party's session-id by party id
     sid_i_list.sort_by_key(|(p, _)| *p);
+    x_i_list.sort_by_key(|(p, _)| *p);
+    commitment_list.sort_by_key(|(p, _)| *p);
 
     // TODO: Should parties be initialized with rank_list and x_i_list? Ask Vlad.
     let final_session_id = SessionId::new(
@@ -505,12 +507,18 @@ pub async fn run(
         big_s_list.push((party_id, *msg.big_s_i));
     }
 
-    // check_secret_recovery(
-    //     &x_i_list,
-    //     &rank_list,
-    //     &big_s_list,
-    //     &public_key,
-    // )?;
+    big_s_list.sort_by_key(|(p, _)| *p);
+
+    // TODO:(sushi) Only for birkhoff now (with ranks), support lagrange later.
+    let rank_list = setup.all_party_ranks();
+
+    // TODO: Remove clone later, just for testing
+    check_secret_recovery(
+        &remove_ids(x_i_list.clone()),
+        &remove_ids(rank_list),
+        &remove_ids(big_s_list.clone()),
+        &public_key,
+    )?;
 
     let mut vsot_next_receivers = vec![];
     let mut js = recv_p2p_messages(&setup, DKG_MSG_R4, &relay);
@@ -548,7 +556,7 @@ pub async fn run(
 
         let seed_i_j = if party_id > my_party_id {
             let seed_i_j = rng.gen();
-            seed_i_j_list.push(seed_i_j);
+            seed_i_j_list.push((party_id, seed_i_j));
             Some(seed_i_j)
         } else {
             None
@@ -592,25 +600,29 @@ pub async fn run(
 
         seed_ot_receivers.push((party_id, all_but_one_receiver_seed));
         if let Some(seed_j_i) = msg.seed_i_j {
-            rec_seed_list.push(seed_j_i);
+            rec_seed_list.push((party_id, seed_j_i));
         }
     }
+
+    // Sorting to ensure that the list is in the same order for all parties
+    // As we can get messages in any order
+    // TODO: Verify that this is actually necessary
 
     let share = Keyshare {
         total_parties: setup.participants() as _,
         threshold: setup.threshold() as _,
         party_id: my_party_id as _,
         rank: setup.rank() as _,
-        rank_list: vec![],
+        rank_list: remove_ids(setup.all_party_ranks()),
         public_key: Opaque::from(public_key),
         x_i,
         x_i_list: remove_ids(x_i_list),
         big_s_list: remove_ids_and_wrap(big_s_list),
         s_i: Opaque::from(s_i),
-        sent_seed_list: seed_i_j_list,
+        sent_seed_list: remove_ids(seed_i_j_list),
         seed_ot_receivers: remove_ids(seed_ot_receivers),
         seed_ot_senders: remove_ids(seed_ot_senders),
-        rec_seed_list,
+        rec_seed_list: remove_ids(rec_seed_list),
     };
 
     Ok(share)
@@ -701,7 +713,7 @@ mod tests {
             let fini = fini.unwrap();
 
             if let Err(ref err) = fini {
-                println!("error {err:?}");
+                println!("error {}", err);
             }
 
             assert!(fini.is_ok());
