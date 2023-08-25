@@ -100,8 +100,8 @@ pub(crate) fn check_secret_recovery(
 //     }
 // }
 
-#[cfg(test)]
-pub(crate) fn setup_keygen<const T: usize, const N: usize>(
+/// Generate ValidatedSetup and seed for DKG parties
+pub fn setup_keygen<const T: usize, const N: usize>(
     n_i_list: Option<[usize; N]>,
 ) -> Vec<(ValidatedSetup, [u8; 32])> {
     let mut rng = rand::thread_rng();
@@ -144,12 +144,14 @@ pub(crate) fn setup_keygen<const T: usize, const N: usize>(
         .collect::<Vec<_>>()
 }
 
-#[cfg(test)]
-pub(crate) async fn gen_keyshares() -> Vec<Keyshare> {
+/// Execute DGK for given parameters
+pub async fn gen_keyshares<const T: usize, const N: usize>(
+    n_i_list: Option<[usize; N]>,
+) -> Vec<Keyshare> {
     let coord = sl_mpc_mate::coord::SimpleMessageRelay::new();
 
     let mut parties = tokio::task::JoinSet::new();
-    for (setup, seed) in setup_keygen::<2, 3>(None).into_iter() {
+    for (setup, seed) in setup_keygen::<T, N>(n_i_list).into_iter() {
         parties.spawn(crate::keygen::run(setup, seed, coord.connect()));
     }
 
@@ -161,7 +163,7 @@ pub(crate) async fn gen_keyshares() -> Vec<Keyshare> {
         } else {
             match fini.unwrap() {
                 Err(err) => panic!("err {:?}", err),
-                Ok(share) => shares.push(share)
+                Ok(share) => shares.push(share),
             }
         }
     }

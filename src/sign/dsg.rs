@@ -1430,7 +1430,7 @@ mod tests {
     async fn s1() {
         let coord = SimpleMessageRelay::new();
 
-        let shares = gen_keyshares().await;
+        let shares = gen_keyshares::<2, 3>(Some([0, 1, 1])).await;
 
         let pk = shares[0].public_key.to_affine();
 

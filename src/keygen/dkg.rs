@@ -370,7 +370,7 @@ pub async fn run(
         vsot_next_receivers.push((party_id, receiver));
 
         let x_i = find_pair(&x_i_list, party_id)?;
-        let d_i = polynomial.derivative_at(rank as usize, &x_i);
+        let d_i = polynomial.derivative_at(rank as usize, x_i);
 
         let msg3 = KeygenMsg3 {
             vsot_msg2,
@@ -489,11 +489,10 @@ pub async fn run(
             .ok_or(KeygenError::InvalidDLogProof)?;
 
         let x_i = find_pair(&x_i_list, party_id)?;
-        let coeff_multipliers = polynomial_coeff_multipliers(
-            &x_i,
-            setup.rank() as usize,
-            setup.participants() as usize,
-        );
+        // TODO: Handle unwrap
+        let party_rank = setup.party_rank(party_id).unwrap();
+        let coeff_multipliers =
+            polynomial_coeff_multipliers(x_i, party_rank as usize, setup.participants() as usize);
         let mut expected_point = ProjectivePoint::IDENTITY;
         for (point, coeff) in big_f_vec.points().zip(coeff_multipliers) {
             expected_point += point * &coeff;
@@ -694,7 +693,7 @@ mod tests {
         let coord = SimpleMessageRelay::new();
 
         let mut parties = JoinSet::new();
-        for (setup, seed) in setup_keygen::<2, 3>(None).into_iter() {
+        for (setup, seed) in setup_keygen::<2, 3>(Some([0, 1, 1])).into_iter() {
             parties.spawn(run(setup, seed, coord.connect()));
         }
 

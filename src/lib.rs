@@ -1,5 +1,5 @@
 //! DKLs23 rust implementation
-#![deny(missing_docs, unsafe_code)]
+// #![deny(missing_docs, unsafe_code)]
 
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
