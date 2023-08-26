@@ -276,7 +276,7 @@ impl SetupBuilder {
 
     /// Add party witj given rank and public key
     pub fn add_party(mut self, rank: u8, vk: &VerifyingKey) -> Self {
-        self.parties.push((rank, vk.clone()));
+        self.parties.push((rank, *vk));
         self
     }
 
@@ -297,7 +297,7 @@ impl SetupBuilder {
             parties: self.parties,
         };
 
-        let mut msg = Builder::<Signed>::allocate(&id, ttl, &setup);
+        let mut msg = Builder::<Signed>::allocate(id, ttl, &setup);
 
         msg.encode(&setup).ok()?;
 

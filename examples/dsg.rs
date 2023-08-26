@@ -1,4 +1,5 @@
-use rand::seq::IteratorRandom;
+// use rand::seq::IteratorRandom;
+use std::time::Duration;
 use tokio::task::JoinSet;
 
 use dkls23::{
@@ -9,19 +10,25 @@ use sl_mpc_mate::coord::SimpleMessageRelay;
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
-    let keyshares = gen_keyshares::<3, 5>(None).await;
+    const K: usize = 100;
+    const T: usize = 2;
+    const N: usize = 3;
 
-    let mut rng = rand::thread_rng();
+    let keyshares = gen_keyshares::<T, N>(Some([0, 1, 1])).await;
 
-    let subset: Vec<_> = keyshares.into_iter().choose_multiple(&mut rng, 3);
+    // let mut rng = rand::thread_rng();
+    // let subset: Vec<_> = keyshares.into_iter().choose_multiple(&mut rng, T);
+    let subset = &keyshares[0..T];
 
     let start = std::time::Instant::now();
 
-    for _ in 0..100 {
+    for _ in 0..K {
         dsg(&subset).await;
     }
 
-    println!("Time taken: {:?}", start.elapsed());
+    let d = start.elapsed();
+    let one = Duration::new(0, (d.as_nanos() / K as u128) as u32);
+    println!("Time taken: DSG {}x{} {:?}/{} {:?}", T, N, d, K, one);
 }
 
 async fn dsg(shares: &[Keyshare]) {

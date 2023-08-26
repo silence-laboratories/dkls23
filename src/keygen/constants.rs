@@ -1,4 +1,4 @@
-///!
+//!
 
 use sl_mpc_mate::message::MessageTag;
 

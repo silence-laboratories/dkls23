@@ -101,10 +101,8 @@ impl Decode for Setup {
 
         let message = <Vec<u8>>::decode(decoder)?;
 
-        if hash_algo == HashAlgo::HashU32 {
-            if message.len() != 32 {
-                return Err(DecodeError::Other("bad message length"));
-            }
+        if hash_algo == HashAlgo::HashU32 && message.len() != 32 {
+            return Err(DecodeError::Other("bad message length"));
         }
 
         Ok(Setup {
@@ -286,7 +284,7 @@ impl SetupBuilder {
     /// Create new builder
     pub fn new(public_key: &AffinePoint) -> SetupBuilder {
         Self {
-            public_key: public_key.clone(),
+            public_key: *public_key,
             parties: vec![],
             message: vec![],
             hash: None,

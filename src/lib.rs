@@ -104,8 +104,6 @@ pub mod utils {
 /// Seed for our RNG
 pub type Seed = <ChaCha20Rng as SeedableRng>::Seed;
 
-pub(crate) type Pairs<T> = Vec<(u8, T)>;
-
 ///
 #[derive(Debug)]
 pub struct BadPartyIndex;

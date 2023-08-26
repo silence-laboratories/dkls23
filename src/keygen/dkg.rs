@@ -122,7 +122,7 @@ fn decode_signed_message<T: bincode::Decode>(
     let (mut msg, party_id) = msg.map_err(|_| InvalidMessage::RecvError)??; // it's ugly, I know
 
     let msg = Message::from_buffer(&mut msg)?;
-    let msg = msg.verify_and_decode(&setup.party_verifying_key(party_id).unwrap())?;
+    let msg = msg.verify_and_decode(setup.party_verifying_key(party_id).unwrap())?;
 
     Ok((msg, party_id))
 }
@@ -326,7 +326,7 @@ pub async fn run(
             &msg.r_i,
         );
 
-        bool::from(commit_hash.ct_eq(&commitment))
+        bool::from(commit_hash.ct_eq(commitment))
             .then_some(())
             .ok_or(KeygenError::InvalidCommitmentHash)?;
 
@@ -438,7 +438,7 @@ pub async fn run(
         }
     }
 
-    let public_key = big_f_vec.get(0).unwrap().clone(); // FIXME dup data
+    let public_key = *big_f_vec.get(0).unwrap(); // FIXME dup data
     let s_i: Scalar = d_i_list.iter().map(|(_, p)| p).sum();
     let big_s_i = ProjectivePoint::GENERATOR * s_i;
 
