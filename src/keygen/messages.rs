@@ -85,16 +85,6 @@ pub struct KeygenMsg4 {
     // pub enc_vsot_msgs3: Vec<EncryptedData>,
 }
 
-// /// Type for the key generation protocol's message 5.
-// #[derive(Clone, Debug)]
-// pub struct KeygenMsg5 {
-//     /// Session id
-//     pub session_id: SessionId,
-
-//     // /// Encrypted VSOT msg 3
-//     // pub enc_vsot_msgs4: Vec<EncryptedData>,
-// }
-
 /// Type for the key generation protocol's message 5.
 #[derive(Clone, bincode::Encode, bincode::Decode)]
 pub struct KeygenMsg6 {
@@ -150,9 +140,9 @@ pub struct Keyshare {
     pub(crate) rank_list: Vec<u8>,
 }
 
-// #[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, bincode::Encode, bincode::Decode)]
 /// Final message of the key generation protocol.
 pub struct KeyGenCompleteMsg {
     /// Public key of the generated key.
-    pub public_key: AffinePoint,
+    pub public_key: Opaque<AffinePoint, GR>,
 }

@@ -1,18 +1,13 @@
-use k256::Secp256k1;
-use rand::{CryptoRng, Rng};
-use rand_chacha::ChaCha20Rng;
 use thiserror::Error;
 
 use sl_mpc_mate::{
-    math::Polynomial,
+    bincode::error::{DecodeError, EncodeError},
     message::InvalidMessage,
-    bincode::error::{EncodeError, DecodeError},
 };
 
 use sl_oblivious::vsot;
 
-use crate::{BadPartyIndex, setup::keygen::ValidatedSetup};
-
+use crate::BadPartyIndex;
 
 #[derive(Debug, Error)]
 /// Distributed key generation errors
@@ -20,18 +15,6 @@ pub enum KeygenError {
     /// error while serializing or deserializing
     #[error("Error while deserializing message")]
     InvalidMessage,
-
-    /// Given message list pid's do not match with the expected pid's.
-    #[error("Incorrect participant pid's in the message list")]
-    InvalidParticipantSet,
-
-    // /// Current party's session id is not in the session id list
-    // #[error("Invalid session id of the current party in session id list")]
-    // InvalidSelfSessionId,
-
-    // /// Current party's party id is not in the party id list
-    // #[error("Invalid party id of the current party in party id list")]
-    // InvalidSelfPartyId,
 
     /// VSOT errors
     #[error("VSOT error: {0}")]
@@ -45,21 +28,9 @@ pub enum KeygenError {
     /// Invalid DLog proof
     InvalidDLogProof,
 
-    /// Decrypted VSOT message cannot be deserialized
-    #[error("Decrypted VSOT message cannot be deserialized")]
-    InvalidVSOTPlaintext,
-
     /// Big F vec mismatch
     #[error("Big F vec mismatch")]
     BigFVecMismatch,
-
-    /// Decrypted d_i scalar cannot be deserialized
-    #[error("Decrypted d_i scalar cannot be deserialized")]
-    InvalidDiPlaintext,
-
-    /// Invalid length of decrypted f_i values
-    #[error("Invalid length decrypted f_i values")]
-    InvalidFiLen,
 
     /// Failed felman verify
     #[error("Failed felman verify")]
@@ -73,17 +44,9 @@ pub enum KeygenError {
     #[error("Big S value mismatch")]
     BigSMismatch,
 
-    /// Invalid PPRF plaintext
-    #[error("Invalid PPRF plaintext")]
-    InvalidPPRFPlaintext,
-
     #[error("PPRF error")]
     /// PPRF error
     PPRFError(&'static str),
-
-    /// Invalid seed
-    #[error("Invalid Seed")]
-    InvalidSeed,
 
     /// We have internal state as pairs of (PairtyID, datum)
     /// This error is returned when we unable to find a datum
@@ -111,7 +74,7 @@ impl From<DecodeError> for KeygenError {
 }
 
 impl From<BadPartyIndex> for KeygenError {
-    fn from(_err: BadPartyIndex) ->  Self {
+    fn from(_err: BadPartyIndex) -> Self {
         KeygenError::InvalidMessage
     }
 }

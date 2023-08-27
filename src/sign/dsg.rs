@@ -1,4 +1,3 @@
-// #![allow(dead_code, unused_imports)]
 //! Distributed sign generation protocol.
 
 use std::collections::HashMap;
@@ -69,7 +68,7 @@ fn recv_p2p_messages(
 
         js.spawn(async move {
             let msg = relay
-                .recv(msg_id, 10)
+                .recv(&msg_id, 10)
                 .await
                 .ok_or(SignError::InvalidMessage)?;
             Ok::<_, SignError>((msg, p))
@@ -92,7 +91,7 @@ fn recv_broadcast_messages(
 
         js.spawn(async move {
             let msg = relay
-                .recv(msg_id, 10)
+                .recv(&msg_id, 10)
                 .await
                 .ok_or(SignError::InvalidMessage)?;
             Ok::<_, SignError>((msg, party_idx))
@@ -138,6 +137,7 @@ pub async fn run(
     relay: MessageRelay,
 ) -> Result<Signature, SignError> {
     let mut rng = ChaCha20Rng::from_seed(seed);
+    let mut nonce_counter = NonceCounter::new();
 
     // For DKG part_id == part_idx.
     //
@@ -227,6 +227,7 @@ pub async fn run(
                 &enc_keys,
                 find_pair(&enc_pub_keys, party_idx)?,
                 &mta_msg_1,
+                nonce_counter.next_nonce()
             )?);
 
             Ok((party_idx as u8, mta_receiver))
@@ -306,6 +307,7 @@ pub async fn run(
             &enc_keys,
             find_pair(&enc_pub_keys, party_idx)?,
             &msg3,
+            nonce_counter.next_nonce()
         )?);
 
         sender_additive_shares.push(additive_shares);

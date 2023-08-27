@@ -87,21 +87,21 @@ impl Decode for Setup {
 
         let mut parties = Vec::with_capacity(n as usize);
 
-        for i in 0..n as usize {
+        for rank in ranks {
             let pk = Opaque::<[u8; PUBLIC_KEY_LENGTH]>::decode(decoder)?.0;
 
             let pk = VerifyingKey::from_bytes(&pk).map_err(|_| DecodeError::Other("bad PK"))?;
 
-            parties.push((ranks[i], pk));
+            parties.push((*rank, pk));
         }
 
         // all public keys are unique
         for i in 0..n as usize - 1 {
             let (_, ki) = &parties[i];
 
-            for j in i + 1..n as usize {
-                let (_, kj) = &parties[j];
+            for (_, kj) in &parties[i+1..] {
                 if ki == kj {
+                    // panic!("ttt {}", i);
                     return Err(DecodeError::Other("PK dup"));
                 }
             }
@@ -177,6 +177,8 @@ impl ValidatedSetup {
     pub fn rank(&self) -> u8 {
         self.party_rank(self.party_id).unwrap()
     }
+
+    ///
     pub fn all_party_ranks(&self) -> Vec<(u8, u8)> {
         self.parties
             .iter()

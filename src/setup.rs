@@ -9,6 +9,11 @@ use sl_mpc_mate::message::{InstanceId, MessageTag, SigningKey, VerifyingKey};
 /// Tag for all setup messages
 pub const SETUP_MESSAGE_TAG: MessageTag = MessageTag::tag(0);
 
+/// Tag of a broadcast message indicating that sender
+/// won't participate in the protocol. The payload of
+/// the message contains error code.
+pub const ABORT_MESSAGE_TAG: MessageTag = MessageTag::tag(u64::MAX);
+
 /// Magic designates a particular MPC protocol
 pub enum Magic {
     /// Distributed Key generation

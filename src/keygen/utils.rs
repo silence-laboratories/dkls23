@@ -5,7 +5,7 @@ use std::array;
 use k256::{NonZeroScalar, ProjectivePoint};
 use rand::prelude::*;
 // use rayon::prelude::*;
-use sl_mpc_mate::{math::birkhoff_coeffs, message::*, state::Env, state::*};
+use sl_mpc_mate::{math::birkhoff_coeffs, message::*};
 
 #[cfg(test)]
 use sl_oblivious::{

@@ -130,6 +130,7 @@ impl Setup {
         self.hash_algo
     }
 
+    /// Return hash on a message
     pub fn hash(&self) -> HashBytes {
         match self.hash_algo {
             HashAlgo::HashU32 => {
@@ -297,12 +298,14 @@ impl SetupBuilder {
         self
     }
 
+    ///
     pub fn with_hash(mut self, hash: HashBytes) -> Self {
         self.message = Vec::from(&hash[..]);
         self.hash = Some(HashAlgo::HashU32);
         self
     }
 
+    ///
     pub fn with_sha256(mut self, message: Vec<u8>) -> Self {
         self.message = message;
         self.hash = Some(HashAlgo::Sha256);

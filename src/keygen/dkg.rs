@@ -17,10 +17,7 @@ use sl_oblivious::{
     soft_spoken::{build_pprf, eval_pprf, PPRFOutput, SenderOTSeed},
     soft_spoken_mod::SOFT_SPOKEN_K,
     utils::TranscriptProtocol,
-    vsot::{
-        InitRec, RecR1, RecR2, SendR1, SendR2, VSOTError, VSOTMsg1, VSOTMsg2, VSOTMsg3, VSOTMsg5,
-        VSOTReceiver, VSOTSender,
-    },
+    vsot::{VSOTError, VSOTMsg3, VSOTReceiver, VSOTSender},
     zkproofs::DLogProof,
 };
 
@@ -82,7 +79,7 @@ fn recv_p2p_messages(
 
         js.spawn(async move {
             let msg = relay
-                .recv(msg_id, 10)
+                .recv(&msg_id, 10)
                 .await
                 .ok_or(InvalidMessage::RecvError)?;
             Ok::<_, InvalidMessage>((msg, p))
@@ -105,7 +102,7 @@ fn recv_broadcast_messages(
 
         js.spawn(async move {
             let msg = relay
-                .recv(msg_id, 10)
+                .recv(&msg_id, 10)
                 .await
                 .ok_or(InvalidMessage::RecvError)?;
             Ok::<_, InvalidMessage>((msg, p))
@@ -151,6 +148,7 @@ pub async fn run(
     relay: MessageRelay,
 ) -> Result<Keyshare, KeygenError> {
     let mut rng = ChaCha20Rng::from_seed(seed);
+    let mut nonce_counter = NonceCounter::new();
 
     let t = setup.threshold();
     let my_party_id = setup.party_id();
@@ -270,10 +268,11 @@ pub async fn run(
                 setup.msg_id_from(&setup.verifying_key(), Some(p), DKG_MSG_R2),
                 rng.gen(),
                 find_pair(&enc_pub_key, p).unwrap(),
+                nonce_counter.next_nonce(),
             )
         })
         .par_bridge()
-        .map(|(p, msg_id, seed, enc_pk)| {
+        .map(|(p, msg_id, seed, enc_pk, nonce)| {
             let mut rng = ChaCha20Rng::from_seed(seed); // TODO check!!!
 
             let vsot_session_id =
@@ -282,7 +281,7 @@ pub async fn run(
             let (sender, msg1) = VSOTSender::new(vsot_session_id, &mut rng);
 
             relay.send(Builder::<Encrypted>::encode(
-                &msg_id, 100, &enc_keys, enc_pk, &msg1,
+                &msg_id, 100, &enc_keys, enc_pk, &msg1, nonce,
             )?);
 
             Ok((p, sender))
@@ -387,6 +386,7 @@ pub async fn run(
             &enc_keys,
             find_pair(&enc_pub_key, party_id)?,
             &msg3,
+            nonce_counter.next_nonce(),
         )?);
     }
     let mut vsot_receivers = vsot_next_receivers;
@@ -415,6 +415,7 @@ pub async fn run(
             &enc_keys,
             find_pair(&enc_pub_key, party_id)?,
             &vsot_msg3,
+            nonce_counter.next_nonce(),
         )?);
     }
     let mut vsot_senders = vsot_next_senders;
@@ -535,6 +536,7 @@ pub async fn run(
             &enc_keys,
             find_pair(&enc_pub_key, party_id)?,
             &vsot_msg4,
+            nonce_counter.next_nonce(),
         )?);
     }
     let mut vsot_receivers = vsot_next_receivers;
@@ -575,6 +577,7 @@ pub async fn run(
             &enc_keys,
             find_pair(&enc_pub_key, party_id)?,
             &msg6,
+            nonce_counter.next_nonce(),
         )?);
     }
 
