@@ -14,7 +14,8 @@ async fn main() {
     const T: usize = 2;
     const N: usize = 3;
 
-    let keyshares = gen_keyshares::<T, N>(Some([0, 1, 1])).await;
+    let ranks: [u8; N] = std::array::from_fn(|i| (i != 0) as u8); // 0, 1, ...
+    let keyshares = gen_keyshares::<T, N>(Some(ranks)).await;
 
     // let mut rng = rand::thread_rng();
     // let subset: Vec<_> = keyshares.into_iter().choose_multiple(&mut rng, T);

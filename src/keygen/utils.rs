@@ -103,7 +103,7 @@ pub(crate) fn check_secret_recovery(
 
 /// Generate ValidatedSetup and seed for DKG parties
 pub fn setup_keygen<const T: usize, const N: usize>(
-    n_i_list: Option<[usize; N]>,
+    n_i_list: Option<[u8; N]>,
 ) -> Vec<(ValidatedSetup, [u8; 32])> {
     let mut rng = rand::thread_rng();
 
@@ -128,9 +128,9 @@ pub fn setup_keygen<const T: usize, const N: usize>(
         .unwrap_or([0; N])
         .into_iter()
         .enumerate()
-        .fold(SetupBuilder::new(), |setup, p| {
-            let vk = party_sk[p.0].verifying_key();
-            setup.add_party(p.1 as u8, &vk)
+        .fold(SetupBuilder::new(), |setup, (idx, rank)| {
+            let vk = party_sk[idx].verifying_key();
+            setup.add_party(rank, &vk)
         })
         .build(&setup_msg_id, 100, T as u8, &setup_sk)
         .unwrap();
@@ -147,7 +147,7 @@ pub fn setup_keygen<const T: usize, const N: usize>(
 
 /// Execute DGK for given parameters
 pub async fn gen_keyshares<const T: usize, const N: usize>(
-    n_i_list: Option<[usize; N]>,
+    n_i_list: Option<[u8; N]>,
 ) -> Vec<Keyshare> {
     let coord = sl_mpc_mate::coord::SimpleMessageRelay::new();
 
