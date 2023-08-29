@@ -5,15 +5,15 @@ use tokio::task::JoinSet;
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), KeygenError> {
-    const T: usize = 3;
-    const N: usize = 5;
+    const T: u8 = 3;
+    const N: u8 = 5;
 
     let start = std::time::Instant::now();
 
     let coord = SimpleMessageRelay::new();
 
     let mut parties = JoinSet::new();
-    for (setup, seed) in setup_keygen::<T, N>(Some([0, 1, 1, 1, 1])).into_iter() {
+    for (setup, seed) in setup_keygen(T, N, None).into_iter() {
         parties.spawn(keygen::run(setup, seed, coord.connect()));
     }
 

@@ -708,7 +708,7 @@ mod tests {
         let coord = SimpleMessageRelay::new();
 
         let mut parties = JoinSet::new();
-        for (setup, seed) in setup_keygen::<2, 3>(Some([0, 1, 1])).into_iter() {
+        for (setup, seed) in setup_keygen(2, 3, Some(&[0, 1, 1])).into_iter() {
             parties.spawn(run(setup, seed, coord.connect()));
         }
 

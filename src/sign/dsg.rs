@@ -602,10 +602,34 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
+    async fn s2x2() {
+        let coord = SimpleMessageRelay::new();
+
+        let shares = gen_keyshares(2, 2, Some(&[0, 0])).await;
+
+        let pk = shares[0].public_key.to_affine();
+
+        let mut parties = JoinSet::new();
+        for (setup, seed) in setup_dsg(&pk, &shares).into_iter() {
+            parties.spawn(run(setup, seed, coord.connect()));
+        }
+
+        while let Some(fini) = parties.join_next().await {
+            let fini = fini.unwrap();
+
+            if let Err(ref err) = fini {
+                println!("error {err:?}");
+            }
+
+            let _fini = fini.unwrap();
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
     async fn s1() {
         let coord = SimpleMessageRelay::new();
 
-        let shares = gen_keyshares::<2, 3>(Some([0, 1, 1])).await;
+        let shares = gen_keyshares(2, 3, Some(&[0, 1, 1])).await;
 
         let pk = shares[0].public_key.to_affine();
 

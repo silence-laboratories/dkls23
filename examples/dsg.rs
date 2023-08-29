@@ -10,16 +10,17 @@ use sl_mpc_mate::coord::SimpleMessageRelay;
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
-    const K: usize = 100;
-    const T: usize = 2;
-    const N: usize = 3;
+    let t: u8 = 3;
+    let n: u8 = 5;
 
-    let ranks: [u8; N] = std::array::from_fn(|i| (i != 0) as u8); // 0, 1, ...
-    let keyshares = gen_keyshares::<T, N>(Some(ranks)).await;
+    const K: usize = 100;
+
+    let ranks: Vec<u8> = (0..n).map(|i| (i != 0) as u8).collect(); // 0, 1, ...
+    let keyshares = gen_keyshares(t, n, Some(&ranks)).await;
 
     // let mut rng = rand::thread_rng();
     // let subset: Vec<_> = keyshares.into_iter().choose_multiple(&mut rng, T);
-    let subset = &keyshares[0..T];
+    let subset = &keyshares[0..t as usize];
 
     let start = std::time::Instant::now();
 
@@ -29,7 +30,7 @@ async fn main() {
 
     let d = start.elapsed();
     let one = Duration::new(0, (d.as_nanos() / K as u128) as u32);
-    println!("Time taken: DSG {}x{} {:?}/{} {:?}", T, N, d, K, one);
+    println!("Time taken: DSG {}x{} {:?}/{} {:?}", t, n, d, K, one);
 }
 
 async fn dsg(shares: &[Keyshare]) {

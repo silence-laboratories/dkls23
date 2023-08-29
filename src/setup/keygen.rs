@@ -34,8 +34,7 @@ impl Encode for Setup {
     fn encode<E: Encoder>(&self, encoder: &mut E) -> Result<(), EncodeError> {
         (Magic::DKG as u32).encode(encoder)?;
 
-        let n: u8 = self.parties.len() as u8;
-        n.encode(encoder)?;
+        (self.parties.len() as u8).encode(encoder)?;
         self.t.encode(encoder)?;
 
         for (r, _) in &self.parties {
@@ -290,7 +289,7 @@ impl SetupBuilder {
 
         let n = self.parties.len() as u8;
 
-        if t < 2 || t >= n {
+        if t < 2 || t > n {
             return None;
         }
 
@@ -319,7 +318,7 @@ mod tests {
         let inst = InstanceId::from([0; 32]);
         let setup_signing_key = SigningKey::from_bytes(&rand::random());
 
-        let sk: [SigningKey; 3] = array::from_fn(|_| SigningKey::from_bytes(&rand::random()));
+        let sk: [_; 3] = array::from_fn(|_| SigningKey::from_bytes(&rand::random()));
 
         let id = MsgId::broadcast(
             &inst,

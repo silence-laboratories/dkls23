@@ -78,7 +78,6 @@ pub(crate) fn check_secret_recovery(
         .ok_or(KeygenError::PublicKeyMismatch)
 }
 
-
 // #[cfg(test)]
 // pub(crate) fn check_all_but_one_seeds(
 //     seed_ot_sender: &SenderOTSeed,
@@ -102,9 +101,14 @@ pub(crate) fn check_secret_recovery(
 // }
 
 /// Generate ValidatedSetup and seed for DKG parties
-pub fn setup_keygen<const T: usize, const N: usize>(
-    n_i_list: Option<[u8; N]>,
-) -> Vec<(ValidatedSetup, [u8; 32])> {
+pub fn setup_keygen(t: u8, n: u8, n_i_list: Option<&[u8]>) -> Vec<(ValidatedSetup, [u8; 32])> {
+    let n_i_list = if let Some(n_i_list) = n_i_list {
+        assert_eq!(n_i_list.len(), n as usize);
+        n_i_list.into()
+    } else {
+        vec![0, n]
+    };
+
     let mut rng = rand::thread_rng();
 
     let instance = InstanceId::from(rng.gen::<[u8; 32]>());
@@ -117,7 +121,7 @@ pub fn setup_keygen<const T: usize, const N: usize>(
     let setup_msg_id = MsgId::new(&instance, &setup_pk, None, SETUP_MESSAGE_TAG);
 
     // a signing key for each party.
-    let party_sk: [SigningKey; N] = array::from_fn(|_| SigningKey::from_bytes(&rng.gen()));
+    let party_sk: Vec<SigningKey> = (0..n).map(|_| SigningKey::from_bytes(&rng.gen())).collect();
 
     // Create a setup message. In a real world,
     // this part will be created by an intiator.
@@ -125,14 +129,13 @@ pub fn setup_keygen<const T: usize, const N: usize>(
     // all parties that will participate in this
     // protocol execution.
     let mut setup = n_i_list
-        .unwrap_or([0; N])
-        .into_iter()
+        .iter()
         .enumerate()
         .fold(SetupBuilder::new(), |setup, (idx, rank)| {
             let vk = party_sk[idx].verifying_key();
-            setup.add_party(rank, &vk)
+            setup.add_party(*rank, &vk)
         })
-        .build(&setup_msg_id, 100, T as u8, &setup_sk)
+        .build(&setup_msg_id, 100, t, &setup_sk)
         .unwrap();
 
     party_sk
@@ -146,13 +149,11 @@ pub fn setup_keygen<const T: usize, const N: usize>(
 }
 
 /// Execute DGK for given parameters
-pub async fn gen_keyshares<const T: usize, const N: usize>(
-    n_i_list: Option<[u8; N]>,
-) -> Vec<Keyshare> {
+pub async fn gen_keyshares(t: u8, n: u8, n_i_list: Option<&[u8]>) -> Vec<Keyshare> {
     let coord = sl_mpc_mate::coord::SimpleMessageRelay::new();
 
     let mut parties = tokio::task::JoinSet::new();
-    for (setup, seed) in setup_keygen::<T, N>(n_i_list).into_iter() {
+    for (setup, seed) in setup_keygen(t, n, n_i_list).into_iter() {
         parties.spawn(crate::keygen::run(setup, seed, coord.connect()));
     }
 

@@ -1,17 +1,15 @@
-use std::array;
-
 use k256::AffinePoint;
 use rand::prelude::*;
 
 use sl_mpc_mate::{message::*, HashBytes};
 
 use crate::{
-    Seed,
     keygen::Keyshare,
     setup::{
         sign::{SetupBuilder, ValidatedSetup},
         SETUP_MESSAGE_TAG,
     },
+    Seed,
 };
 
 /// Pairwise MTA
@@ -38,14 +36,15 @@ pub fn setup_dsg(pk: &AffinePoint, shares: &[Keyshare]) -> Vec<(ValidatedSetup, 
 
     let setup_msg_id = MsgId::new(&instance, &setup_pk, None, SETUP_MESSAGE_TAG);
 
-    const T: usize = 2;
-
     // a signing key for each party.
-    let party_sk: [SigningKey; T] = array::from_fn(|_| SigningKey::from_bytes(&rng.gen()));
+    let party_sk: Vec<SigningKey> = (0..shares.len())
+        .map(|_| SigningKey::from_bytes(&rng.gen()))
+        .collect();
 
-    let mut setup = (0..T)
-        .fold(SetupBuilder::new(pk), |setup, p| {
-            let vk = party_sk[p].verifying_key();
+    let mut setup = party_sk
+        .iter()
+        .fold(SetupBuilder::new(pk), |setup, sk| {
+            let vk = sk.verifying_key();
             setup.add_party(vk)
         })
         .with_hash(HashBytes::new([1; 32]))
