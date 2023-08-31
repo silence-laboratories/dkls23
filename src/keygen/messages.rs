@@ -102,21 +102,31 @@ pub struct KeygenMsg6 {
     pub seed_i_j: Option<[u8; 32]>,
 }
 
+#[derive(Clone, bincode::Encode, bincode::Decode)]
+/// Final message of the key generation protocol.
+pub struct KeyGenCompleteMsg {
+    /// Public key of the generated key.
+    pub public_key: Opaque<AffinePoint, GR>,
+}
+
 /// Keyshare of a party.
 #[allow(unused)]
-#[derive(Clone)]
+#[derive(Clone, bincode::Encode, bincode::Decode)]
 pub struct Keyshare {
-    /// Threshold value
-    pub threshold: u8,
+    /// A marker
+    pub magic: u32,
 
     /// Total number of parties
     pub total_parties: u8,
 
+    /// Threshold value
+    pub threshold: u8,
+
+    /// Rank of each party
+    pub rank_list: Vec<u8>,
+
     /// Party Id of the sender
     pub party_id: u8,
-
-    /// Participants rank
-    pub rank: u8,
 
     /// Public key of the generated key.
     pub public_key: Opaque<ProjectivePoint, GR>,
@@ -133,16 +143,12 @@ pub struct Keyshare {
     /// Seed values received from the other parties
     pub rec_seed_list: Vec<[u8; 32]>,
 
-    pub(crate) x_i: NonZeroScalar,
     pub(crate) s_i: Opaque<Scalar, PF>,
     pub(crate) big_s_list: Vec<Opaque<ProjectivePoint, GR>>,
-    pub(crate) x_i_list: Vec<NonZeroScalar>,
-    pub(crate) rank_list: Vec<u8>,
+    pub(crate) x_i_list: Vec<Opaque<NonZeroScalar, NZ>>,
 }
 
-#[derive(Clone, bincode::Encode, bincode::Decode)]
-/// Final message of the key generation protocol.
-pub struct KeyGenCompleteMsg {
-    /// Public key of the generated key.
-    pub public_key: Opaque<AffinePoint, GR>,
+impl Keyshare {
+    /// Identified of key share data
+    pub const MAGIC: u32 = 1u32;
 }

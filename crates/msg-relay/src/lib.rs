@@ -18,7 +18,6 @@ use axum::{
 
 use sl_mpc_mate::message::*;
 
-
 // #[derive(PartialOrd)]
 struct Expire(Instant, MsgId, Kind);
 
@@ -53,7 +52,6 @@ pub struct AppStateInner {
     expire: BinaryHeap<Expire>,
     messages: HashMap<MsgId, MsgEntry>,
 }
-
 
 impl AppStateInner {
     pub fn new() -> Self {
@@ -217,7 +215,7 @@ mod tests {
     fn dummy_msg(ttl: u32, size: usize) -> Vec<u8> {
         let mut msg = vec![0; 32 + 4 + size];
 
-        msg[32..32+4].copy_from_slice(&ttl.to_be_bytes());
+        msg[32..32 + 4].copy_from_slice(&ttl.to_be_bytes());
 
         msg
     }
@@ -229,9 +227,8 @@ mod tests {
 
         let msg = dummy_msg(10, 100);
 
-        let hdr = parse_msg_header(&msg).unwrap();
+        let hdr = MsgHdr::from(&msg).unwrap();
 
         app.handle_message(hdr, msg, &tx);
-
     }
 }

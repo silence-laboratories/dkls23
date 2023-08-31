@@ -22,7 +22,7 @@ use sl_oblivious::{
 };
 
 use sl_mpc_mate::{
-    coord::MessageRelay,
+    coord::{Relay, BoxedRelay},
     math::{feldman_verify, polynomial_coeff_multipliers, GroupPolynomial, Polynomial},
     message::*,
     HashBytes, SessionId,
@@ -68,18 +68,18 @@ fn remove_ids_and_wrap<T, K>(mut pairs: Vec<(u8, T)>) -> Vec<Opaque<T, K>> {
 fn recv_p2p_messages(
     setup: &ValidatedSetup,
     tag: MessageTag,
-    relay: &MessageRelay,
+    relay: &BoxedRelay,
 ) -> JoinSet<Result<(Vec<u8>, u8), InvalidMessage>> {
     let mut js = JoinSet::new();
     let me = Some(setup.party_id());
     setup.other_parties_iter().for_each(|(p, vk)| {
         // P2P message from party VK (p) to me
         let msg_id = setup.msg_id_from(vk, me, tag);
-        let relay = relay.clone();
+        let relay = relay.clone_relay();
 
         js.spawn(async move {
             let msg = relay
-                .recv(&msg_id, 10)
+                .recv(msg_id, 10)
                 .await
                 .ok_or(InvalidMessage::RecvError)?;
             Ok::<_, InvalidMessage>((msg, p))
@@ -92,17 +92,17 @@ fn recv_p2p_messages(
 fn recv_broadcast_messages(
     setup: &ValidatedSetup,
     tag: MessageTag,
-    relay: &MessageRelay,
+    relay: &BoxedRelay,
 ) -> JoinSet<Result<(Vec<u8>, u8), InvalidMessage>> {
     let mut js = JoinSet::new();
     setup.other_parties_iter().for_each(|(p, vk)| {
         // broadcast the message from party `p'
         let msg_id = setup.msg_id_from(vk, None, tag);
-        let relay = relay.clone();
+        let relay = relay.clone_relay();
 
         js.spawn(async move {
             let msg = relay
-                .recv(&msg_id, 10)
+                .recv(msg_id, 10)
                 .await
                 .ok_or(InvalidMessage::RecvError)?;
             Ok::<_, InvalidMessage>((msg, p))
@@ -145,7 +145,7 @@ fn decode_encrypted_message<T: bincode::Decode>(
 pub async fn run(
     setup: ValidatedSetup,
     seed: Seed,
-    relay: MessageRelay,
+    relay: BoxedRelay,
 ) -> Result<Keyshare, KeygenError> {
     let mut rng = ChaCha20Rng::from_seed(seed);
     let mut nonce_counter = NonceCounter::new();
@@ -190,7 +190,7 @@ pub async fn run(
             x_i: Opaque::from(*x_i),
             enc_pk: Opaque::from(PublicKey::from(&enc_keys).to_bytes()),
         },
-    )?);
+    )?).await;
 
     let mut r1_msgs = recv_broadcast_messages(&setup, DKG_MSG_R1, &relay);
     while let Some(msg) = r1_msgs.join_next().await {
@@ -260,6 +260,8 @@ pub async fn run(
         })
         .collect::<Vec<_>>();
 
+    let mut to_send = vec![];
+
     let mut vsot_senders = setup
         .other_parties_iter()
         .map(|(p, _vk)| {
@@ -271,7 +273,7 @@ pub async fn run(
                 nonce_counter.next_nonce(),
             )
         })
-        .par_bridge()
+        // .par_bridge()
         .map(|(p, msg_id, seed, enc_pk, nonce)| {
             let mut rng = ChaCha20Rng::from_seed(seed); // TODO check!!!
 
@@ -280,13 +282,17 @@ pub async fn run(
 
             let (sender, msg1) = VSOTSender::new(vsot_session_id, &mut rng);
 
-            relay.send(Builder::<Encrypted>::encode(
+            to_send.push(Builder::<Encrypted>::encode(
                 &msg_id, 100, &enc_keys, enc_pk, &msg1, nonce,
             )?);
 
             Ok((p, sender))
         })
         .collect::<Result<Vec<_>, KeygenError>>()?;
+
+    for msg in to_send.into_iter() {
+        relay.send(msg).await;
+    }
 
     // send out message
     relay.send(Builder::<Signed>::encode(
@@ -299,7 +305,7 @@ pub async fn run(
             r_i: Opaque::from(r_i),
             dlog_proofs_i: dlog_proofs,
         },
-    )?);
+    )?).await;
 
     // start receiving P2P messages
     let mut r2_p2p = recv_p2p_messages(&setup, DKG_MSG_R2, &relay);
@@ -387,7 +393,7 @@ pub async fn run(
             find_pair(&enc_pub_key, party_id)?,
             &msg3,
             nonce_counter.next_nonce(),
-        )?);
+        )?).await;
     }
     let mut vsot_receivers = vsot_next_receivers;
 
@@ -416,7 +422,7 @@ pub async fn run(
             find_pair(&enc_pub_key, party_id)?,
             &vsot_msg3,
             nonce_counter.next_nonce(),
-        )?);
+        )?).await;
     }
     let mut vsot_senders = vsot_next_senders;
 
@@ -464,7 +470,7 @@ pub async fn run(
         100,
         setup.signing_key(),
         &msg4,
-    )?);
+    )?).await;
 
     let mut big_s_list = vec![(my_party_id, big_s_i)];
 
@@ -537,7 +543,7 @@ pub async fn run(
             find_pair(&enc_pub_key, party_id)?,
             &vsot_msg4,
             nonce_counter.next_nonce(),
-        )?);
+        )?).await;
     }
     let mut vsot_receivers = vsot_next_receivers;
 
@@ -578,7 +584,7 @@ pub async fn run(
             find_pair(&enc_pub_key, party_id)?,
             &msg6,
             nonce_counter.next_nonce(),
-        )?);
+        )?).await;
     }
 
     let mut seed_ot_receivers = vec![];
@@ -612,14 +618,14 @@ pub async fn run(
     // TODO: Verify that this is actually necessary
 
     let share = Keyshare {
-        total_parties: setup.participants() as _,
-        threshold: setup.threshold() as _,
-        party_id: my_party_id as _,
-        rank: setup.rank() as _,
+        magic: Keyshare::MAGIC, // marker of current version Keyshare
+
+        total_parties: setup.participants(),
+        threshold: setup.threshold(),
+        party_id: my_party_id,
         rank_list: remove_ids(setup.all_party_ranks()),
         public_key: Opaque::from(public_key),
-        x_i,
-        x_i_list: remove_ids(x_i_list),
+        x_i_list: remove_ids_and_wrap(x_i_list),
         big_s_list: remove_ids_and_wrap(big_s_list),
         s_i: Opaque::from(s_i),
         sent_seed_list: remove_ids(seed_i_j_list),

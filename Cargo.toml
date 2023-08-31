@@ -15,7 +15,7 @@ sl-mpc-mate = { path = "../sl-crypto/crates/sl-mpc-mate" }
 sl-oblivious = { path = "../sl-crypto/crates/sl-oblivious" }
 digest = "0.10.7"
 sha2 = "0.10.7"
-k256 = {version = "0.13", features= ["ecdsa", "serde"]}
+k256 = {version = "0.13", features= [ "ecdsa" ]}
 merlin = "3.0.0"
 rand = "0.8"
 rand_chacha = { version = "0.3" }

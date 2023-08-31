@@ -20,23 +20,6 @@ pub struct SignMsg1 {
     pub party_id: u8,
 }
 
-// /// Type for the sign gen message 2.
-// // #[derive(Serialize, Deserialize, Clone)]
-// pub struct SignMsg2 {
-//     /// Participant Id of the sender
-//     pub from_party: usize,
-//     /// Participant Id of the receiver
-//     pub to_party: usize,
-
-//     // /// Signature
-//     // // #[serde(with = "serde_arrays")]
-//     // pub signature: Signature,
-//     /// Sesssion id
-//     pub session_id: SessionId,
-//     // /// Encrypted mta message
-//     // pub enc_mta_msg1: EncryptedData,
-// }
-
 /// Type for the sign gen message 3.
 #[derive(Debug, bincode::Encode, bincode::Decode)]
 pub struct SignMsg3 {
@@ -48,13 +31,16 @@ pub struct SignMsg3 {
 
     /// Encrypted data
     pub digest_i: Opaque<HashBytes>,
+
     /// Encrypted data
     pub big_x_i: Opaque<ProjectivePoint, GR>,
+
     /// Encrypted data
     pub big_r_i: Opaque<ProjectivePoint, GR>,
 
     /// encrypted data
     pub blind_factor: Opaque<[u8; 32]>,
+
     /// Encrypted data
     pub gamma0: Opaque<ProjectivePoint, GR>,
 

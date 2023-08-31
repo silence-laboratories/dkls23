@@ -15,7 +15,12 @@ use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use tokio::task::{JoinError, JoinSet};
 
-use sl_mpc_mate::{coord::MessageRelay, math::birkhoff_coeffs, message::*, HashBytes, SessionId};
+use sl_mpc_mate::{
+    coord::{Relay, BoxedRelay},
+    math::birkhoff_coeffs,
+    message::*,
+    HashBytes, SessionId,
+};
 
 use sl_oblivious::soft_spoken_mod::Round1Output;
 
@@ -24,7 +29,7 @@ use crate::{
     setup::sign::ValidatedSetup,
     sign::{
         pairwise_mta::{PairwiseMtaRec, PairwiseMtaSender},
-        SignMsg1, SignMsg3, SignMsg4,
+        messages::{SignMsg1, SignMsg3, SignMsg4},
     },
     utils::{parse_raw_sign, verify_final_signature},
     BadPartyIndex, Seed,
@@ -57,18 +62,18 @@ fn pop_pair<K: Eq, T>(pairs: &mut Vec<(K, T)>, party_id: K) -> Result<T, BadPart
 fn recv_p2p_messages(
     setup: &ValidatedSetup,
     tag: MessageTag,
-    relay: &MessageRelay,
+    relay: &BoxedRelay,
 ) -> JoinSet<Result<(Vec<u8>, usize), SignError>> {
     let mut js = JoinSet::new();
     let me = Some(setup.party_idx());
     setup.other_parties_iter().for_each(|(p, vk)| {
         // P2P message from party VK (p) to me
         let msg_id = setup.msg_id_from(vk, me, tag);
-        let relay = relay.clone();
+        let relay = relay.clone_relay();
 
         js.spawn(async move {
             let msg = relay
-                .recv(&msg_id, 10)
+                .recv(msg_id, 10)
                 .await
                 .ok_or(SignError::InvalidMessage)?;
             Ok::<_, SignError>((msg, p))
@@ -81,17 +86,17 @@ fn recv_p2p_messages(
 fn recv_broadcast_messages(
     setup: &ValidatedSetup,
     tag: MessageTag,
-    relay: &MessageRelay,
+    relay: &BoxedRelay,
 ) -> JoinSet<Result<(Vec<u8>, usize), SignError>> {
     let mut js = JoinSet::new();
     setup.other_parties_iter().for_each(|(party_idx, vk)| {
         // broadcast message from party `p'
         let msg_id = setup.msg_id_from(vk, None, tag);
-        let relay = relay.clone();
+        let relay = relay.clone_relay();
 
         js.spawn(async move {
             let msg = relay
-                .recv(&msg_id, 10)
+                .recv(msg_id, 10)
                 .await
                 .ok_or(SignError::InvalidMessage)?;
             Ok::<_, SignError>((msg, party_idx))
@@ -134,7 +139,7 @@ fn decode_encrypted_message<T: bincode::Decode>(
 pub async fn run(
     setup: ValidatedSetup,
     seed: Seed,
-    relay: MessageRelay,
+    relay: Box<dyn Relay>,
 ) -> Result<Signature, SignError> {
     let mut rng = ChaCha20Rng::from_seed(seed);
     let mut nonce_counter = NonceCounter::new();
@@ -164,17 +169,19 @@ pub async fn run(
 
     commitments.push((setup.party_idx(), (session_id, commitment_r_i)));
 
-    relay.send(Builder::<Signed>::encode(
-        &setup.msg_id(None, DSG_MSG_R1),
-        10,
-        setup.signing_key(),
-        &SignMsg1 {
-            session_id: Opaque::from(session_id),
-            commitment_r_i: Opaque::from(commitment_r_i),
-            party_id: setup.keyshare().party_id,
-            enc_pk: Opaque::from(PublicKey::from(&enc_keys).to_bytes()),
-        },
-    )?);
+    relay
+        .send(Builder::<Signed>::encode(
+            &setup.msg_id(None, DSG_MSG_R1),
+            10,
+            setup.signing_key(),
+            &SignMsg1 {
+                session_id: Opaque::from(session_id),
+                commitment_r_i: Opaque::from(commitment_r_i),
+                party_id: setup.keyshare().party_id,
+                enc_pk: Opaque::from(PublicKey::from(&enc_keys).to_bytes()),
+            },
+        )?)
+        .await;
 
     // vector of pairs (party_idx, party_id)
     let mut party_idx_to_id_map = vec![(my_party_idx, my_party_id)];
@@ -207,6 +214,8 @@ pub async fn run(
             .into(),
     );
 
+    let mut to_send = vec![];
+
     let mut mta_receivers = setup
         .other_parties_iter()
         .map(|(party_idx, _vk)| {
@@ -221,18 +230,22 @@ pub async fn run(
 
             let (mta_receiver, mta_msg_1) = mta_receiver.process(&phi_i);
 
-            relay.send(Builder::<Encrypted>::encode(
+            to_send.push(Builder::<Encrypted>::encode(
                 &setup.msg_id(Some(party_idx), DSG_MSG_R2),
                 100,
                 &enc_keys,
                 find_pair(&enc_pub_keys, party_idx)?,
                 &mta_msg_1,
-                nonce_counter.next_nonce()
+                nonce_counter.next_nonce(),
             )?);
 
             Ok((party_idx as u8, mta_receiver))
         })
         .collect::<Result<Vec<_>, SignError>>()?;
+
+    for msg in to_send.into_iter() {
+        relay.send(msg).await;
+    }
 
     let mut mta_senders = setup
         .other_parties_iter()
@@ -301,14 +314,16 @@ pub async fn run(
             gamma1: Opaque::from(gamma1),
         };
 
-        relay.send(Builder::<Encrypted>::encode(
-            &setup.msg_id(Some(party_idx), DSG_MSG_R3),
-            100,
-            &enc_keys,
-            find_pair(&enc_pub_keys, party_idx)?,
-            &msg3,
-            nonce_counter.next_nonce()
-        )?);
+        relay
+            .send(Builder::<Encrypted>::encode(
+                &setup.msg_id(Some(party_idx), DSG_MSG_R3),
+                100,
+                &enc_keys,
+                find_pair(&enc_pub_keys, party_idx)?,
+                &msg3,
+                nonce_counter.next_nonce(),
+            )?)
+            .await;
 
         sender_additive_shares.push(additive_shares);
     }
@@ -398,16 +413,18 @@ pub async fn run(
 
     s_0 = m * phi_i + s_0;
 
-    relay.send(Builder::<Signed>::encode(
-        &setup.msg_id(None, DSG_MSG_R4),
-        10,
-        setup.signing_key(),
-        &SignMsg4 {
-            session_id: Opaque::from(final_session_id),
-            s_0: Opaque::from(s_0),
-            s_1: Opaque::from(s_1),
-        },
-    )?);
+    relay
+        .send(Builder::<Signed>::encode(
+            &setup.msg_id(None, DSG_MSG_R4),
+            10,
+            setup.signing_key(),
+            &SignMsg4 {
+                session_id: Opaque::from(final_session_id),
+                s_0: Opaque::from(s_0),
+                s_1: Opaque::from(s_1),
+            },
+        )?)
+        .await;
 
     let mut sum_s_0 = s_0;
     let mut sum_s_1 = s_1;
@@ -492,7 +509,7 @@ fn get_birkhoff_coefficients(
         .iter()
         .map(|(_, pid)| {
             (
-                keyshare.x_i_list[*pid as usize],
+                *keyshare.x_i_list[*pid as usize],
                 keyshare.rank_list[*pid as usize] as usize,
             )
         })
@@ -510,9 +527,9 @@ fn get_birkhoff_coefficients(
 fn get_lagrange_coeff(keyshare: &Keyshare, sign_party_ids: &[(usize, u8)]) -> Scalar {
     let mut coeff = Scalar::from(1u64);
     let pid = keyshare.party_id;
-    let x_i = &keyshare.x_i_list[pid as usize] as &Scalar;
+    let x_i = &*keyshare.x_i_list[pid as usize] as &Scalar;
     for (_, index) in sign_party_ids {
-        let x_j = &keyshare.x_i_list[*index as usize] as &Scalar;
+        let x_j = &*keyshare.x_i_list[*index as usize] as &Scalar;
         if x_i.ct_ne(x_j).into() {
             let sub = x_j - x_i;
             coeff *= *x_j * sub.invert().unwrap();

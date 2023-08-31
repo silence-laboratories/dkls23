@@ -1,38 +1,135 @@
-use futures_util::stream::{SplitSink, StreamExt, SplitStream};
+use std::sync::Arc;
 
-use futures_util::SinkExt;
-
-use tokio::net::TcpStream;
-use tokio_tungstenite::{connect_async, tungstenite::Message,  MaybeTlsStream, WebSocketStream};
+use futures_util::{
+    stream::{SplitSink, StreamExt},
+    SinkExt,
+};
 use url::Url;
+
+use tokio::{
+    net::TcpStream,
+    sync::{oneshot, Mutex},
+};
+use tokio_tungstenite::{
+    connect_async, tungstenite::Message as WsMessage, MaybeTlsStream, WebSocketStream,
+};
+
+use sl_mpc_mate::{
+    coord::{BoxedRecv, BoxedRelay, BoxedSend, Relay},
+    message::*,
+};
 
 type WS = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
-#[allow(dead_code)]
+struct Inner {
+    sender: Mutex<SplitSink<WS, WsMessage>>,
+    queue: Mutex<Vec<(MsgId, oneshot::Sender<Vec<u8>>)>>,
+}
+
+impl Inner {
+    async fn send(&self, msg: Vec<u8>) {
+        let _ = self.sender.lock().await.send(WsMessage::Binary(msg)).await;
+    }
+}
+
+#[derive(Clone)]
 pub struct MsgRelayClient {
-    sink: SplitSink<WS, Message>,
-    stream: SplitStream<WS>,
+    inner: Arc<Inner>,
 }
 
 impl MsgRelayClient {
     pub async fn connect(endpoint: &Url) -> anyhow::Result<Self> {
         let (ws, _) = connect_async(endpoint).await?;
 
-        let (sink, stream) = ws.split();
+        let (sender, mut receiver) = ws.split();
 
-        Ok(Self { sink, stream })
+        let inner = Arc::new(Inner {
+            sender: Mutex::new(sender),
+            queue: Mutex::new(vec![]),
+        });
+
+        let tx_inner = inner.clone();
+
+        // task to pump messages from the WS connection
+        // and dispatch to a receivers.
+        tokio::spawn(async move {
+            while let Some(msg) = receiver.next().await {
+                let msg = match msg {
+                    Err(_) => return,
+                    Ok(msg) => msg,
+                };
+
+                match msg {
+                    WsMessage::Binary(mut data) => {
+                        let in_id = if let Ok(msg) = Message::from_buffer(&mut data) {
+                            msg.id()
+                        } else {
+                            continue;
+                        };
+
+                        let mut queue = tx_inner.queue.lock().await;
+                        let pos = queue.iter().position(|(id, _)| id.eq(&in_id));
+
+                        if let Some(pos) = pos {
+                            let (_, tx) = queue.swap_remove(pos);
+                            // Ignore send error. Drop the message
+                            // if no one is waiting for it.
+                            let _ = tx.send(data);
+                        } else {
+                            // Drop the message, no one is waiting for.
+                            continue;
+                        }
+                    }
+
+                    // TODO handle Ping messages?
+                    _ => {}
+                }
+            }
+        });
+
+        Ok(Self { inner })
     }
 
-    pub async fn ask(&mut self, msg: Vec<u8>) -> anyhow::Result<()> {
-        self.sink.send(Message::Binary(msg)).await?;
-        Ok(())
+    pub fn send(&self, msg: Vec<u8>) -> BoxedSend {
+        let inner = self.inner.clone();
+
+        Box::pin(async move {
+            inner.send(msg).await;
+        })
     }
 
-    pub fn publish(&mut self, _msg: &[u8]) {
-        todo!()
+    pub fn recv(&self, id: MsgId, ttl: u32) -> BoxedRecv {
+        let msg = AskMsg::allocate(&id, ttl);
+
+        let (tx, rx) = oneshot::channel();
+
+        let inner = self.inner.clone();
+
+        Box::pin(async move {
+            // register itself as a wait for the message
+            inner.queue.lock().await.push((id, tx));
+
+            // send an ASK message
+            inner.send(msg).await;
+
+            // wait for the message
+            let msg = rx.await.ok()?;
+
+            Some(msg)
+        })
+    }
+}
+
+impl Relay for MsgRelayClient {
+    fn send(&self, msg: Vec<u8>) -> BoxedSend {
+        self.send(msg)
     }
 
-    pub async fn recv(&mut self) -> Vec<u8> {
-        todo!()
+    fn recv(&self, id: MsgId, ttl: u32) -> BoxedRecv {
+        self.recv(id, ttl)
+    }
+
+    fn clone_relay(&self) -> BoxedRelay {
+        Box::new(self.clone())
     }
 }

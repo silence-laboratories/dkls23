@@ -3,9 +3,8 @@ name = "dkls-party"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
+bincode = { version = "2.0.0-rc.3" }
 anyhow = "1"
 dkls23 = { path = "../.." }
 sl-mpc-mate = { path = "../../../sl-crypto/crates/sl-mpc-mate" }
