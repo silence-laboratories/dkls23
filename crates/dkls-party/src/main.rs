@@ -60,7 +60,7 @@ impl std::fmt::Display for SignHashParseError {
 }
 
 fn default_coord() -> Url {
-    Url::parse("https://msg-relay.fly.dev").unwrap()
+    Url::parse("wss://msg-relay.fly.dev").unwrap()
 }
 
 fn gen_party_keys(opts: flags::GenPartyKeys) -> anyhow::Result<()> {
@@ -98,12 +98,12 @@ async fn main() -> anyhow::Result<()> {
     env_logger::init();
 
     match flags.subcommand {
-        Dkls23PartyCmd::KeygenSetup(opts) => keygen::setup(opts),
+        Dkls23PartyCmd::KeygenSetup(opts) => keygen::setup(opts).await,
         Dkls23PartyCmd::GenPartyKeys(opts) => gen_party_keys(opts),
         Dkls23PartyCmd::LoadPartyKeys(opts) => load_party_keys(opts),
         Dkls23PartyCmd::KeyGen(opts) => keygen::run_keygen(opts).await,
         Dkls23PartyCmd::SharePubkey(opts) => keygen::run_share_pubkey(opts),
-        Dkls23PartyCmd::SignSetup(opts) => sign::setup(opts),
+        Dkls23PartyCmd::SignSetup(opts) => sign::setup(opts).await,
         Dkls23PartyCmd::SignGen(opts) => sign::run_sign(opts).await,
         Dkls23PartyCmd::Serve(opts) => serve::run(opts).await,
     }

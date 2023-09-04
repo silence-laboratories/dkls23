@@ -35,11 +35,10 @@ $cmd sign-setup \
      --sign ${DEST}/setup_sk \
      --public-key ${public_key} \
      --message ${message} --hash-fn SHA256 \
-     --output ${DEST}/sign-setup.msg \
+     --coordinator ${COORD} \
      ${pks}
 
 $cmd sign-gen \
-     --setup ${DEST}/sign-setup.msg \
      --instance ${instance} \
      --setup-vk $( $cmd load-party-keys ${DEST}/setup_sk --public ) \
      --coordinator ${COORD} \

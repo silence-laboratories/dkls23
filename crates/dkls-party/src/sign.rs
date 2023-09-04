@@ -10,13 +10,10 @@ use sl_mpc_mate::{coord::BoxedRelay, HashBytes};
 
 use crate::{default_coord, flags, utils::*, SignHashFn};
 
-pub fn setup(opts: flags::SignSetup) -> anyhow::Result<()> {
+pub async fn setup(opts: flags::SignSetup) -> anyhow::Result<()> {
     let pk = parse_affine_point(&opts.public_key)?;
     let setup_sk = load_signing_key(opts.sign)?;
     let setup_vk = setup_sk.verifying_key();
-    let instance = parse_instance_id(&opts.instance)?;
-
-    let msg_id = MsgId::new(&instance, &setup_vk.to_bytes(), None, SETUP_MESSAGE_TAG);
 
     let builder = opts.party.into_iter().try_fold(
         setup::sign::SetupBuilder::new(&pk),
@@ -37,11 +34,21 @@ pub fn setup(opts: flags::SignSetup) -> anyhow::Result<()> {
         _ => unimplemented!(),
     };
 
-    let builder = builder
+    let msg_id = MsgId::new(
+        &parse_instance_id(&opts.instance)?,
+        &setup_vk.to_bytes(),
+        None,
+        SETUP_MESSAGE_TAG,
+    );
+
+    let setup = builder
         .build(&msg_id, opts.ttl, &setup_sk)
         .ok_or(anyhow::Error::msg("cant create setup message"))?;
 
-    std::fs::write(opts.output, builder)?;
+    let coord = opts.coordinator.unwrap_or_else(default_coord);
+    let msg_relay: BoxedRelay = Box::new(MsgRelayClient::connect(&coord).await?);
+
+    msg_relay.send(setup).await;
 
     Ok(())
 }
@@ -61,9 +68,9 @@ pub async fn run_sign(opts: flags::SignGen) -> anyhow::Result<()> {
     let instance = parse_instance_id(&opts.instance)?;
     let setup_vk = parse_verifying_key(&opts.setup_vk)?;
 
-    let mut setup = std::fs::read(opts.setup)?;
-
     let coord = opts.coordinator.unwrap_or_else(default_coord);
+
+    let msg_id = MsgId::new(&instance, &setup_vk.to_bytes(), None, SETUP_MESSAGE_TAG);
 
     opts.party.into_iter().try_for_each(|desc| {
         let mut parts = desc.split(":");
@@ -82,33 +89,39 @@ pub async fn run_sign(opts: flags::SignGen) -> anyhow::Result<()> {
 
         let party_id = keyshare.party_id;
 
-        let setup = setup::sign::ValidatedSetup::decode(
-            &mut setup,
-            &instance,
-            &setup_vk,
-            sk,
-            move |_, _| Some(keyshare),
-        )
-        .ok_or(anyhow::Error::msg("cant parse setup message"))?;
-
         let seed = rand::random();
 
         let coord = coord.clone();
 
         parties.spawn(async move {
-            let msg_relay: BoxedRelay = Box::new(MsgRelayClient::connect(&coord).await.unwrap());
-            (sign::run(setup, seed, msg_relay).await, party_id)
+            let msg_relay: BoxedRelay = Box::new(MsgRelayClient::connect(&coord).await?);
+
+            let mut setup = msg_relay
+                .recv(msg_id, 10)
+                .await
+                .ok_or(anyhow::Error::msg("Can't receive setup message"))?;
+
+            let setup = setup::sign::ValidatedSetup::decode(
+                &mut setup,
+                &instance,
+                &setup_vk,
+                sk,
+                move |_, _| Some(keyshare),
+            )
+            .ok_or(anyhow::Error::msg("cant parse setup message"))?;
+
+            let sign = sign::run(setup, seed, msg_relay).await?;
+
+            Ok::<_, anyhow::Error>((sign, party_id))
         });
 
         Ok::<_, anyhow::Error>(())
     })?;
 
     while let Some(share) = parties.join_next().await {
-        let (sign, party_id) = share?;
-        let sign = sign?;
+        let (sign, party_id) = share??;
 
         let sign_file_name = opts.prefix.join(format!("sign.{}", party_id));
-
 
         let bytes = sign.to_der().to_bytes();
 

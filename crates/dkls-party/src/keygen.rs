@@ -13,7 +13,7 @@ use sl_mpc_mate::{coord::BoxedRelay, message::*};
 
 use crate::{default_coord, flags, utils::*};
 
-pub fn setup(opts: flags::KeygenSetup) -> anyhow::Result<()> {
+pub async fn setup(opts: flags::KeygenSetup) -> anyhow::Result<()> {
     let setup_sk = load_signing_key(opts.sign)?;
     let setup_vk = setup_sk.verifying_key();
 
@@ -45,7 +45,10 @@ pub fn setup(opts: flags::KeygenSetup) -> anyhow::Result<()> {
         .build(&msg_id, opts.ttl, opts.threshold, &setup_sk)
         .ok_or(anyhow::Error::msg("Cant create setup message"))?;
 
-    std::fs::write(opts.output, &setup)?;
+    let coord = opts.coordinator.unwrap_or_else(default_coord);
+    let msg_relay: BoxedRelay = Box::new(MsgRelayClient::connect(&coord).await?);
+
+    msg_relay.send(setup).await;
 
     Ok(())
 }
@@ -56,23 +59,32 @@ pub async fn run_keygen(opts: flags::KeyGen) -> anyhow::Result<()> {
     let instance = parse_instance_id(&opts.instance)?;
     let setup_vk = parse_verifying_key(&opts.setup_vk)?;
 
-    let mut setup = std::fs::read(opts.setup)?;
+    let msg_id = MsgId::new(&instance, setup_vk.as_bytes(), None, SETUP_MESSAGE_TAG);
 
     let coord = opts.coordinator.unwrap_or_else(default_coord);
 
     opts.party.into_iter().try_for_each(|desc| {
         let sk = load_signing_key(desc.into())?;
 
-        let setup = ValidatedSetup::decode(&mut setup, &instance, &setup_vk, sk, |_, _, _| true)
-            .ok_or(anyhow::Error::msg("cant parse setup message"))?;
-
         let seed = rand::random();
 
         let coord = coord.clone();
 
         parties.spawn(async move {
-            let msg_relay: BoxedRelay = Box::new(MsgRelayClient::connect(&coord).await.unwrap());
-            keygen::run(setup, seed, msg_relay).await
+            let msg_relay: BoxedRelay = Box::new(MsgRelayClient::connect(&coord).await?);
+
+            let mut setup = msg_relay
+                .recv(msg_id, 10)
+                .await
+                .ok_or(anyhow::Error::msg("Can't receive setup message"))?;
+
+            let setup =
+                ValidatedSetup::decode(&mut setup, &instance, &setup_vk, sk, |_, _, _| true)
+                    .ok_or(anyhow::Error::msg("cant parse setup message"))?;
+
+            let share = keygen::run(setup, seed, msg_relay).await?;
+
+            Ok::<_, anyhow::Error>(share)
         });
 
         Ok::<_, anyhow::Error>(())

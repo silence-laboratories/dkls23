@@ -42,12 +42,11 @@ $cmd keygen-setup \
      --ttl 1000 \
      --threshold ${T} \
      --sign ${DEST}/setup_sk \
-     --output ${DEST}/keygen-setup.msg \
+     --coordinator ${COORD} \
      ${all_party_pk}
 
 echo "keygen start $(date)"
 $cmd key-gen \
-     --setup ${DEST}/keygen-setup.msg \
      --prefix ${DEST} \
      --setup-vk $( $cmd load-party-keys ${DEST}/setup_sk --public ) \
      --instance ${instance} \

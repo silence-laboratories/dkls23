@@ -19,7 +19,7 @@ xflags::xflags! {
             optional --public
         }
 
-        /// Create a DKG setup message
+        /// Create and publish a DKG setup message.
         cmd keygen-setup {
             /// Instance ID, hex
             required --instance inst: String
@@ -36,15 +36,12 @@ xflags::xflags! {
             /// Ed25519 key to sign the setup message
             required --sign sign: PathBuf
 
-            /// Output of setup message
-            required --output path: PathBuf
+            /// Base of URL of the coordinator service
+            optional --coordinator url: Url
         }
 
         /// Participate as one or more parties in DKG protocol
         cmd key-gen {
-            /// Name of file containing setup message
-            required --setup setup: PathBuf
-
             /// Hex string of public key to verify the setup message
             required --setup-vk setup_vk: String
 
@@ -89,21 +86,17 @@ xflags::xflags! {
             /// Hash algorithm
             optional --hash-fn hash: SignHashFn
 
-            /// Output of setup message
-            required --output path: PathBuf
-
+            /// Base of URL of the coordinator service
+            optional --coordinator url: Url
         }
 
         /// Participate as one or more parties in signature geneation protocol
         cmd sign-gen {
-            /// Name of file containing setup message
-            required --setup setup: PathBuf
+            /// Hex string of the instance ID
+            required --instance instance: String
 
             /// Hex string of public key to verify the setup message
             required --setup-vk setup_vk: String
-
-            /// Hex string of the instance ID
-            required --instance instance: String
 
             /// Party signing key.
             ///
