@@ -1,15 +1,20 @@
+#![allow(dead_code)]
+
 use std::str::FromStr;
+
+use rand::prelude::*;
 
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-mod coord;
+use sl_mpc_mate::message::*;
+
 mod flags;
 mod keygen;
 mod serve;
 mod sign;
+mod utils;
 
-use coord::{Coordinator, SessionConfig};
 use flags::{Dkls23Party, Dkls23PartyCmd};
 
 /// Hash function used for signing.
@@ -55,58 +60,33 @@ impl std::fmt::Display for SignHashParseError {
 }
 
 fn default_coord() -> Url {
-    Url::parse("https://coord.fly.dev").unwrap()
+    Url::parse("https://msg-relay.fly.dev").unwrap()
 }
 
-async fn run_keysess(opts: flags::KeySess) -> anyhow::Result<()> {
-    let ids = Coordinator::register(
-        opts.coordinator.unwrap_or_else(default_coord),
-        opts.n,
-        6 + 1,
-        opts.lifetime,
-        None,
-    )
-    .await?;
+fn gen_party_keys(opts: flags::GenPartyKeys) -> anyhow::Result<()> {
+    let mut rng = rand::thread_rng();
 
-    ids.iter().for_each(|sid| println!("{sid}"));
+    let setup_sk = SigningKey::from_bytes(&rng.gen());
+
+    std::fs::write(opts.output, &setup_sk.to_bytes())?;
 
     Ok(())
 }
 
-async fn run_signsess(opts: flags::SignSess) -> anyhow::Result<()> {
-    let ids = Coordinator::register(
-        opts.coordinator.unwrap_or_else(default_coord),
-        opts.t,
-        5,
-        opts.lifetime,
-        Some(opts.message),
-    )
-    .await?;
-
-    ids.iter().for_each(|sid| println!("{sid}"));
-
-    Ok(())
-}
-
-async fn run_session(opts: flags::Session) -> anyhow::Result<()> {
-    let coord = Coordinator::new(
-        opts.coordinator.unwrap_or_else(default_coord),
-        &opts.id,
-        5,
-        None,
+fn load_party_keys(opts: flags::LoadPartyKeys) -> anyhow::Result<()> {
+    let bytes = std::fs::read(opts.input)?;
+    let sk = SigningKey::from_bytes(
+        &bytes
+            .try_into()
+            .map_err(|_| anyhow::Error::msg("bad secket key"))?,
     );
 
-    let SessionConfig {
-        parties,
-        rounds,
-        remains,
-        signmsg,
-    } = coord.session_config().await?;
-
-    println!("parties: {parties}");
-    println!("rounds:  {rounds}");
-    println!("remains: {remains}");
-    println!("signmsg: {signmsg:?}");
+    if opts.public {
+        let vk = sk.verifying_key();
+        println!("{}", hex::encode(vk.to_bytes()));
+    } else {
+        println!("{}", hex::encode(sk.to_bytes()));
+    }
 
     Ok(())
 }
@@ -118,13 +98,13 @@ async fn main() -> anyhow::Result<()> {
     env_logger::init();
 
     match flags.subcommand {
-        Dkls23PartyCmd::PartyKeys(opts) => keygen::party_keys(opts),
+        Dkls23PartyCmd::KeygenSetup(opts) => keygen::setup(opts),
+        Dkls23PartyCmd::GenPartyKeys(opts) => gen_party_keys(opts),
+        Dkls23PartyCmd::LoadPartyKeys(opts) => load_party_keys(opts),
         Dkls23PartyCmd::KeyGen(opts) => keygen::run_keygen(opts).await,
         Dkls23PartyCmd::SharePubkey(opts) => keygen::run_share_pubkey(opts),
+        Dkls23PartyCmd::SignSetup(opts) => sign::setup(opts),
         Dkls23PartyCmd::SignGen(opts) => sign::run_sign(opts).await,
-        Dkls23PartyCmd::KeySess(opts) => run_keysess(opts).await,
-        Dkls23PartyCmd::SignSess(opts) => run_signsess(opts).await,
-        Dkls23PartyCmd::Session(opts) => run_session(opts).await,
         Dkls23PartyCmd::Serve(opts) => serve::run(opts).await,
     }
 }

@@ -1,5 +1,6 @@
 #![allow(dead_code, unused_imports)]
 use std::fmt::Formatter;
+use std::time::Duration;
 
 use k256::{elliptic_curve::group::GroupEncoding, AffinePoint};
 use sha2::{Digest, Sha256};
@@ -156,6 +157,7 @@ pub struct ValidatedSetup {
     signing_key: SigningKey,
     keyshare: Keyshare,
     party_idx: usize,
+    ttl: Duration,
 }
 
 impl std::fmt::Debug for ValidatedSetup {
@@ -183,6 +185,11 @@ impl ValidatedSetup {
         &self.instance
     }
 
+    /// TTL of the setup message
+    pub fn ttl(&self) -> Duration {
+        self.ttl
+    }
+
     ///
     pub fn keyshare(&self) -> &Keyshare {
         &self.keyshare
@@ -192,10 +199,6 @@ impl ValidatedSetup {
     pub fn party_idx(&self) -> usize {
         self.party_idx
     }
-
-    // pub fn party_id(&self) -> u8 {
-    //     self.keyshare.party_id
-    // }
 
     ///
     pub fn other_parties_iter(&self) -> impl Iterator<Item = (usize, &VerifyingKey)> {
@@ -224,9 +227,8 @@ impl ValidatedSetup {
         receiver: Option<usize>,
         tag: MessageTag,
     ) -> MsgId {
-        // let sender_vk = self.party_verifying_key(sender_id).unwrap();
         let receiver_vk = receiver
-            .and_then(|p| self.party_verifying_key(p)) // FIXME
+            .and_then(|p| self.party_verifying_key(p))
             .map(|vk| vk.as_bytes());
 
         MsgId::new(self.instance(), sender_vk.as_bytes(), receiver_vk, tag)
@@ -243,9 +245,9 @@ impl ValidatedSetup {
     where
         F: FnOnce(&Setup, &Message) -> Option<Keyshare>,
     {
-        let setup_msg = Message::from_buffer(message_buffer).ok()?;
+        let hdr = MsgHdr::from(message_buffer)?;
 
-        // let setup = setup_msg.verify_and_decode(verify_key).ok()?;
+        let setup_msg = Message::from_buffer(message_buffer).ok()?;
 
         let reader = setup_msg.verify(verify_key).ok()?;
 
@@ -253,7 +255,7 @@ impl ValidatedSetup {
 
         let vk = signing_key.verifying_key();
 
-        // one of PK is our one
+        // one of PK is our own
         let party_idx = setup.parties.iter().position(|pk| &vk == pk)?;
 
         let keyshare = user_validator(&setup, &setup_msg)?;
@@ -264,6 +266,7 @@ impl ValidatedSetup {
             signing_key,
             keyshare,
             party_idx,
+            ttl: hdr.ttl,
         })
     }
 

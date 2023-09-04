@@ -1,5 +1,7 @@
 //!
 //!
+use std::time::Duration;
+
 use bincode::{
     de::{read::Reader, Decoder},
     enc::Encoder,
@@ -143,6 +145,7 @@ pub struct ValidatedSetup {
     instance: InstanceId,
     signing_key: SigningKey,
     party_id: u8,
+    ttl: Duration,
 }
 
 impl std::ops::Deref for ValidatedSetup {
@@ -172,6 +175,11 @@ impl PartyInfo for ValidatedSetup {
 }
 
 impl ValidatedSetup {
+    /// TTL of the setup message
+    pub fn ttl(&self) -> Duration {
+        self.ttl
+    }
+
     /// Own rank
     pub fn rank(&self) -> u8 {
         self.party_rank(self.party_id).unwrap()
@@ -241,6 +249,8 @@ impl ValidatedSetup {
     where
         F: FnOnce(&Setup, u8, &Message) -> bool,
     {
+        let hdr = MsgHdr::from(message_buffer)?;
+
         let setup_msg = Message::from_buffer(message_buffer).ok()?;
 
         let reader = setup_msg.verify(verify_key).ok()?;
@@ -260,6 +270,7 @@ impl ValidatedSetup {
             instance: *instance,
             signing_key,
             party_id,
+            ttl: hdr.ttl,
         })
     }
 }

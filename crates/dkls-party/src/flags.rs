@@ -6,25 +6,56 @@ xflags::xflags! {
     cmd dkls23-party {
         repeated -v, --verbose
 
-        /// Generate reusable set of keys for key generation protocol
-        cmd party-keys {
+        /// Generate Ed25519 key and save to specified file.
+        cmd gen-party-keys {
             /// File name to save generated keys
-            required path: PathBuf
+            required output: PathBuf
+        }
+
+        /// Load Ed25519 secret key output out as hex string.
+        /// With option --public output public.
+        cmd load-party-keys {
+            required input: PathBuf
+            optional --public
+        }
+
+        /// Create a DKG setup message
+        cmd keygen-setup {
+            /// Instance ID, hex
+            required --instance inst: String
+
+            /// Time To Live for a setup message
+            required --ttl ttl: u32
+
+            /// Theshold
+            required -t,--threshold t: u8
+
+            /// Ed25519 public key of the participant of key generation
+            repeated --party parties: String
+
+            /// Ed25519 key to sign the setup message
+            required --sign sign: PathBuf
+
+            /// Output of setup message
+            required --output path: PathBuf
         }
 
         /// Participate as one or more parties in DKG protocol
         cmd key-gen {
-            /// Party descriptor in form:
-            ///   session-id:share:party-keys-file:rank
+            /// Name of file containing setup message
+            required --setup setup: PathBuf
+
+            /// Hex string of public key to verify the setup message
+            required --setup-vk setup_vk: String
+
+            /// Hex string of the instance ID
+            required --instance instance: String
+
+            /// Party public key.
             ///
-            /// Provide this option for each party
             repeated --party party: String
 
-            /// Number of parties
-            required --n n: u8
-
-            /// Theshold
-            required --t t: u8
+            optional --prefix prefix: PathBuf
 
             /// Base of URL of the coordinator service
             optional --coordinator url: Url
@@ -35,56 +66,51 @@ xflags::xflags! {
             required share: PathBuf
         }
 
-        /// Participate as one or more parties in signature geneation protocol
-        cmd sign-gen {
-            required --message message: String
+        ///
+        cmd sign-setup {
+            /// Instance ID, hex
+            required --instance inst: String
 
-            /// Party descriptor in form:
-            ///  session-id:keyshare-file:signture-file
+            /// Time To Live for a setup message
+            required --ttl ttl: u32
+
+            /// Public key as hex string of distributed key to create a signature
+            required --public-key public_key: String
+
+            /// Ed25519 public key of the participant of key generation
             repeated --party party: String
 
-            /// Total number of parties, threshold
-            required --t t: u8
-
-            optional --hash-fn hash_fn: SignHashFn
-
-            /// Base of URL of the coordinator service
-            optional --coordinator url: Url
-        }
-
-        /// Register session and output N session IDs for a DKG
-        cmd key-sess {
-            /// Number of parties
-            required --n n: u8
-            /// Threshold
-            required --t t: u8
-
-            /// Base of URL of the coordinator service
-            optional --coordinator url: Url
-
-            /// Lifetime of the session in seconds
-            optional --lifetime lifetime: u32
-        }
-
-        /// Register session and output T session IDs for signature
-        /// generation protocol
-        cmd sign-sess {
-            /// Number of parties, threshold
-            required --t t: u8
+            /// Ed25519 key to sign the setup message
+            required --sign sign: PathBuf
 
             /// Message to sign
             required --message message: String
 
-            /// Base of URL of the coordinator service
-            optional --coordinator url: Url
+            /// Hash algorithm
+            optional --hash-fn hash: SignHashFn
 
-            /// Lifetime of the session in seconds
-            optional --lifetime lifetime: u32
+            /// Output of setup message
+            required --output path: PathBuf
+
         }
 
-        /// Session details
-        cmd session {
-            required id: String
+        /// Participate as one or more parties in signature geneation protocol
+        cmd sign-gen {
+            /// Name of file containing setup message
+            required --setup setup: PathBuf
+
+            /// Hex string of public key to verify the setup message
+            required --setup-vk setup_vk: String
+
+            /// Hex string of the instance ID
+            required --instance instance: String
+
+            /// Party signing key.
+            ///
+            repeated --party party: String
+
+            required --prefix prefix: PathBuf
+
             /// Base of URL of the coordinator service
             optional --coordinator url: Url
         }

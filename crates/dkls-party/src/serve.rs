@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
 
-use k256::elliptic_curve::group::GroupEncoding;
+// use k256::elliptic_curve::group::GroupEncoding;
 
 use tokio::task::JoinSet;
 
@@ -15,22 +15,21 @@ use axum::{
     Router,
 };
 
-use url::Url;
+// use url::Url;
 
 use tower::{BoxError, ServiceBuilder};
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
 use serde::{Deserialize, Serialize};
 
-use dkls23::keygen::{messages::Keyshare, PartyKeys};
-use sl_mpc_mate::traits::PersistentObject;
+// use dkls23::keygen::Keyshare;
 
-use crate::coord;
+// use crate::coord;
 use crate::flags;
-use crate::keygen::keygen_party;
-use crate::SignHashFn;
+// use crate::keygen::keygen_party;
+// use crate::SignHashFn;
 
-use crate::sign::sign_party;
+// use crate::sign::sign_party;
 
 mod b64 {
     use serde::{Deserialize, Deserializer, Serializer};
@@ -115,77 +114,83 @@ struct SignResponse {
 }
 
 async fn handle_keygen(
-    State(state): State<AppState>,
-    Json(payload): Json<KeygenParams>,
+    State(_state): State<AppState>,
+    Json(_payload): Json<KeygenParams>,
 ) -> Result<Json<KeygenResponse>, StatusCode> {
-    let start = Instant::now();
+    let _start = Instant::now();
 
-    let keys = PartyKeys::from_bytes(&payload.party_keys).ok_or(StatusCode::BAD_REQUEST)?;
+    // let keys = PartyKeys::from_bytes(&payload.party_keys).ok_or(StatusCode::BAD_REQUEST)?;
 
-    let mut c = coord::Coordinator::new(
-        Url::parse(&payload.coord).map_err(|_| StatusCode::BAD_REQUEST)?,
-        &payload.session,
-        6 + 1,
-        Some(&state.client),
-    );
+    // let mut c = coord::Coordinator::new(
+    //     Url::parse(&payload.coord).map_err(|_| StatusCode::BAD_REQUEST)?,
+    //     &payload.session,
+    //     6 + 1,
+    //     Some(&state.client),
+    // );
 
-    let keyshare = keygen_party(&mut c, keys, payload.t, payload.n, payload.rank)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    // let keyshare = keygen_party(&mut c, keys, payload.t, payload.n, payload.rank)
+    //     .await
+    //     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let total_time = Instant::now().duration_since(start).as_millis() as u32;
+    // let total_time = Instant::now().duration_since(start).as_millis() as u32;
 
-    let resp = Json(KeygenResponse {
-        keyshare: keyshare.to_bytes().unwrap(),
-        total_send: c.total_send as u32,
-        total_recv: c.total_recv as u32,
-        total_wait: c.total_wait.as_millis() as u32,
-        public_key: keyshare.public_key.to_affine().to_bytes().to_vec(),
-        total_time,
-    });
+    // let resp = Json(KeygenResponse {
+    //     keyshare: keyshare.to_bytes().unwrap(),
+    //     total_send: c.total_send as u32,
+    //     total_recv: c.total_recv as u32,
+    //     total_wait: c.total_wait.as_millis() as u32,
+    //     public_key: keyshare.public_key.to_affine().to_bytes().to_vec(),
+    //     total_time,
+    // });
 
-    Ok(resp)
+    // Ok(resp)
+
+    todo!()
 }
 
 async fn handle_sign(
-    State(state): State<AppState>,
-    Json(payload): Json<SignParams>,
+    State(_state): State<AppState>,
+    Json(_payload): Json<SignParams>,
 ) -> Result<Json<SignResponse>, StatusCode> {
     let start = Instant::now();
 
-    let keyshare = Keyshare::from_bytes(&payload.keyshare).ok_or(StatusCode::BAD_REQUEST)?;
+    // let keyshare = Keyshare::from_bytes(&payload.keyshare).ok_or(StatusCode::BAD_REQUEST)?;
 
-    let hash_fn: SignHashFn = payload
-        .hash_fn
-        .parse()
-        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    // let hash_fn: SignHashFn = payload
+    //     .hash_fn
+    //     .parse()
+    //     .map_err(|_| StatusCode::BAD_REQUEST)?;
 
-    let mut c = coord::Coordinator::new(
-        Url::parse(&payload.coord).map_err(|_| StatusCode::BAD_REQUEST)?,
-        &payload.session,
-        5,
-        Some(&state.client),
-    );
+    // let mut c = coord::Coordinator::new(
+    //     Url::parse(&payload.coord).map_err(|_| StatusCode::BAD_REQUEST)?,
+    //     &payload.session,
+    //     5,
+    //     Some(&state.client),
+    // );
 
-    let (sign, times) = sign_party(&mut c, keyshare, hash_fn)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    // let (sign, times) = sign_party(&mut c, keyshare, hash_fn)
+    //     .await
+    //     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let total_time = Instant::now().duration_since(start).as_millis() as u32;
 
+    let sign = vec![];
+
     Ok(Json(SignResponse {
         sign,
-        total_send: c.total_send as u32,
-        total_recv: c.total_recv as u32,
-        total_wait: c.total_wait.as_millis() as u32,
+        total_send: 0, //c.total_send as u32,
+        total_recv: 0, // c.total_recv as u32,
+        total_wait: 0, //c.total_wait.as_millis() as u32,
         total_time,
-        times: Some(times),
+        times: None,
     }))
 }
 
 async fn handle_party_keys() -> String {
-    let mut rng = rand::thread_rng();
-    base64::encode(PartyKeys::new(&mut rng).to_bytes().unwrap())
+    // let mut rng = rand::thread_rng();
+    // base64::ecnode(PartyKeys::new(&mut rng).to_bytes().unwrap());
+
+    todo!()
 }
 
 fn app(state: Option<AppState>) -> Router {

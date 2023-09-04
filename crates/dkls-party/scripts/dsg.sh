@@ -1,30 +1,47 @@
- #!/bin/sh
+#!/bin/sh
 
-set -ex
+#
+# Usage: ./dsg.sh "test message" pid ...
+#
+set -e
 
-: ${COORD:="https://coord.fly.dev"}
+: ${DEST:="."}
+: ${COORD:="ws://localhost:8080/v1/msg-relay"}
 
-cmd="cargo run -p dkls-party --release --"
+message=${1}
+shift
+
+pids="$@"
+
+cmd="cargo run -p dkls-party --release -q --"
+# cmd="/usr/local/bin/dkls-party"
 
 date
 
-t=${1}; shift
-n=${1}; shift
-m=${1}; shift
+instance=$(openssl rand -hex 32)
+public_key=$($cmd share-pubkey ${DEST}/keyshare.0)
 
-prefix="${t}x${n}"
-
-sids=$($cmd sign-sess --t ${t} --message ${m} --coordinator ${COORD})
-
-
-parties=""
-for sid in ${sids}; do
-    # $cmd party-keys party-keys-${sid}
-    # parties="${parties} --party ${sid}:share-${sid}:party-keys-${sid}"
-    share=${1}; shift
-    parties="${parties} --party ${sid}:${share}:sign-${sid}"
+pks=""
+sks=""
+for p in ${pids}; do
+    _pk=$( $cmd load-party-keys ${DEST}/party_${p}_sk --public )
+    pks="${pks} --party ${_pk}"
+    sks="${sks} --party ${DEST}/party_${p}_sk:${DEST}/keyshare.${p}"
 done
 
-$cmd sign-gen --t ${t} --message ${m} ${parties} --coordinator ${COORD}
+$cmd sign-setup \
+     --instance ${instance} \
+     --ttl 1000 \
+     --sign ${DEST}/setup_sk \
+     --public-key ${public_key} \
+     --message ${message} --hash-fn SHA256 \
+     --output ${DEST}/sign-setup.msg \
+     ${pks}
 
-date
+$cmd sign-gen \
+     --setup ${DEST}/sign-setup.msg \
+     --instance ${instance} \
+     --setup-vk $( $cmd load-party-keys ${DEST}/setup_sk --public ) \
+     --coordinator ${COORD} \
+     --prefix ${DEST} \
+     ${sks}

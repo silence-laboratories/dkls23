@@ -172,7 +172,7 @@ pub async fn run(
     relay
         .send(Builder::<Signed>::encode(
             &setup.msg_id(None, DSG_MSG_R1),
-            10,
+            setup.ttl(),
             setup.signing_key(),
             &SignMsg1 {
                 session_id: Opaque::from(session_id),
@@ -232,7 +232,7 @@ pub async fn run(
 
             to_send.push(Builder::<Encrypted>::encode(
                 &setup.msg_id(Some(party_idx), DSG_MSG_R2),
-                100,
+                setup.ttl(),
                 &enc_keys,
                 find_pair(&enc_pub_keys, party_idx)?,
                 &mta_msg_1,
@@ -317,7 +317,7 @@ pub async fn run(
         relay
             .send(Builder::<Encrypted>::encode(
                 &setup.msg_id(Some(party_idx), DSG_MSG_R3),
-                100,
+                setup.ttl(),
                 &enc_keys,
                 find_pair(&enc_pub_keys, party_idx)?,
                 &msg3,
@@ -416,7 +416,7 @@ pub async fn run(
     relay
         .send(Builder::<Signed>::encode(
             &setup.msg_id(None, DSG_MSG_R4),
-            10,
+            setup.ttl(),
             setup.signing_key(),
             &SignMsg4 {
                 session_id: Opaque::from(final_session_id),

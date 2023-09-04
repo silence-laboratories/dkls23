@@ -22,7 +22,7 @@ use sl_oblivious::{
 };
 
 use sl_mpc_mate::{
-    coord::{Relay, BoxedRelay},
+    coord::{BoxedRelay, Relay},
     math::{feldman_verify, polynomial_coeff_multipliers, GroupPolynomial, Polynomial},
     message::*,
     HashBytes, SessionId,
@@ -180,17 +180,19 @@ pub async fn run(
     let mut big_f_i_vecs = vec![(my_party_id, big_f_i_vec.clone())];
 
     // send out first message
-    relay.send(Builder::<Signed>::encode(
-        &setup.msg_id(None, DKG_MSG_R1),
-        10,
-        setup.signing_key(),
-        &KeygenMsg1 {
-            session_id: Opaque::from(session_id),
-            commitment: Opaque::from(commitment),
-            x_i: Opaque::from(*x_i),
-            enc_pk: Opaque::from(PublicKey::from(&enc_keys).to_bytes()),
-        },
-    )?).await;
+    relay
+        .send(Builder::<Signed>::encode(
+            &setup.msg_id(None, DKG_MSG_R1),
+            setup.ttl(),
+            setup.signing_key(),
+            &KeygenMsg1 {
+                session_id: Opaque::from(session_id),
+                commitment: Opaque::from(commitment),
+                x_i: Opaque::from(*x_i),
+                enc_pk: Opaque::from(PublicKey::from(&enc_keys).to_bytes()),
+            },
+        )?)
+        .await;
 
     let mut r1_msgs = recv_broadcast_messages(&setup, DKG_MSG_R1, &relay);
     while let Some(msg) = r1_msgs.join_next().await {
@@ -283,7 +285,12 @@ pub async fn run(
             let (sender, msg1) = VSOTSender::new(vsot_session_id, &mut rng);
 
             to_send.push(Builder::<Encrypted>::encode(
-                &msg_id, 100, &enc_keys, enc_pk, &msg1, nonce,
+                &msg_id,
+                setup.ttl(),
+                &enc_keys,
+                enc_pk,
+                &msg1,
+                nonce,
             )?);
 
             Ok((p, sender))
@@ -295,17 +302,19 @@ pub async fn run(
     }
 
     // send out message
-    relay.send(Builder::<Signed>::encode(
-        &setup.msg_id(None, DKG_MSG_R2),
-        100,
-        setup.signing_key(),
-        &KeygenMsg2 {
-            session_id: Opaque::from(final_session_id),
-            big_f_i_vector: big_f_i_vec,
-            r_i: Opaque::from(r_i),
-            dlog_proofs_i: dlog_proofs,
-        },
-    )?).await;
+    relay
+        .send(Builder::<Signed>::encode(
+            &setup.msg_id(None, DKG_MSG_R2),
+            setup.ttl(),
+            setup.signing_key(),
+            &KeygenMsg2 {
+                session_id: Opaque::from(final_session_id),
+                big_f_i_vector: big_f_i_vec,
+                r_i: Opaque::from(r_i),
+                dlog_proofs_i: dlog_proofs,
+            },
+        )?)
+        .await;
 
     // start receiving P2P messages
     let mut r2_p2p = recv_p2p_messages(&setup, DKG_MSG_R2, &relay);
@@ -386,14 +395,16 @@ pub async fn run(
             big_f_vec: big_f_vec.clone(),
         };
 
-        relay.send(Builder::<Encrypted>::encode(
-            &setup.msg_id(Some(party_id), DKG_MSG_R3),
-            100,
-            &enc_keys,
-            find_pair(&enc_pub_key, party_id)?,
-            &msg3,
-            nonce_counter.next_nonce(),
-        )?).await;
+        relay
+            .send(Builder::<Encrypted>::encode(
+                &setup.msg_id(Some(party_id), DKG_MSG_R3),
+                setup.ttl(),
+                &enc_keys,
+                find_pair(&enc_pub_key, party_id)?,
+                &msg3,
+                nonce_counter.next_nonce(),
+            )?)
+            .await;
     }
     let mut vsot_receivers = vsot_next_receivers;
 
@@ -415,14 +426,16 @@ pub async fn run(
 
         vsot_next_senders.push((party_id, sender));
 
-        relay.send(Builder::<Encrypted>::encode(
-            &setup.msg_id(Some(party_id), DKG_MSG_R4),
-            100,
-            &enc_keys,
-            find_pair(&enc_pub_key, party_id)?,
-            &vsot_msg3,
-            nonce_counter.next_nonce(),
-        )?).await;
+        relay
+            .send(Builder::<Encrypted>::encode(
+                &setup.msg_id(Some(party_id), DKG_MSG_R4),
+                setup.ttl(),
+                &enc_keys,
+                find_pair(&enc_pub_key, party_id)?,
+                &vsot_msg3,
+                nonce_counter.next_nonce(),
+            )?)
+            .await;
     }
     let mut vsot_senders = vsot_next_senders;
 
@@ -465,12 +478,14 @@ pub async fn run(
         dlog_proof: proof,
     };
 
-    relay.send(Builder::<Signed>::encode(
-        &setup.msg_id(None, DKG_MSG_R4),
-        100,
-        setup.signing_key(),
-        &msg4,
-    )?).await;
+    relay
+        .send(Builder::<Signed>::encode(
+            &setup.msg_id(None, DKG_MSG_R4),
+            setup.ttl(),
+            setup.signing_key(),
+            &msg4,
+        )?)
+        .await;
 
     let mut big_s_list = vec![(my_party_id, big_s_i)];
 
@@ -536,14 +551,16 @@ pub async fn run(
         let (receiver, vsot_msg4) = receiver.process(msg)?;
         vsot_next_receivers.push((party_id, receiver));
 
-        relay.send(Builder::<Encrypted>::encode(
-            &setup.msg_id(Some(party_id), DKG_MSG_R5),
-            100,
-            &enc_keys,
-            find_pair(&enc_pub_key, party_id)?,
-            &vsot_msg4,
-            nonce_counter.next_nonce(),
-        )?).await;
+        relay
+            .send(Builder::<Encrypted>::encode(
+                &setup.msg_id(Some(party_id), DKG_MSG_R5),
+                setup.ttl(),
+                &enc_keys,
+                find_pair(&enc_pub_key, party_id)?,
+                &vsot_msg4,
+                nonce_counter.next_nonce(),
+            )?)
+            .await;
     }
     let mut vsot_receivers = vsot_next_receivers;
 
@@ -577,14 +594,16 @@ pub async fn run(
             seed_i_j,
         };
 
-        relay.send(Builder::<Encrypted>::encode(
-            &setup.msg_id(Some(party_id), DKG_MSG_R6),
-            100,
-            &enc_keys,
-            find_pair(&enc_pub_key, party_id)?,
-            &msg6,
-            nonce_counter.next_nonce(),
-        )?).await;
+        relay
+            .send(Builder::<Encrypted>::encode(
+                &setup.msg_id(Some(party_id), DKG_MSG_R6),
+                setup.ttl(),
+                &enc_keys,
+                find_pair(&enc_pub_key, party_id)?,
+                &msg6,
+                nonce_counter.next_nonce(),
+            )?)
+            .await;
     }
 
     let mut seed_ot_receivers = vec![];
