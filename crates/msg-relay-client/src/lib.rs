@@ -39,6 +39,8 @@ pub struct MsgRelayClient {
 
 impl MsgRelayClient {
     pub async fn connect(endpoint: &Url) -> anyhow::Result<Self> {
+        tracing::info!("connecting to {}", endpoint);
+
         let (ws, _) = connect_async(endpoint).await?;
 
         let (sender, mut receiver) = ws.split();

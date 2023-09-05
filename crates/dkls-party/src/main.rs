@@ -2,6 +2,7 @@
 
 use std::str::FromStr;
 
+use tracing_subscriber;
 use rand::prelude::*;
 
 use serde::{Deserialize, Serialize};
@@ -93,9 +94,9 @@ fn load_party_keys(opts: flags::LoadPartyKeys) -> anyhow::Result<()> {
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> anyhow::Result<()> {
-    let flags = Dkls23Party::from_env_or_exit();
+    tracing_subscriber::fmt::init();
 
-    env_logger::init();
+    let flags = Dkls23Party::from_env_or_exit();
 
     match flags.subcommand {
         Dkls23PartyCmd::KeygenSetup(opts) => keygen::setup(opts).await,

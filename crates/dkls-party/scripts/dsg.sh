@@ -31,7 +31,7 @@ done
 
 $cmd sign-setup \
      --instance ${instance} \
-     --ttl 1000 \
+     --ttl 10 \
      --sign ${DEST}/setup_sk \
      --public-key ${public_key} \
      --message ${message} --hash-fn SHA256 \

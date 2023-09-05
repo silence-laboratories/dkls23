@@ -21,7 +21,8 @@ rand = "0.8"
 rand_chacha = { version = "0.3" }
 rayon ="1"
 thiserror = "1"
-tokio = { version = "1", features = ["rt", "sync", "macros", "rt-multi-thread" ] }
+tracing = "0.1"
+tokio = { version = "1", features = ["rt", "sync", "macros" ] }
 
 [dev-dependencies]
 hex ="0.4.3"

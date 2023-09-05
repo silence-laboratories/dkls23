@@ -78,6 +78,8 @@ impl AppStateInner {
 
             let Expire(_, id, kind) = self.expire.pop().unwrap();
 
+            tracing::info!("expire {:?} {:X}", kind, id);
+
             match self.messages.entry(id) {
                 Entry::Occupied(ocp) => match ocp.get() {
                     MsgEntry::Ready(_) => {
@@ -109,6 +111,8 @@ impl AppStateInner {
 
         let now = Instant::now();
         let expire = now + ttl;
+
+        tracing::info!("handle {:X} {:?} {}", id, kind, msg.len());
 
         // we have a locked state, let's cleanup some old entries
         self.cleanup(now);

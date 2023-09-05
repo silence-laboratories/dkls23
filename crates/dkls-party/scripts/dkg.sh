@@ -39,7 +39,7 @@ instance=$(openssl rand -hex 32)
 #
 $cmd keygen-setup \
      --instance ${instance} \
-     --ttl 1000 \
+     --ttl 10 \
      --threshold ${T} \
      --sign ${DEST}/setup_sk \
      --coordinator ${COORD} \

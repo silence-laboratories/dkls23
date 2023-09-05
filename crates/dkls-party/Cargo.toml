@@ -18,8 +18,6 @@ xflags = "0.3"
 url = "2.3"
 serde = { version = "1", features = ["derive"] }
 hex = "0.4.3"
-log = "0.4"
-env_logger = "0.10"
 sha2 = "0.10.6"
 tiny-keccak = { version = "2.0.2", features = ["keccak"] }
 axum = "0.6"

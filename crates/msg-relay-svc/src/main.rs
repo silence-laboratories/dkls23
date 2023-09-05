@@ -2,6 +2,7 @@ use std::env;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use tracing_subscriber;
 use tokio::task::JoinSet;
 
 use axum::{routing::get, Router};
@@ -12,6 +13,8 @@ use msg_relay::AppStateInner;
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt::init();
+
     let mut servers = JoinSet::new();
 
     let app = Router::new()
