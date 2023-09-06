@@ -33,6 +33,8 @@ async fn main() -> anyhow::Result<()> {
             axum::Server::bind(&addr)
                 .serve(app.clone().into_make_service()),
         );
+
+        tracing::info!("listen {:?}", addr);
     }
 
     while let Some(_) = servers.join_next().await {}

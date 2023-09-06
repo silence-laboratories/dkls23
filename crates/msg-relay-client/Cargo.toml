@@ -4,10 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "1"
 url = { version = "2.3" }
 futures-util = { version = "0.3.28" }
-tokio = { version = "1.29", features = [ "net" ] }
 tokio-tungstenite = { version = "0.20" }
-tracing = "0.1"
-sl-mpc-mate = { path = "../../../sl-crypto/crates/sl-mpc-mate" }
+
+anyhow = { workspace = true }
+tokio = { workspace = true, features = [ "net" ] }
+tracing = { workspace = true }
+
+sl-mpc-mate = { workspace = true }

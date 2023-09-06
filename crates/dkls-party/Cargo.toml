@@ -4,21 +4,28 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bincode = { version = "2.0.0-rc.3" }
-anyhow = "1"
 dkls23 = { path = "../.." }
 msg-relay-client = { path = "../msg-relay-client" }
-sl-mpc-mate = { path = "../../../sl-crypto/crates/sl-mpc-mate" }
-sl-oblivious = { path = "../../../sl-crypto/crates/sl-oblivious" }
-rand = "0.8"
-k256 = {version = "0.13", features= ["ecdsa", "serde"]}
+
+sl-mpc-mate = { workspace = true }
+sl-oblivious = { workspace = true }
+
+anyhow = { workspace = true }
+bincode = { workspace = true }
+rand = { workspace = true }
+k256 = { workspace = true, features= ["ecdsa", "serde"]}
+tokio = { workspace = true, features = ["full"] }
+sha2 = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+
 reqwest = { version = "0.11", features = ["json"] }
-tokio = { version = "1", features = ["full"] }
+
 xflags = "0.3"
 url = "2.3"
 serde = { version = "1", features = ["derive"] }
 hex = "0.4.3"
-sha2 = "0.10.6"
+
 tiny-keccak = { version = "2.0.2", features = ["keccak"] }
 axum = "0.6"
 tower = { version = "0.4", features = ["util", "timeout", "load-shed", "limit"] }
@@ -28,6 +35,4 @@ tower-http = { version = "0.3.0", features = [
     "cors"
 ] }
 tower-layer = "0.3.2"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 base64 = "0.13"
