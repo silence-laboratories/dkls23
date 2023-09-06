@@ -29,6 +29,7 @@ for p in ${pids}; do
     sks="${sks} --party ${DEST}/party_${p}_sk:${DEST}/keyshare.${p}"
 done
 
+# Create a setup message for DSG.
 $cmd sign-setup \
      --instance ${instance} \
      --ttl 10 \
@@ -38,6 +39,7 @@ $cmd sign-setup \
      --coordinator ${COORD} \
      ${pks}
 
+# Execute T parties to generate a signature.
 $cmd sign-gen \
      --instance ${instance} \
      --setup-vk $( $cmd load-party-keys ${DEST}/setup_sk --public ) \

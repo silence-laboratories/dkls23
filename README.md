@@ -10,11 +10,9 @@ from https://gitlab.com/com.silencelaboratories/sl-crypto
 This is the core crate. The main functions are:
 
 ```rust
-
 dkls23::keygen::dkg::run()
 
 dkls23::sign::dsg::run()
-
 ```
 
 ## crates/msg-relay-svc
@@ -54,7 +52,6 @@ key generation (DKG) and distributed signature generation (DSG).
 The simplest way to build and run it would be:
 
 ```shell
-
 cargo run -p dkls-party -q --release -- --help
 ```
 
@@ -65,7 +62,6 @@ and initial message (setup message) and execute distributed
 key generation and save result keyshares to files.
 
 ```shell
-
 # create a directory for keyshares and various addtional files
 mkdir ./data
 
@@ -95,12 +91,12 @@ ls -l ./data/keyshare.*
 We generated key, now we are ready to genreate a signature
 
 ```shell
-
 # we will use ./data directory populated by dkg.sh script
 
 # This command will generate a signature for message "test"
 # using first 3 keyshares
 #
 RUST_LOG=debug DEST=./data ./crates/dkls-party/scripts/dsg.sh "test" 0 1 2
-
 ```
+
+Please, read comments in these scripts to get more details.
