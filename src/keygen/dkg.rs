@@ -1,1064 +1,709 @@
 //! Distributed key generation protocol.
+//
+
+use digest::{generic_array::GenericArray, Digest};
 use k256::{
     elliptic_curve::{group::GroupEncoding, subtle::ConstantTimeEq, PrimeField},
-    schnorr::CryptoRngCore,
-    sha2::{digest, Sha256},
     FieldBytes, NonZeroScalar, ProjectivePoint, Scalar, Secp256k1,
 };
 use merlin::Transcript;
-use rand::{rngs::OsRng, Rng, SeedableRng};
-use rayon::prelude::{
-    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
-};
-
-use crate::{
-    keygen::messages::{KeygenMsg2, KeygenMsg3, KeygenMsg5, KeygenMsg6, Keyshare},
-    utils::{calculate_final_session_id, get_hash, Init},
-};
+use rand::prelude::*;
+use rand_chacha::ChaCha20Rng;
+use rayon::prelude::*;
+use sha2::Sha256;
+use tokio::task::{JoinError, JoinSet};
 
 use sl_oblivious::{
     soft_spoken::{build_pprf, eval_pprf, PPRFOutput, SenderOTSeed},
+    soft_spoken_mod::SOFT_SPOKEN_K,
     utils::TranscriptProtocol,
-    vsot::{InitRec, RecR1, RecR2, SendR1, SendR2, VSOTError, VSOTMsg5, VSOTReceiver, VSOTSender},
+    vsot::{VSOTError, VSOTMsg3, VSOTReceiver, VSOTSender},
     zkproofs::DLogProof,
 };
 
-use digest::Digest;
 use sl_mpc_mate::{
-    math::{birkhoff_coeffs, feldman_verify, polynomial_coeff_multipliers, GroupPolynomial},
-    nacl::{encrypt_data, sign_message, verify_signature, EncryptedData, HasSignature},
-    random_bytes,
-    traits::{HasFromParty, PersistentObject, Round},
+    coord::{BoxedRelay, Relay},
+    math::{feldman_verify, polynomial_coeff_multipliers, GroupPolynomial, Polynomial},
+    message::*,
     HashBytes, SessionId,
 };
 
-use super::{
-    check_secret_recovery, get_idx_from_id,
-    messages::{KeyGenCompleteMsg, KeygenMsg1, KeygenMsg4},
-    types::KeygenParams,
-    HasVsotMsg, KeyEntropy, KeygenError, PartyKeys, PartyPublicKeys,
+use crate::{
+    keygen::{check_secret_recovery, constants::*, messages::*, KeygenError},
+    setup::{keygen::ValidatedSetup, PartyInfo},
 };
 
-/// LABEL for the keygen protocol
-pub const DKG_LABEL: &[u8] = b"SilenceLaboratories-DKG-DKLS";
-/// LABEL for the DLOG proof 1
-pub const DLOG_PROOF1_LABEL: &[u8] = b"SilenceLaboratories-DKG-DLOG-PROOF1";
-/// LABEL for the DLOG proof 2
-pub const DLOG_PROOF2_LABEL: &[u8] = b"SilenceLaboratories-DKG-DLOG-PROOF2";
+/// Seed for our RNG
+pub type Seed = <ChaCha20Rng as SeedableRng>::Seed;
 
-/// Keygen logic for a single party
-#[derive(Clone)]
-pub struct KeygenParty<T> {
-    params: KeygenParams,
-    state: T,
+type Pairs<T> = Vec<(u8, T)>;
+
+fn find_pair<T>(pairs: &[(u8, T)], party_id: u8) -> Result<&T, KeygenError> {
+    pairs
+        .iter()
+        .find(|(p, _)| *p == party_id)
+        .map(|(_, v)| v)
+        .ok_or(KeygenError::InvalidParty(party_id))
 }
 
-/// State of a keygen party after receiving public keys of all parties and generating the first message.
-pub struct R1 {
-    big_f_i_vec: GroupPolynomial<Secp256k1>,
+fn pop_pair<T>(pairs: &mut Pairs<T>, party_id: u8) -> Result<T, KeygenError> {
+    let pos = pairs
+        .iter()
+        .position(|(p, _)| *p == party_id)
+        .ok_or(KeygenError::InvalidParty(party_id))?;
+
+    Ok(pairs.remove(pos).1)
 }
 
-/// State of a keygen party after processing the first message.
-pub struct R2 {
-    final_session_id: SessionId,
-    vsot_receivers: Vec<VSOTReceiver<InitRec>>,
-    vsot_senders: Vec<VSOTSender<SendR1>>,
-    commitment_list: Vec<HashBytes>,
-    x_i_list: Vec<NonZeroScalar>,
-    rank_list: Vec<usize>,
-    sid_i_list: Vec<SessionId>,
-    other_parties: Vec<usize>,
+fn remove_ids<T>(mut pairs: Vec<(u8, T)>) -> Vec<T> {
+    pairs.sort_by_key(|(p, _)| *p);
+    pairs.into_iter().map(|(_, v)| v).collect()
 }
 
-/// State of a keygen party after processing the second message.
-pub struct R3 {
-    final_session_id: SessionId,
-    vsot_receivers: Vec<VSOTReceiver<RecR1>>,
-    vsot_senders: Vec<VSOTSender<SendR1>>,
-    x_i_list: Vec<NonZeroScalar>,
-    rank_list: Vec<usize>,
-    big_f_vec: GroupPolynomial<Secp256k1>,
-    big_f_i_vecs: Vec<GroupPolynomial<Secp256k1>>,
-    other_parties: Vec<usize>,
+fn remove_ids_and_wrap<T, K>(mut pairs: Vec<(u8, T)>) -> Vec<Opaque<T, K>> {
+    pairs.sort_by_key(|(p, _)| *p);
+    pairs.into_iter().map(|(_, v)| Opaque::from(v)).collect()
 }
 
-/// State of a keygen party after processing the third message.
-pub struct R4 {
-    final_session_id: SessionId,
-    vsot_receivers: Vec<VSOTReceiver<RecR1>>,
-    vsot_senders: Vec<VSOTSender<SendR2>>,
-    s_i: Scalar,
-    public_key: ProjectivePoint,
-    rank_list: Vec<usize>,
-    x_i_list: Vec<NonZeroScalar>,
-    big_f_vec: GroupPolynomial<Secp256k1>,
-    other_parties: Vec<usize>,
+fn recv_p2p_messages(
+    setup: &ValidatedSetup,
+    tag: MessageTag,
+    relay: &BoxedRelay,
+) -> JoinSet<Result<(Vec<u8>, u8), InvalidMessage>> {
+    let mut js = JoinSet::new();
+    let me = Some(setup.party_id());
+    setup.other_parties_iter().for_each(|(p, vk)| {
+        // P2P message from party VK (p) to me
+        let msg_id = setup.msg_id_from(vk, me, tag);
+        let relay = relay.clone_relay();
+
+        js.spawn(async move {
+            let msg = relay
+                .recv(msg_id, 10)
+                .await
+                .ok_or(InvalidMessage::RecvError)?;
+            Ok::<_, InvalidMessage>((msg, p))
+        });
+    });
+
+    js
 }
 
-/// State of a keygen party after processing the fourth message.
-pub struct R5 {
-    final_session_id: SessionId,
-    vsot_receivers: Vec<VSOTReceiver<RecR2>>,
-    vsot_senders: Vec<VSOTSender<SendR2>>,
-    s_i: Scalar,
-    public_key: ProjectivePoint,
-    rank_list: Vec<usize>,
-    x_i_list: Vec<NonZeroScalar>,
-    big_s_list: Vec<ProjectivePoint>,
-    other_parties: Vec<usize>,
-}
-/// State of a keygen party after processing the fifth message.
-#[derive(Clone)]
-pub struct R6 {
-    final_session_id: SessionId,
-    vsot_receivers: Vec<VSOTReceiver<RecR2>>,
-    seed_ot_senders: Vec<SenderOTSeed>,
-    s_i: Scalar,
-    public_key: ProjectivePoint,
-    rank_list: Vec<usize>,
-    x_i_list: Vec<NonZeroScalar>,
-    big_s_list: Vec<ProjectivePoint>,
-    other_parties: Vec<usize>,
-    sent_seed_list: Vec<[u8; 32]>,
+fn recv_broadcast_messages(
+    setup: &ValidatedSetup,
+    tag: MessageTag,
+    relay: &BoxedRelay,
+) -> JoinSet<Result<(Vec<u8>, u8), InvalidMessage>> {
+    let mut js = JoinSet::new();
+    setup.other_parties_iter().for_each(|(p, vk)| {
+        // broadcast the message from party `p'
+        let msg_id = setup.msg_id_from(vk, None, tag);
+        let relay = relay.clone_relay();
+
+        js.spawn(async move {
+            let msg = relay
+                .recv(msg_id, 10)
+                .await
+                .ok_or(InvalidMessage::RecvError)?;
+            Ok::<_, InvalidMessage>((msg, p))
+        });
+    });
+
+    js
 }
 
-fn validate_input(t: usize, n: usize, party_id: usize, rank: usize) -> Result<(), KeygenError> {
-    if party_id >= n {
-        return Err(KeygenError::InvalidPid);
-    }
+fn decode_signed_message<T: bincode::Decode>(
+    msg: Result<Result<(Vec<u8>, u8), InvalidMessage>, JoinError>,
+    setup: &ValidatedSetup,
+) -> Result<(T, u8), InvalidMessage> {
+    let (mut msg, party_id) = msg.map_err(|_| InvalidMessage::RecvError)??; // it's ugly, I know
 
-    if t > n || t < 2 {
-        return Err(KeygenError::InvalidT);
-    }
+    let msg = Message::from_buffer(&mut msg)?;
+    let msg = msg.verify_and_decode(setup.party_verifying_key(party_id).unwrap())?;
 
-    if rank >= t {
-        return Err(KeygenError::InvalidLevel);
-    }
-
-    Ok(())
+    Ok((msg, party_id))
 }
 
-impl KeygenParty<Init> {
-    /// Create a new keygen party.
-    pub fn new(
-        t: usize,
-        n: usize,
-        party_id: usize,
-        rank: usize,
-        keys: &PartyKeys,
-        soft_spoken_k: u8,
-        rng: &mut impl CryptoRngCore,
-    ) -> Result<Self, KeygenError> {
-        let rand_params = KeyEntropy::generate(rng, t, n);
-        Self::new_with_context(t, n, party_id, rank, keys, soft_spoken_k, rand_params)
-    }
+fn decode_encrypted_message<T: bincode::Decode>(
+    msg: Result<Result<(Vec<u8>, u8), InvalidMessage>, JoinError>,
+    secret: &ReusableSecret,
+    enc_pub_keys: &[(u8, PublicKey)],
+) -> Result<(T, u8), InvalidMessage> {
+    let (mut msg, party_id) = msg.map_err(|_| InvalidMessage::RecvError)??; // it's ugly, I know
 
-    /// Create a new keygen protocol instance with a given context. Used for testing purposes internally.
-    pub(crate) fn new_with_context(
-        t: usize,
-        n: usize,
-        party_id: usize,
-        rank: usize,
-        party_keys: &PartyKeys,
+    let mut msg = Message::from_buffer(&mut msg)?;
+    let msg = msg.decrypt_and_decode(
+        MESSAGE_HEADER_SIZE,
+        secret,
+        find_pair(enc_pub_keys, party_id).map_err(|_| InvalidMessage::RecvError)?,
+    )?;
 
-        soft_spoken_k: u8,
-        rand_params: KeyEntropy,
-    ) -> Result<Self, KeygenError> {
-        validate_input(t, n, party_id, rank)?;
+    Ok((msg, party_id))
+}
 
-        Ok(Self {
-            params: KeygenParams {
-                t,
-                n,
-                party_id,
-                rank,
-                party_pubkeys_list: Vec::with_capacity(n),
-                verify_key: party_keys.verify_key,
-                signing_key: party_keys.signing_key,
-                encryption_keypair: party_keys.encryption_keypair.clone(),
-                soft_spoken_k,
-                rand_params,
+///
+pub async fn run(
+    setup: ValidatedSetup,
+    seed: Seed,
+    relay: BoxedRelay,
+) -> Result<Keyshare, KeygenError> {
+    let mut rng = ChaCha20Rng::from_seed(seed);
+    let mut nonce_counter = NonceCounter::new();
+
+    let t = setup.threshold();
+    let my_party_id = setup.party_id();
+    let session_id = SessionId::new(rng.gen());
+    let r_i = rng.gen();
+    let polynomial = Polynomial::random(&mut rng, t as usize - 1); // u_i_k
+    let x_i = NonZeroScalar::random(&mut rng);
+
+    let enc_keys = ReusableSecret::random_from_rng(&mut rng);
+
+    let big_f_i_vec = polynomial.commit(); // big_f_i_vector in dkg.py
+
+    let commitment = hash_commitment(
+        &session_id,
+        setup.party_id() as usize,
+        setup.rank() as usize,
+        &x_i,
+        &big_f_i_vec,
+        &r_i,
+    );
+
+    let d_i = polynomial.derivative_at(setup.rank() as usize, &x_i);
+
+    let mut commitment_list = vec![(my_party_id, commitment)];
+    let mut sid_i_list = vec![(my_party_id, session_id)];
+    let mut x_i_list = vec![(my_party_id, x_i)];
+    let mut d_i_list = vec![(my_party_id, d_i)];
+    let mut enc_pub_key = vec![];
+    let mut big_f_i_vecs = vec![(my_party_id, big_f_i_vec.clone())];
+
+    // send out first message
+    relay
+        .send(Builder::<Signed>::encode(
+            &setup.msg_id(None, DKG_MSG_R1),
+            setup.ttl(),
+            setup.signing_key(),
+            &KeygenMsg1 {
+                session_id: Opaque::from(session_id),
+                commitment: Opaque::from(commitment),
+                x_i: Opaque::from(*x_i),
+                enc_pk: Opaque::from(PublicKey::from(&enc_keys).to_bytes()),
             },
-            state: Init,
+        )?)
+        .await;
+
+    let mut r1_msgs = recv_broadcast_messages(&setup, DKG_MSG_R1, &relay);
+    while let Some(msg) = r1_msgs.join_next().await {
+        let (
+            KeygenMsg1 {
+                session_id,
+                x_i,
+                commitment,
+                enc_pk,
+            },
+            party_id,
+        ) = decode_signed_message(msg, &setup)?;
+
+        sid_i_list.push((party_id, *session_id));
+        commitment_list.push((party_id, *commitment));
+        x_i_list.push((party_id, NonZeroScalar::new(*x_i).unwrap())); // FIXME handle unwrap()!
+        enc_pub_key.push((party_id, PublicKey::from(*enc_pk)));
+    }
+
+    // Create a common session ID from pieces od random data that we received
+    // from other parties.
+    //
+    // Sort party's session-id by party id
+    sid_i_list.sort_by_key(|(p, _)| *p);
+    x_i_list.sort_by_key(|(p, _)| *p);
+    commitment_list.sort_by_key(|(p, _)| *p);
+
+    // TODO: Should parties be initialized with rank_list and x_i_list? Ask Vlad.
+    let final_session_id = SessionId::new(
+        sid_i_list
+            .iter()
+            .fold(Sha256::new(), |hash, (_, sid)| hash.chain_update(sid))
+            .finalize()
+            .into(),
+    );
+
+    // Setup transcript for DLog proofs.
+    let mut dlog_transcript = Transcript::new_dlog_proof(
+        &final_session_id,
+        setup.party_id() as usize,
+        DLOG_PROOF1_LABEL,
+        DKG_LABEL,
+    );
+
+    let dlog_proofs = polynomial
+        .iter()
+        .map(|f_i| {
+            DLogProof::prove(
+                f_i,
+                &ProjectivePoint::GENERATOR,
+                &mut dlog_transcript,
+                &mut rng,
+            )
         })
+        .collect::<Vec<_>>();
+
+    let mut vsot_receivers = setup
+        .other_parties_iter()
+        .map(|(p, _)| {
+            (
+                p,
+                VSOTReceiver::new(
+                    get_vsot_session_id(p as usize, my_party_id as usize, &final_session_id),
+                    &mut rng,
+                ),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    let mut to_send = vec![];
+
+    let mut vsot_senders = setup
+        .other_parties_iter()
+        .map(|(p, _vk)| {
+            (
+                p,
+                setup.msg_id_from(&setup.verifying_key(), Some(p), DKG_MSG_R2),
+                rng.gen(),
+                find_pair(&enc_pub_key, p).unwrap(),
+                nonce_counter.next_nonce(),
+            )
+        })
+        // .par_bridge()
+        .map(|(p, msg_id, seed, enc_pk, nonce)| {
+            let mut rng = ChaCha20Rng::from_seed(seed); // TODO check!!!
+
+            let vsot_session_id =
+                get_vsot_session_id(my_party_id as usize, p as usize, &final_session_id);
+
+            let (sender, msg1) = VSOTSender::new(vsot_session_id, &mut rng);
+
+            to_send.push(Builder::<Encrypted>::encode(
+                &msg_id,
+                setup.ttl(),
+                &enc_keys,
+                enc_pk,
+                &msg1,
+                nonce,
+            )?);
+
+            Ok((p, sender))
+        })
+        .collect::<Result<Vec<_>, KeygenError>>()?;
+
+    for msg in to_send.into_iter() {
+        relay.send(msg).await;
     }
-}
 
-impl Round for KeygenParty<Init> {
-    type Input = Vec<PartyPublicKeys>;
-    type Output = Result<(KeygenParty<R1>, KeygenMsg1), KeygenError>;
+    // send out message
+    relay
+        .send(Builder::<Signed>::encode(
+            &setup.msg_id(None, DKG_MSG_R2),
+            setup.ttl(),
+            setup.signing_key(),
+            &KeygenMsg2 {
+                session_id: Opaque::from(final_session_id),
+                big_f_i_vector: big_f_i_vec,
+                r_i: Opaque::from(r_i),
+                dlog_proofs_i: dlog_proofs,
+            },
+        )?)
+        .await;
 
-    fn process(self, pubkeys: Self::Input) -> Self::Output {
-        if pubkeys.len() != self.params.n {
-            return Err(KeygenError::InvalidMessageLength);
-        }
+    // start receiving P2P messages
+    let mut r2_p2p = recv_p2p_messages(&setup, DKG_MSG_R2, &relay);
 
-        let params = KeygenParams {
-            party_pubkeys_list: pubkeys,
-            ..self.params
-        };
+    // ... and while we are receiving P2P messages,
+    // receive and process broadcast messages from parties.
+    let mut r2_msgs = recv_broadcast_messages(&setup, DKG_MSG_R2, &relay);
+    while let Some(msg) = r2_msgs.join_next().await {
+        let (msg, party_id) = decode_signed_message::<KeygenMsg2>(msg, &setup)?;
 
-        let big_f_i_vec = params.rand_params.polynomial.commit();
-        let commitment = hash_commitment(
-            params.rand_params.session_id,
-            params.party_id,
-            params.rank,
-            params.rand_params.x_i,
-            &big_f_i_vec,
-            &params.rand_params.r_i,
+        // Verify commitments.
+        let rank = setup.party_rank(party_id).unwrap();
+        let x_i = find_pair(&x_i_list, party_id)?;
+        let sid = find_pair(&sid_i_list, party_id)?;
+        let commitment = find_pair(&commitment_list, party_id)?;
+
+        let commit_hash = hash_commitment(
+            sid,
+            party_id as usize,
+            rank as usize,
+            x_i,
+            &msg.big_f_i_vector,
+            &msg.r_i,
         );
 
-        let msg_hash = hash_msg1(
-            &params.rand_params.session_id,
-            params.rank,
-            &params.rand_params.x_i,
-            &commitment,
-        );
+        bool::from(commit_hash.ct_eq(commitment))
+            .then_some(())
+            .ok_or(KeygenError::InvalidCommitmentHash)?;
 
-        let signature = sign_message(&params.signing_key, &msg_hash)?;
-
-        let msg1 = KeygenMsg1 {
-            from_party: params.party_id,
-            session_id: params.rand_params.session_id,
-            rank: params.rank,
-            x_i: params.rand_params.x_i,
-            commitment,
-            signature,
-        };
-
-        let next_state = KeygenParty {
-            params,
-            state: R1 { big_f_i_vec },
-        };
-
-        Ok((next_state, msg1))
-    }
-}
-
-impl Round for KeygenParty<R1> {
-    type Input = Vec<KeygenMsg1>;
-
-    type Output = Result<(KeygenParty<R2>, KeygenMsg2), KeygenError>;
-
-    fn process(self, messages: Self::Input) -> Self::Output {
-        let messages = validate_input_messages(messages, self.params.n)?;
-        let mut sid_i_list = Vec::with_capacity(self.params.n);
-        let mut commitment_list = Vec::with_capacity(self.params.n);
-        let mut rank_list = Vec::with_capacity(self.params.n);
-        let mut x_i_list = Vec::with_capacity(self.params.n);
-        let mut party_id_list = Vec::with_capacity(self.params.n);
-
-        for message in &messages {
-            let party_pubkey_idx = message.get_pid();
-
-            let PartyPublicKeys { verify_key, .. } =
-                &self.params.party_pubkeys_list[party_pubkey_idx];
-
-            let message_hash = hash_msg1(
-                &message.session_id,
-                message.rank,
-                &message.x_i,
-                &message.commitment,
-            );
-            let signature = message.get_signature();
-
-            verify_signature(&message_hash, signature, verify_key)?;
-
-            sid_i_list.push(message.session_id);
-            commitment_list.push(message.commitment);
-            rank_list.push(message.rank);
-            x_i_list.push(message.x_i);
-            party_id_list.push(party_pubkey_idx);
-        }
-
-        if self.params.rand_params.session_id != sid_i_list[self.params.party_id] {
-            return Err(KeygenError::InvalidSelfSessionId);
-        }
-
-        if self.params.party_id != party_id_list[self.params.party_id] {
-            return Err(KeygenError::InvalidSelfPartyId);
-        }
-
-        // TODO: Should parties be initialized with rank_list and x_i_list? Ask Vlad.
-        let final_sid = calculate_final_session_id(&party_id_list, &sid_i_list);
-
-        // Setup transcript for DLog proofs.
+        // Verify DLog proofs.
         let mut dlog_transcript = Transcript::new_dlog_proof(
-            &final_sid,
-            self.params.party_id,
+            &final_session_id,
+            party_id as usize,
             DLOG_PROOF1_LABEL,
             DKG_LABEL,
         );
 
-        // TODO: Accept a RNG as input to the protocol.
-        let mut rng = OsRng;
-
-        let dlog_proofs = self
-            .params
-            .rand_params
-            .polynomial
-            .iter()
-            .map(|f_i| {
-                DLogProof::prove(
-                    f_i,
-                    ProjectivePoint::GENERATOR,
-                    &mut dlog_transcript,
-                    &mut rng,
-                )
-            })
-            .collect::<Vec<_>>();
-
-        // List of party ids that are not the current party.
-        let mut other_parties = party_id_list.clone();
-        other_parties.remove(self.params.party_id);
-
-        // Seeds for deterministic generation of VSOT receivers.
-        // Used to create test vectors.
-        let rec_seeds: Vec<_> = other_parties
-            .iter()
-            .map(|_| rng.gen::<[u8; 32]>())
-            .collect();
-
-        let vsot_receivers = other_parties
-            .par_iter()
-            .enumerate()
-            .map(|(idx, pid)| {
-                let vsot_session_id = get_vsot_session_id(*pid, self.params.party_id, &final_sid);
-                let mut rng = rand::rngs::StdRng::from_seed(rec_seeds[idx]);
-                VSOTReceiver::new(vsot_session_id, 256, &mut rng)
-            })
-            .collect::<Result<Vec<_>, VSOTError>>()?;
-
-        // Seeds for deterministic generation of VSOT senders.
-        // Used to create test vectors.
-        let sender_seeds = other_parties
-            .iter()
-            .map(|_| rng.gen::<[u8; 32]>())
-            .collect::<Vec<_>>();
-
-        let (vsot_senders, enc_vsot_msgs1): (Vec<VSOTSender<_>>, Vec<EncryptedData>) =
-            other_parties
-                .par_iter()
-                .enumerate()
-                .map(|(idx, pid)| {
-                    let enc_key = &self.params.party_pubkeys_list[*pid].encryption_key;
-                    let mut rng = rand::rngs::StdRng::from_seed(sender_seeds[idx]);
-                    let vsot_session_id =
-                        get_vsot_session_id(self.params.party_id, *pid, &final_sid);
-                    let (sender, msg1) = VSOTSender::new(vsot_session_id, 256, &mut rng)
-                        .map(|sender| sender.process(()))?;
-
-                    let msg1_bytes = msg1.to_bytes().unwrap();
-                    let enc_msg1 = encrypt_data(
-                        msg1_bytes,
-                        enc_key,
-                        &self.params.encryption_keypair.secret_key,
-                        *pid,
-                        self.params.party_id,
-                    )?;
-
-                    Ok((sender, enc_msg1))
-                })
-                .collect::<Result<Vec<_>, KeygenError>>()?
-                .into_iter()
-                .unzip();
-
-        let hash_message_2 = hash_msg2(
-            &final_sid,
-            &commitment_list,
-            &self.state.big_f_i_vec,
-            &self.params.rand_params.r_i,
-            &dlog_proofs,
-            &enc_vsot_msgs1,
-        );
-
-        let signature = sign_message(&self.params.signing_key, &hash_message_2)?;
-
-        let msg2 = KeygenMsg2 {
-            session_id: final_sid,
-            from_party: self.params.party_id,
-            big_f_i_vector: self.state.big_f_i_vec,
-            r_i: self.params.rand_params.r_i,
-            dlog_proofs_i: dlog_proofs,
-            enc_vsot_msgs1,
-            signature,
-        };
-
-        let next_state = KeygenParty {
-            params: self.params,
-            state: R2 {
-                final_session_id: final_sid,
-                vsot_receivers,
-                vsot_senders,
-                commitment_list,
-                x_i_list,
-                rank_list,
-                sid_i_list,
-                other_parties,
-            },
-        };
-
-        Ok((next_state, msg2))
-    }
-}
-
-impl Round for KeygenParty<R2> {
-    type Input = Vec<KeygenMsg2>;
-
-    type Output = Result<(KeygenParty<R3>, KeygenMsg3), KeygenError>;
-
-    fn process(self, messages: Self::Input) -> Self::Output {
-        let messages = validate_input_messages(messages, self.params.n)?;
-
-        messages.par_iter().try_for_each(|msg| {
-            // Verify signature.
-            let message_hash = hash_msg2(
-                &self.state.final_session_id,
-                &self.state.commitment_list,
-                &msg.big_f_i_vector,
-                &msg.r_i,
-                &msg.dlog_proofs_i,
-                &msg.enc_vsot_msgs1,
-            );
-
-            verify_signature(
-                &message_hash,
-                &msg.signature,
-                &self.params.party_pubkeys_list[msg.get_pid()].verify_key,
-            )?;
-
-            // Verify commitments.
-            let party_id = msg.get_pid();
-            let rank = self.state.rank_list[party_id];
-            let x_i = self.state.x_i_list[party_id];
-            let sid = self.state.sid_i_list[party_id];
-            let commitment = self.state.commitment_list[party_id];
-
-            let commit_hash =
-                hash_commitment(sid, party_id, rank, x_i, &msg.big_f_i_vector, &msg.r_i);
-
-            bool::from(commit_hash.ct_eq(&commitment))
-                .then_some(())
-                .ok_or(KeygenError::InvalidCommitmentHash)?;
-
-            // Verify DLog proofs.
-            let mut dlog_transcript = Transcript::new_dlog_proof(
-                &self.state.final_session_id,
-                party_id,
-                DLOG_PROOF1_LABEL,
-                DKG_LABEL,
-            );
-
-            verfiy_dlog_proofs(
-                &msg.dlog_proofs_i,
-                &msg.big_f_i_vector,
-                &mut dlog_transcript,
-            )?;
-
-            Ok::<(), KeygenError>(())
-        })?;
-
-        let empty_poly = (0..self.params.t)
-            .map(|_| ProjectivePoint::IDENTITY)
-            .collect();
-        let mut big_f_vec = GroupPolynomial::new(empty_poly);
-
-        let encrypted_d_i = (0..self.params.n)
-            .map(|party_id| {
-                // party_id is also the index of the party's data in all the lists.
-
-                let rank = self.state.rank_list[party_id];
-                let x_i = self.state.x_i_list[party_id];
-                let ek_i = &self.params.party_pubkeys_list[party_id].encryption_key;
-
-                let d_i = self.params.rand_params.polynomial.derivative_at(rank, &x_i);
-
-                let enc_data = encrypt_data(
-                    d_i.to_bytes(),
-                    ek_i,
-                    &self.params.encryption_keypair.secret_key,
-                    party_id,
-                    self.params.party_id,
-                )?;
-
-                Ok(enc_data)
-            })
-            .collect::<Result<Vec<_>, KeygenError>>()?;
-
-        let receivers = self.state.vsot_receivers.into_par_iter();
-
-        let (next_receivers, enc_vsot_msgs2) = process_vsot_instances(
-            receivers,
-            self.state.other_parties.par_iter(),
-            &messages,
-            self.params.party_id,
-            &self.params.party_pubkeys_list,
-            &self.params.encryption_keypair.secret_key,
+        verfiy_dlog_proofs(
+            &msg.dlog_proofs_i,
+            msg.big_f_i_vector.points(),
+            &mut dlog_transcript,
         )?;
 
-        let mut big_f_i_vecs = Vec::with_capacity(self.params.n);
-        for msg in messages {
-            big_f_vec.add_mut(&msg.big_f_i_vector);
-            big_f_i_vecs.push(msg.big_f_i_vector);
-        }
+        big_f_i_vecs.push((party_id, msg.big_f_i_vector));
+    }
 
-        let msg3_hash = hash_msg3(
-            &self.state.final_session_id,
-            &big_f_vec,
-            &encrypted_d_i,
-            &enc_vsot_msgs2,
-        );
+    drop(commitment_list);
 
-        let signature = sign_message(&self.params.signing_key, &msg3_hash)?;
+    // 6.d
+    let mut big_f_vec = GroupPolynomial::new(
+        (0..setup.threshold())
+            .map(|_| ProjectivePoint::IDENTITY.into())
+            .collect(),
+    );
+    for (_, v) in &big_f_i_vecs {
+        big_f_vec.add_mut(v);
+    }
+
+    let mut vsot_next_receivers = vec![];
+    while let Some(msg) = r2_p2p.join_next().await {
+        let (vsot_msg1, party_id) = decode_encrypted_message(msg, &enc_keys, &enc_pub_key)?;
+
+        let rank = setup.party_rank(party_id).unwrap();
+
+        let receiver = pop_pair(&mut vsot_receivers, party_id)?;
+
+        let (receiver, vsot_msg2) = receiver.process(vsot_msg1)?;
+
+        vsot_next_receivers.push((party_id, receiver));
+
+        let x_i = find_pair(&x_i_list, party_id)?;
+        let d_i = polynomial.derivative_at(rank as usize, x_i);
 
         let msg3 = KeygenMsg3 {
-            from_party: self.params.party_id,
-            session_id: self.state.final_session_id,
+            vsot_msg2,
+            d_i: Opaque::from(d_i),
+            session_id: Opaque::from(final_session_id),
             big_f_vec: big_f_vec.clone(),
-            encrypted_d_i_vec: encrypted_d_i,
-            enc_vsot_msgs2,
-            signature,
         };
 
-        let new_state = R3 {
-            final_session_id: self.state.final_session_id,
-            rank_list: self.state.rank_list,
-            x_i_list: self.state.x_i_list,
-            vsot_receivers: next_receivers,
-            vsot_senders: self.state.vsot_senders,
-            big_f_vec,
-            big_f_i_vecs,
-            other_parties: self.state.other_parties,
-        };
-
-        let next_state = KeygenParty {
-            params: self.params,
-            state: new_state,
-        };
-
-        Ok((next_state, msg3))
+        relay
+            .send(Builder::<Encrypted>::encode(
+                &setup.msg_id(Some(party_id), DKG_MSG_R3),
+                setup.ttl(),
+                &enc_keys,
+                find_pair(&enc_pub_key, party_id)?,
+                &msg3,
+                nonce_counter.next_nonce(),
+            )?)
+            .await;
     }
-}
+    let mut vsot_receivers = vsot_next_receivers;
 
-impl Round for KeygenParty<R3> {
-    type Input = Vec<KeygenMsg3>;
+    let mut vsot_next_senders = vec![];
+    let mut r3_msgs = recv_p2p_messages(&setup, DKG_MSG_R3, &relay);
+    while let Some(msg) = r3_msgs.join_next().await {
+        let (msg3, party_id) =
+            decode_encrypted_message::<KeygenMsg3>(msg, &enc_keys, &enc_pub_key)?;
 
-    type Output = Result<(KeygenParty<R4>, KeygenMsg4), KeygenError>;
+        (msg3.big_f_vec == big_f_vec)
+            .then_some(())
+            .ok_or(KeygenError::BigFVecMismatch)?;
 
-    fn process(self, messages: Self::Input) -> Self::Output {
-        let messages = validate_input_messages(messages, self.params.n)?;
+        d_i_list.push((party_id, *msg3.d_i));
 
-        messages.par_iter().try_for_each(|msg| {
-            let msg3_hash = hash_msg3(
-                &self.state.final_session_id,
-                &msg.big_f_vec,
-                &msg.encrypted_d_i_vec,
-                &msg.enc_vsot_msgs2,
-            );
+        let sender = pop_pair(&mut vsot_senders, party_id)?;
 
-            let verify_key = &self.params.party_pubkeys_list[msg.get_pid()].verify_key;
+        let (sender, vsot_msg3) = sender.process(msg3.vsot_msg2)?;
 
-            verify_signature(&msg3_hash, msg.get_signature(), verify_key)?;
+        vsot_next_senders.push((party_id, sender));
 
-            (msg.big_f_vec == self.state.big_f_vec)
-                .then_some(())
-                .ok_or(KeygenError::BigFVecMismatch)?;
+        relay
+            .send(Builder::<Encrypted>::encode(
+                &setup.msg_id(Some(party_id), DKG_MSG_R4),
+                setup.ttl(),
+                &enc_keys,
+                find_pair(&enc_pub_key, party_id)?,
+                &vsot_msg3,
+                nonce_counter.next_nonce(),
+            )?)
+            .await;
+    }
+    let mut vsot_senders = vsot_next_senders;
 
-            Ok::<(), KeygenError>(())
-        })?;
+    d_i_list.sort_by_key(|(p, _)| *p);
+    big_f_i_vecs.sort_by_key(|(p, _)| *p);
 
-        let f_i_vals = messages
-            .iter()
-            .map(|msg| {
-                let encrypted_d_i = &msg.encrypted_d_i_vec[self.params.party_id];
-                let nonce = &encrypted_d_i.nonce;
-                let d_i_bytes = encrypted_d_i.enc_data.decrypt_to_vec(
-                    nonce,
-                    &self.params.party_pubkeys_list[msg.get_pid()].encryption_key,
-                    &self.params.encryption_keypair.secret_key,
-                )?;
+    for ((_, big_f_i_vec), (_, f_i_val)) in big_f_i_vecs.iter().zip(&d_i_list) {
+        let coeffs = big_f_i_vec.derivative_coeffs(setup.rank() as usize);
 
-                let f_i = Scalar::from_repr(*FieldBytes::from_slice(&d_i_bytes));
+        let valid = feldman_verify(
+            &coeffs,
+            find_pair(&x_i_list, setup.party_id())?,
+            f_i_val,
+            &ProjectivePoint::GENERATOR,
+        )
+        .expect("u_i_k cannot be empty");
 
-                if f_i.is_none().into() {
-                    return Err(KeygenError::InvalidDiPlaintext);
-                }
-                Ok(f_i.unwrap())
-            })
-            .collect::<Result<Vec<_>, KeygenError>>()?;
+        if !valid {
+            return Err(KeygenError::FailedFelmanVerify);
+        }
+    }
 
-        if f_i_vals.len() != self.params.n {
-            return Err(KeygenError::InvalidFiLen);
+    let public_key = *big_f_vec.get(0).unwrap(); // FIXME dup data
+    let s_i: Scalar = d_i_list.iter().map(|(_, p)| p).sum();
+    let big_s_i = ProjectivePoint::GENERATOR * s_i;
+
+    let mut transcript = Transcript::new_dlog_proof(
+        &final_session_id,
+        setup.party_id() as usize,
+        DLOG_PROOF2_LABEL,
+        DKG_LABEL,
+    );
+
+    let proof = DLogProof::prove(&s_i, &ProjectivePoint::GENERATOR, &mut transcript, &mut rng);
+
+    let msg4 = KeygenMsg4 {
+        session_id: Opaque::from(final_session_id),
+        public_key: Opaque::from(public_key),
+        big_s_i: Opaque::from(big_s_i),
+        dlog_proof: proof,
+    };
+
+    relay
+        .send(Builder::<Signed>::encode(
+            &setup.msg_id(None, DKG_MSG_R4),
+            setup.ttl(),
+            setup.signing_key(),
+            &msg4,
+        )?)
+        .await;
+
+    let mut big_s_list = vec![(my_party_id, big_s_i)];
+
+    let mut r4_msgs = recv_broadcast_messages(&setup, DKG_MSG_R4, &relay);
+    while let Some(msg) = r4_msgs.join_next().await {
+        let (msg, party_id) = decode_signed_message::<KeygenMsg4>(msg, &setup)?;
+
+        if public_key != *msg.public_key {
+            return Err(KeygenError::PublicKeyMismatch);
         }
 
-        for (big_f_i_vec, f_i_val) in self.state.big_f_i_vecs.iter().zip(f_i_vals.iter()) {
-            let coeffs = big_f_i_vec.derivative_coeffs(self.params.rank);
-
-            let valid = feldman_verify(
-                &coeffs,
-                &self.state.x_i_list[self.params.party_id],
-                f_i_val,
-                &ProjectivePoint::GENERATOR,
-            )
-            .expect("u_i_k cannot be empty");
-
-            if !valid {
-                return Err(KeygenError::FailedFelmanVerify);
-            }
-        }
-
-        let public_key = self.state.big_f_vec[0];
-        let s_i: Scalar = f_i_vals.iter().sum();
-        let big_s_i = ProjectivePoint::GENERATOR * s_i;
+        let big_s_i = &*msg.big_s_i;
+        let dlog_proof = &msg.dlog_proof;
 
         let mut transcript = Transcript::new_dlog_proof(
-            &self.state.final_session_id,
-            self.params.party_id,
+            &final_session_id,
+            party_id as usize,
             DLOG_PROOF2_LABEL,
             DKG_LABEL,
         );
 
-        let mut rng = OsRng;
-        let proof = DLogProof::prove(&s_i, ProjectivePoint::GENERATOR, &mut transcript, &mut rng);
-        let senders = self.state.vsot_senders.into_par_iter();
+        dlog_proof
+            .verify(big_s_i, &ProjectivePoint::GENERATOR, &mut transcript)
+            .then_some(())
+            .ok_or(KeygenError::InvalidDLogProof)?;
 
-        let (next_senders, enc_vsot_msgs3) = process_vsot_instances(
-            senders,
-            self.state.other_parties.par_iter(),
-            &messages,
-            self.params.party_id,
-            &self.params.party_pubkeys_list,
-            &self.params.encryption_keypair.secret_key,
-        )?;
-
-        let msg4_hash = hash_msg4(
-            &self.state.final_session_id,
-            &public_key,
-            &big_s_i,
-            &proof,
-            &enc_vsot_msgs3,
-        );
-
-        let signature = sign_message(&self.params.signing_key, &msg4_hash)?;
-
-        let new_state = R4 {
-            final_session_id: self.state.final_session_id,
-            vsot_receivers: self.state.vsot_receivers,
-            vsot_senders: next_senders,
-            public_key,
-            s_i,
-            rank_list: self.state.rank_list,
-            x_i_list: self.state.x_i_list,
-            big_f_vec: self.state.big_f_vec,
-            other_parties: self.state.other_parties,
-        };
-
-        let msg4 = KeygenMsg4 {
-            session_id: self.state.final_session_id,
-            from_party: self.params.party_id,
-            public_key,
-            big_s_i,
-            dlog_proof: proof,
-            enc_vsot_msgs3,
-            signature,
-        };
-
-        let next_state = KeygenParty {
-            params: self.params,
-            state: new_state,
-        };
-
-        Ok((next_state, msg4))
-    }
-}
-
-impl Round for KeygenParty<R4> {
-    type Input = Vec<KeygenMsg4>;
-
-    type Output = Result<(KeygenParty<R5>, KeygenMsg5), KeygenError>;
-
-    fn process(self, messages: Self::Input) -> Self::Output {
-        let messages = validate_input_messages(messages, self.params.n)?;
-        messages.par_iter().try_for_each(|msg| {
-            let msg4_hash = hash_msg4(
-                &self.state.final_session_id,
-                &msg.public_key,
-                &msg.big_s_i,
-                &msg.dlog_proof,
-                &msg.enc_vsot_msgs3,
-            );
-
-            let verify_key = &self.params.party_pubkeys_list[msg.get_pid()].verify_key;
-            verify_signature(&msg4_hash, msg.get_signature(), verify_key)?;
-
-            if self.state.public_key != msg.public_key {
-                return Err(KeygenError::PublicKeyMismatch);
-            }
-
-            Ok(())
-        })?;
-
-        let big_s_list = messages
-            .iter()
-            .map(|msg| {
-                let party_id = msg.get_pid();
-                let big_s_i = &msg.big_s_i;
-                let dlog_proof = &msg.dlog_proof;
-
-                let mut transcript = Transcript::new_dlog_proof(
-                    &self.state.final_session_id,
-                    party_id,
-                    DLOG_PROOF2_LABEL,
-                    DKG_LABEL,
-                );
-
-                dlog_proof
-                    .verify(big_s_i, ProjectivePoint::GENERATOR, &mut transcript)
-                    .then_some(())
-                    .ok_or(KeygenError::InvalidDLogProof)?;
-
-                let rank = self.state.rank_list[party_id];
-                let x_i = self.state.x_i_list[party_id];
-                let coeff_multipliers = polynomial_coeff_multipliers(&x_i, rank, self.params.n);
-                let mut expected_point = ProjectivePoint::IDENTITY;
-                for (point, coeff) in self.state.big_f_vec.iter().zip(coeff_multipliers) {
-                    expected_point += point * &coeff;
-                }
-
-                (expected_point == msg.big_s_i)
-                    .then_some(())
-                    .ok_or(KeygenError::BigSMismatch)?;
-
-                Ok(msg.big_s_i)
-            })
-            .collect::<Result<Vec<_>, KeygenError>>()?;
-
-        check_secret_recovery(
-            &self.state.x_i_list,
-            &self.state.rank_list,
-            &big_s_list,
-            &self.state.public_key,
-        )?;
-
-        let receivers = self.state.vsot_receivers.into_par_iter();
-
-        let (new_receivers, enc_vsot_msgs4) = process_vsot_instances(
-            receivers,
-            self.state.other_parties.par_iter(),
-            &messages,
-            self.params.party_id,
-            &self.params.party_pubkeys_list,
-            &self.params.encryption_keypair.secret_key,
-        )?;
-
-        let msg5_hash = hash_msg5(&self.state.final_session_id, &enc_vsot_msgs4);
-
-        let signature = sign_message(&self.params.signing_key, &msg5_hash)?;
-
-        let new_state = R5 {
-            final_session_id: self.state.final_session_id,
-            vsot_receivers: new_receivers,
-            vsot_senders: self.state.vsot_senders,
-            public_key: self.state.public_key,
-            s_i: self.state.s_i,
-            rank_list: self.state.rank_list,
-            x_i_list: self.state.x_i_list,
-            big_s_list,
-            other_parties: self.state.other_parties,
-        };
-
-        let msg5 = KeygenMsg5 {
-            from_party: self.params.party_id,
-            session_id: self.state.final_session_id,
-            enc_vsot_msgs4,
-            signature,
-        };
-
-        let next_state = KeygenParty {
-            params: self.params,
-            state: new_state,
-        };
-
-        Ok((next_state, msg5))
-    }
-}
-
-impl Round for KeygenParty<R5> {
-    type Input = Vec<KeygenMsg5>;
-
-    type Output = Result<(KeygenParty<R6>, KeygenMsg6), KeygenError>;
-
-    fn process(self, messages: Self::Input) -> Self::Output {
-        let messages = validate_input_messages(messages, self.params.n)?;
-        messages.par_iter().try_for_each(|msg| {
-            let msg5_hash = hash_msg5(&self.state.final_session_id, &msg.enc_vsot_msgs4);
-
-            let verify_key = &self.params.party_pubkeys_list[msg.get_pid()].verify_key;
-            verify_signature(&msg5_hash, msg.get_signature(), verify_key)?;
-
-            Ok::<(), KeygenError>(())
-        })?;
-
-        let senders = self.state.vsot_senders.into_par_iter();
-
-        let (vsot_sender_outputs, enc_vsot_msgs5) = process_vsot_instances(
-            senders,
-            self.state.other_parties.par_iter(),
-            &messages,
-            self.params.party_id,
-            &self.params.party_pubkeys_list,
-            &self.params.encryption_keypair.secret_key,
-        )?;
-
-        let mut seed_ot_senders = vec![];
-        let enc_pprf_outputs = vsot_sender_outputs
-            .iter()
-            .zip(self.state.other_parties.iter())
-            .map(|(sender_output, receiver_party_id)| {
-                let (all_but_one_sender_seed, pprf_output) = build_pprf(
-                    &self.state.final_session_id,
-                    sender_output,
-                    256,
-                    self.params.soft_spoken_k,
-                );
-                seed_ot_senders.push(all_but_one_sender_seed);
-                let sender_pubkey =
-                    &self.params.party_pubkeys_list[*receiver_party_id].encryption_key;
-
-                let enc_pprf_output = encrypt_data(
-                    pprf_output.to_bytes().unwrap(),
-                    sender_pubkey,
-                    &self.params.encryption_keypair.secret_key,
-                    *receiver_party_id,
-                    self.params.party_id,
-                )?;
-
-                Ok(enc_pprf_output)
-            })
-            .collect::<Result<Vec<EncryptedData>, sl_mpc_mate::nacl::Error>>()?;
-
-        //TODO: Accept this rng as input
-        let mut rng = rand::thread_rng();
-        let mut seed_i_j_list: Vec<[u8; 32]> = vec![];
-        let mut enc_seed_i_j_list: Vec<EncryptedData> = vec![];
-
-        // For party id > self.params.party_id
-        for id in self
-            .state
-            .other_parties
-            .iter()
-            .filter(|id| **id > self.params.party_id)
-        {
-            let seed_i_j = random_bytes(&mut rng);
-            seed_i_j_list.push(seed_i_j);
-            let ek_i = &self.params.party_pubkeys_list[*id].encryption_key;
-            let enc_seed_i_j = encrypt_data(
-                seed_i_j,
-                ek_i,
-                &self.params.encryption_keypair.secret_key,
-                *id,
-                self.params.party_id,
-            )?;
-            enc_seed_i_j_list.push(enc_seed_i_j);
+        let x_i = find_pair(&x_i_list, party_id)?;
+        // TODO: Handle unwrap
+        let party_rank = setup.party_rank(party_id).unwrap();
+        let coeff_multipliers =
+            polynomial_coeff_multipliers(x_i, party_rank as usize, setup.participants() as usize);
+        let mut expected_point = ProjectivePoint::IDENTITY;
+        for (point, coeff) in big_f_vec.points().zip(coeff_multipliers) {
+            expected_point += point * &coeff;
         }
 
-        let msg6_hash = hash_msg6(
-            &self.state.final_session_id,
-            &enc_vsot_msgs5,
-            &enc_pprf_outputs,
-            &enc_seed_i_j_list,
-        );
+        (expected_point == *msg.big_s_i)
+            .then_some(())
+            .ok_or(KeygenError::BigSMismatch)?;
 
-        let signature = sign_message(&self.params.signing_key, &msg6_hash)?;
+        big_s_list.push((party_id, *msg.big_s_i));
+    }
+
+    big_s_list.sort_by_key(|(p, _)| *p);
+
+    // TODO:(sushi) Only for birkhoff now (with ranks), support lagrange later.
+    let rank_list = setup.all_party_ranks();
+
+    // TODO: Remove clone later, just for testing
+    check_secret_recovery(
+        &remove_ids(x_i_list.clone()),
+        &remove_ids(rank_list),
+        &remove_ids(big_s_list.clone()),
+        &public_key,
+    )?;
+
+    let mut vsot_next_receivers = vec![];
+    let mut js = recv_p2p_messages(&setup, DKG_MSG_R4, &relay);
+    while let Some(msg) = js.join_next().await {
+        let (msg, party_id) = decode_encrypted_message::<VSOTMsg3>(msg, &enc_keys, &enc_pub_key)?;
+        let receiver = pop_pair(&mut vsot_receivers, party_id)?;
+
+        let (receiver, vsot_msg4) = receiver.process(msg)?;
+        vsot_next_receivers.push((party_id, receiver));
+
+        relay
+            .send(Builder::<Encrypted>::encode(
+                &setup.msg_id(Some(party_id), DKG_MSG_R5),
+                setup.ttl(),
+                &enc_keys,
+                find_pair(&enc_pub_key, party_id)?,
+                &vsot_msg4,
+                nonce_counter.next_nonce(),
+            )?)
+            .await;
+    }
+    let mut vsot_receivers = vsot_next_receivers;
+
+    let mut seed_ot_senders = vec![];
+    let mut seed_i_j_list = vec![];
+
+    let mut js = recv_p2p_messages(&setup, DKG_MSG_R5, &relay);
+    while let Some(msg) = js.join_next().await {
+        let (msg, party_id) = decode_encrypted_message(msg, &enc_keys, &enc_pub_key)?;
+        let sender = pop_pair(&mut vsot_senders, party_id)?;
+
+        let (sender_output, vsot_msg5) = sender.process(msg)?;
+
+        let (all_but_one_sender_seed, pprf_output) =
+            build_pprf(&final_session_id, &sender_output, 256, SOFT_SPOKEN_K as u8);
+
+        seed_ot_senders.push((party_id, all_but_one_sender_seed));
+
+        let seed_i_j = if party_id > my_party_id {
+            let seed_i_j = rng.gen();
+            seed_i_j_list.push((party_id, seed_i_j));
+            Some(seed_i_j)
+        } else {
+            None
+        };
 
         let msg6 = KeygenMsg6 {
-            from_party: self.params.party_id,
-            session_id: self.state.final_session_id,
-            enc_vsot_msgs5,
-            enc_pprf_outputs,
-            enc_seed_i_j_list,
-            signature,
+            session_id: Opaque::from(final_session_id),
+            vsot_msg5,
+            pprf_output,
+            seed_i_j,
         };
 
-        let next_state = KeygenParty {
-            params: self.params,
-            state: R6 {
-                final_session_id: self.state.final_session_id,
-                vsot_receivers: self.state.vsot_receivers,
-                seed_ot_senders,
-                public_key: self.state.public_key,
-                s_i: self.state.s_i,
-                rank_list: self.state.rank_list,
-                x_i_list: self.state.x_i_list,
-                big_s_list: self.state.big_s_list,
-                other_parties: self.state.other_parties,
-                sent_seed_list: seed_i_j_list,
-            },
-        };
-
-        Ok((next_state, msg6))
+        relay
+            .send(Builder::<Encrypted>::encode(
+                &setup.msg_id(Some(party_id), DKG_MSG_R6),
+                setup.ttl(),
+                &enc_keys,
+                find_pair(&enc_pub_key, party_id)?,
+                &msg6,
+                nonce_counter.next_nonce(),
+            )?)
+            .await;
     }
-}
 
-impl Round for KeygenParty<R6> {
-    type Input = Vec<KeygenMsg6>;
+    let mut seed_ot_receivers = vec![];
+    let mut rec_seed_list = vec![];
 
-    type Output = Result<(Keyshare, KeyGenCompleteMsg), KeygenError>;
+    let mut js = recv_p2p_messages(&setup, DKG_MSG_R6, &relay);
+    while let Some(msg) = js.join_next().await {
+        let (msg, party_id) = decode_encrypted_message::<KeygenMsg6>(msg, &enc_keys, &enc_pub_key)?;
 
-    fn process(self, messages: Self::Input) -> Self::Output {
-        let messages = validate_input_messages(messages, self.params.n)?;
-        messages.par_iter().try_for_each(|msg| {
-            let msg6_hash = hash_msg6(
-                &self.state.final_session_id,
-                &msg.enc_vsot_msgs5,
-                &msg.enc_pprf_outputs,
-                &msg.enc_seed_i_j_list,
-            );
+        let receiver = pop_pair(&mut vsot_receivers, party_id)?;
 
-            let verify_key = &self.params.party_pubkeys_list[msg.get_pid()].verify_key;
-            verify_signature(&msg6_hash, msg.get_signature(), verify_key)?;
+        let receiver_output = receiver.process(msg.vsot_msg5)?;
 
-            Ok::<(), KeygenError>(())
-        })?;
-        let receivers = self.state.vsot_receivers.into_par_iter();
-        let sender_ids = self.state.other_parties.par_iter();
+        let all_but_one_receiver_seed = eval_pprf(
+            &final_session_id,
+            &receiver_output,
+            256,
+            SOFT_SPOKEN_K as u8,
+            msg.pprf_output,
+        )
+        .map_err(KeygenError::PPRFError)?;
 
-        let seed_ot_receivers = receivers
-            .zip(sender_ids)
-            .map(|(receiver, sender_party_id)| {
-                // idx is the position of current parties receiver for each sender.
-                let message = &messages[*sender_party_id];
-                let enc_vsot_msg = message.get_vsot_msg(self.params.party_id);
-                let sender_public_key =
-                    &self.params.party_pubkeys_list[*sender_party_id].encryption_key;
-                let vsot_msg = enc_vsot_msg.enc_data.decrypt_to_vec(
-                    &enc_vsot_msg.nonce,
-                    sender_public_key,
-                    &self.params.encryption_keypair.secret_key,
-                )?;
-                let vsot_msg =
-                    VSOTMsg5::from_bytes(&vsot_msg).ok_or(KeygenError::InvalidVSOTPlaintext)?;
-                let receiver_output = receiver.process(vsot_msg)?;
-                let pprf_output_idx = get_idx_from_id(message.get_pid(), self.params.party_id);
-                let enc_pprf_output = &message.enc_pprf_outputs[pprf_output_idx];
-
-                let pprf_output = enc_pprf_output.enc_data.decrypt_to_vec(
-                    &enc_pprf_output.nonce,
-                    sender_public_key,
-                    &self.params.encryption_keypair.secret_key,
-                )?;
-                let pprf_output = Vec::<PPRFOutput>::from_bytes(&pprf_output)
-                    .ok_or(KeygenError::InvalidPPRFPlaintext)?;
-
-                let all_but_one_receiver_seed = eval_pprf(
-                    &self.state.final_session_id,
-                    &receiver_output,
-                    256,
-                    self.params.soft_spoken_k,
-                    pprf_output,
-                )
-                .map_err(KeygenError::PPRFError)?;
-
-                Ok::<_, KeygenError>(all_but_one_receiver_seed)
-            })
-            .collect::<Result<Vec<_>, KeygenError>>()?;
-
-        // Get messages with party id less than current party id.
-        let rec_seed_list = messages
-            .par_iter()
-            .take(self.params.party_id)
-            .map(|message| {
-                let ek_i = &self.params.party_pubkeys_list[message.get_pid()].encryption_key;
-                let enc_seed_j_i =
-                    &message.enc_seed_i_j_list[self.params.party_id - message.get_pid() - 1];
-
-                let seed_j_i: [u8; 32] = enc_seed_j_i
-                    .enc_data
-                    .decrypt_to_vec(
-                        &enc_seed_j_i.nonce,
-                        ek_i,
-                        &self.params.encryption_keypair.secret_key,
-                    )?
-                    .try_into()
-                    .map_err(|_| KeygenError::InvalidSeed)?;
-
-                Ok(seed_j_i)
-            })
-            .collect::<Result<Vec<[u8; 32]>, KeygenError>>()?;
-
-        let keyshare = Keyshare {
-            public_key: self.state.public_key,
-            x_i: self.state.x_i_list[self.params.party_id],
-            big_s_list: self.state.big_s_list,
-            s_i: self.state.s_i,
-            rank_list: self.state.rank_list,
-            x_i_list: self.state.x_i_list,
-            party_id: self.params.party_id,
-            threshold: self.params.t,
-            total_parties: self.params.n,
-            rank: self.params.rank,
-            seed_ot_receivers,
-            seed_ot_senders: self.state.seed_ot_senders,
-            sent_seed_list: self.state.sent_seed_list,
-            rec_seed_list,
-        };
-
-        let complete_msg = KeyGenCompleteMsg {
-            from_party: self.params.party_id,
-            public_key: keyshare.public_key.to_affine(),
-        };
-
-        Ok((keyshare, complete_msg))
+        seed_ot_receivers.push((party_id, all_but_one_receiver_seed));
+        if let Some(seed_j_i) = msg.seed_i_j {
+            rec_seed_list.push((party_id, seed_j_i));
+        }
     }
+
+    // Sorting to ensure that the list is in the same order for all parties
+    // As we can get messages in any order
+    // TODO: Verify that this is actually necessary
+
+    let share = Keyshare {
+        magic: Keyshare::MAGIC, // marker of current version Keyshare
+
+        total_parties: setup.participants(),
+        threshold: setup.threshold(),
+        party_id: my_party_id,
+        rank_list: remove_ids(setup.all_party_ranks()),
+        public_key: Opaque::from(public_key),
+        x_i_list: remove_ids_and_wrap(x_i_list),
+        big_s_list: remove_ids_and_wrap(big_s_list),
+        s_i: Opaque::from(s_i),
+        sent_seed_list: remove_ids(seed_i_j_list),
+        seed_ot_receivers: remove_ids(seed_ot_receivers),
+        seed_ot_senders: remove_ids(seed_ot_senders),
+        rec_seed_list: remove_ids(rec_seed_list),
+    };
+
+    Ok(share)
 }
 
 fn hash_commitment(
-    session_id: SessionId,
+    session_id: &SessionId,
     party_id: usize,
     rank: usize,
-    x_i: NonZeroScalar,
+    x_i: &NonZeroScalar,
     big_f_i_vec: &GroupPolynomial<Secp256k1>,
     r_i: &[u8; 32],
 ) -> HashBytes {
     let mut hasher = Sha256::new();
 
     hasher.update(b"SL-Keygen-Commitment");
-    hasher.update(session_id.as_ref());
+    hasher.update(session_id);
     hasher.update((party_id as u64).to_be_bytes());
     hasher.update((rank as u64).to_be_bytes());
     hasher.update(x_i.to_bytes());
 
-    for point in big_f_i_vec.iter() {
+    for point in &big_f_i_vec.coeffs {
         hasher.update(point.to_bytes());
     }
 
     hasher.update(r_i);
 
-    HashBytes(hasher.finalize().into())
+    HashBytes::new(hasher.finalize().into())
 }
 
-fn get_vsot_session_id(from_party: usize, to_party: usize, session_id: &SessionId) -> SessionId {
-    let mut hasher = Sha256::new();
-
-    hasher.update(DKG_LABEL);
-    hasher.update(session_id.as_ref());
-    hasher.update(b"from_party");
-    hasher.update((from_party as u64).to_be_bytes());
-    hasher.update(b"to_party");
-    hasher.update((to_party as u64).to_be_bytes());
-    hasher.update(b"vsot_session_id");
-
-    SessionId(hasher.finalize().into())
+fn get_vsot_session_id(sender_id: usize, receiver_id: usize, session_id: &SessionId) -> SessionId {
+    SessionId::new(
+        Sha256::new()
+            .chain_update(DKG_LABEL)
+            .chain_update(session_id)
+            .chain_update(b"sender_id")
+            .chain_update((sender_id as u64).to_be_bytes())
+            .chain_update(b"receiver_id")
+            .chain_update((receiver_id as u64).to_be_bytes())
+            .chain_update(b"vsot_session_id")
+            .finalize()
+            .into(),
+    )
 }
 
-fn verfiy_dlog_proofs(
+fn verfiy_dlog_proofs<'a>(
     proofs: &[DLogProof],
-    points: &[ProjectivePoint],
+    points: impl Iterator<Item = &'a ProjectivePoint>,
     transcript: &mut Transcript,
 ) -> Result<(), KeygenError> {
     for (proof, point) in proofs.iter().zip(points) {
         proof
-            .verify(point, ProjectivePoint::GENERATOR, transcript)
+            .verify(point, &ProjectivePoint::GENERATOR, transcript)
             .then_some(())
             .ok_or(KeygenError::InvalidDLogProof)?;
     }
@@ -1066,214 +711,53 @@ fn verfiy_dlog_proofs(
     Ok(())
 }
 
-fn hash_msg1(
-    session_id: &SessionId,
-    rank: usize,
-    x_i: &NonZeroScalar,
-    commitment: &HashBytes,
-) -> HashBytes {
-    get_hash(&[
-        DKG_LABEL,
-        b"KeygenMsg1",
-        session_id.as_ref(),
-        (rank as u64).to_be_bytes().as_ref(),
-        x_i.to_bytes().as_ref(),
-        commitment.as_ref(),
-    ])
-    .into()
-}
-fn hash_msg2(
-    session_id: &SessionId,
-    commitment_i_list: &[HashBytes],
-    big_f_i_vec: &[ProjectivePoint],
-    r_i: &[u8; 32],
-    dlog_proofs: &[DLogProof],
-    enc_vsot_msg1: &[EncryptedData],
-) -> HashBytes {
-    let mut hasher = Sha256::new();
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::array;
 
-    hasher.update(DKG_LABEL);
-    hasher.update(b"KeygenMsg2");
-    hasher.update(session_id.as_ref());
+    use sl_mpc_mate::coord::SimpleMessageRelay;
 
-    for commitment in commitment_i_list {
-        hasher.update(commitment.as_ref());
+    use crate::setup::{keygen::*, SETUP_MESSAGE_TAG};
+
+    use crate::keygen::utils::setup_keygen;
+
+    #[test]
+    fn r0() {
+        assert!(true);
     }
 
-    for point in big_f_i_vec {
-        hasher.update(point.to_bytes());
+    // (flavor = "multi_thread")
+    #[tokio::test(flavor = "multi_thread")]
+    async fn r1() {
+        let coord = SimpleMessageRelay::new();
+
+        let mut parties = JoinSet::new();
+        for (setup, seed) in setup_keygen(2, 3, Some(&[0, 1, 1])).into_iter() {
+            parties.spawn(run(setup, seed, coord.connect()));
+        }
+
+        while let Some(fini) = parties.join_next().await {
+            let fini = fini.unwrap();
+
+            if let Err(ref err) = fini {
+                println!("error {}", err);
+            }
+
+            assert!(fini.is_ok());
+
+            let share = fini.unwrap();
+
+            println!(
+                "PK {}",
+                share
+                    .public_key
+                    .to_bytes()
+                    .iter()
+                    .map(|v| format!("{:02X}", v))
+                    .collect::<Vec<_>>()
+                    .join(".")
+            );
+        }
     }
-
-    hasher.update(r_i);
-
-    for proof in dlog_proofs {
-        hasher.update(proof.to_bytes().unwrap());
-    }
-
-    for enc_msg1 in enc_vsot_msg1 {
-        hasher.update(enc_msg1.to_bytes().unwrap());
-    }
-
-    HashBytes(hasher.finalize().into())
-}
-
-fn hash_msg3(
-    session_id: &SessionId,
-    big_f_i_vec: &[ProjectivePoint],
-    enc_d_i_vec: &[EncryptedData],
-    enc_vsot_msg2: &[EncryptedData],
-) -> HashBytes {
-    let mut hasher = Sha256::new();
-
-    hasher.update(DKG_LABEL);
-    hasher.update(b"KeygenMsg3");
-    hasher.update(session_id.as_ref());
-
-    for point in big_f_i_vec {
-        hasher.update(point.to_bytes());
-    }
-
-    for data in enc_d_i_vec {
-        hasher.update(data.to_bytes().unwrap());
-    }
-
-    for data in enc_vsot_msg2 {
-        hasher.update(data.to_bytes().unwrap());
-    }
-
-    HashBytes(hasher.finalize().into())
-}
-
-fn hash_msg4(
-    session_id: &SessionId,
-    public_key: &ProjectivePoint,
-    big_s_i: &ProjectivePoint,
-    proof: &DLogProof,
-    enc_vsot_msgs3: &[EncryptedData],
-) -> HashBytes {
-    let mut hasher = Sha256::new();
-
-    hasher.update(DKG_LABEL);
-    hasher.update(b"KeygenMsg4");
-    hasher.update(session_id.as_ref());
-    hasher.update(public_key.to_bytes());
-    hasher.update(big_s_i.to_bytes());
-    hasher.update(proof.to_bytes().unwrap());
-
-    for data in enc_vsot_msgs3 {
-        hasher.update(data.to_bytes().unwrap());
-    }
-
-    HashBytes(hasher.finalize().into())
-}
-
-fn hash_msg5(session_id: &SessionId, enc_vsot_msgs4: &[EncryptedData]) -> HashBytes {
-    let mut hasher = Sha256::new();
-
-    hasher.update(DKG_LABEL);
-    hasher.update(b"KeygenMsg5");
-    hasher.update(session_id.as_ref());
-
-    for data in enc_vsot_msgs4 {
-        hasher.update(data.to_bytes().unwrap());
-    }
-
-    HashBytes(hasher.finalize().into())
-}
-
-fn hash_msg6(
-    session_id: &SessionId,
-    enc_vsot_msgs5: &[EncryptedData],
-    enc_pprf_outputs: &[EncryptedData],
-    enc_seed_i_j_list: &[EncryptedData],
-) -> HashBytes {
-    let mut hasher = Sha256::new();
-
-    hasher.update(DKG_LABEL);
-    hasher.update(b"KeygenMsg6");
-    hasher.update(session_id.as_ref());
-
-    for data in enc_vsot_msgs5 {
-        hasher.update(data.to_bytes().unwrap());
-    }
-
-    for data in enc_pprf_outputs {
-        hasher.update(data.to_bytes().unwrap());
-    }
-
-    for data in enc_seed_i_j_list {
-        hasher.update(data.to_bytes().unwrap());
-    }
-
-    HashBytes(hasher.finalize().into())
-}
-
-fn validate_input_messages<M: HasFromParty>(
-    mut messages: Vec<M>,
-    n: usize,
-) -> Result<Vec<M>, KeygenError> {
-    // TODO: should we check session id too?
-    if messages.len() != n {
-        return Err(KeygenError::InvalidMessageLength);
-    }
-
-    // TODO: should we sort?
-    messages.sort_by_key(|msg| msg.get_pid());
-
-    messages
-        .iter()
-        .enumerate()
-        .all(|(pid, msg)| msg.get_pid() == pid)
-        .then_some(messages)
-        .ok_or(KeygenError::InvalidParticipantSet)
-}
-
-/// Rust voodoo to process all the senders/receivers of a party
-fn process_vsot_instances<CM, NM, M, VSOT, VSOTNEXT>(
-    vsot_instances: rayon::vec::IntoIter<VSOT>,
-    other_party_ids: rayon::slice::Iter<usize>,
-    messages: &[M],
-    party_id: usize,
-    party_pubkeys_list: &[PartyPublicKeys],
-    secret_key: &sl_mpc_mate::nacl::BoxPrivKey,
-) -> Result<(Vec<VSOTNEXT>, Vec<EncryptedData>), KeygenError>
-where
-    VSOT: Round<Input = CM, Output = Result<(VSOTNEXT, NM), VSOTError>> + Send,
-    CM: PersistentObject,
-    VSOTNEXT: Send,
-    M: HasVsotMsg + Sync,
-    NM: PersistentObject,
-{
-    let (next_receivers, enc_vsot_msgs): (Vec<VSOTNEXT>, Vec<EncryptedData>) = vsot_instances
-        .zip(other_party_ids)
-        .map(|(receiver, sender_party_id)| {
-            // idx is the position of current parties receiver for each sender.
-            let message = &messages[*sender_party_id];
-
-            let enc_vsot_msg = message.get_vsot_msg(party_id);
-            let sender_public_key = &party_pubkeys_list[*sender_party_id].encryption_key;
-            let vsot_msg = enc_vsot_msg.enc_data.decrypt_to_vec(
-                &enc_vsot_msg.nonce,
-                sender_public_key,
-                secret_key,
-            )?;
-
-            let vsot_msg = CM::from_bytes(&vsot_msg).ok_or(KeygenError::InvalidVSOTPlaintext)?;
-            let (new_receiver, vsot_msg) = receiver.process(vsot_msg)?;
-
-            let enc_vsot_msg = encrypt_data(
-                vsot_msg.to_bytes().unwrap(),
-                sender_public_key,
-                secret_key,
-                *sender_party_id,
-                party_id,
-            )?;
-
-            Ok::<_, KeygenError>((new_receiver, enc_vsot_msg))
-        })
-        .collect::<Result<Vec<_>, KeygenError>>()?
-        .into_iter()
-        .unzip();
-
-    Ok((next_receivers, enc_vsot_msgs))
 }

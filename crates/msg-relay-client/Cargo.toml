@@ -1,0 +1,15 @@
+[package]
+name = "msg-relay-client"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+url = { version = "2.3" }
+futures-util = { version = "0.3.28" }
+tokio-tungstenite = { version = "0.20" }
+
+anyhow = { workspace = true }
+tokio = { workspace = true, features = [ "net" ] }
+tracing = { workspace = true }
+
+sl-mpc-mate = { workspace = true }

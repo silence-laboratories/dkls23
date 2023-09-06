@@ -1,35 +1,34 @@
 use k256::{
     elliptic_curve::{
         bigint::Encoding,
+        generic_array::GenericArray,
+        ops::Reduce,
         subtle::{Choice, ConditionallySelectable},
     },
     schnorr::CryptoRngCore,
-    Scalar, Secp256k1, U256,
+    Scalar, U256,
 };
-use serde::{Deserialize, Serialize};
-use sl_mpc_mate::{
-    random_bytes,
-    traits::{PersistentObject, Round, ToScalar},
-    SessionId,
-};
+
+use sl_mpc_mate::{message::*, SessionId};
+
 use sl_oblivious::{
     soft_spoken::{ReceiverOTSeed, SenderOTSeed},
     soft_spoken_mod::{
-        Init, RecR0, RecR1, Round1Output, Round2Output, SoftSpokenOTRec, SoftSpokenOTSender,
+        RecR0, RecR1, Round1Output, Round2Output, SoftSpokenOTRec, SoftSpokenOTSender,
         COT_BLOCK_SIZE_BYTES, ETA, KAPPA, KAPPA_BYTES, KAPPA_DIV_SOFT_SPOKEN_K, L,
     },
     utils::{ExtractBit, Hasher},
 };
 
-fn generate_gadget_vec() -> Vec<Scalar> {
-    let mut gadget_vec = vec![Scalar::ZERO; L];
+fn generate_gadget_vec() -> Box<[Scalar; L]> {
+    let mut gadget_vec = [Scalar::ZERO; L];
 
     gadget_vec
         .iter_mut()
         .enumerate()
         .take(KAPPA)
         .for_each(|(i, g)| {
-            *g = (U256::ONE << i).to_scalar::<Secp256k1>();
+            *g = Scalar::reduce(U256::ONE << i);
         });
 
     let mut h = Hasher::new();
@@ -43,12 +42,11 @@ fn generate_gadget_vec() -> Vec<Scalar> {
         .for_each(|(i, g)| {
             h.update((i as u16).to_be_bytes().as_ref());
             let digest = h.finalize();
-            let digest = U256::from_be_slice(digest.as_bytes());
-            let digest_scalar = digest.to_scalar::<Secp256k1>();
-            *g = digest_scalar;
+            let digest = GenericArray::from_slice(digest.as_bytes());
+            *g = Reduce::<U256>::reduce_bytes(digest);
         });
 
-    gadget_vec
+    Box::new(gadget_vec)
 }
 
 ///
@@ -56,35 +54,37 @@ pub struct PairwiseMtaRec<T> {
     session_id: SessionId,
     state: T,
 }
+
 /// Initial state of the Pairwise MTA receiver
 ///
 // TODO: Standard names for state
 pub struct MtaRecR0 {
     cot_receiver: SoftSpokenOTRec<RecR0>,
-    gadget_vector: Vec<Scalar>,
+    gadget_vector: Box<[Scalar; L]>,
     output: [u8; COT_BLOCK_SIZE_BYTES],
 }
 
 /// State of Mta receiver after processing Round 1 output
 pub struct MtaRecR1 {
     cot_receiver: SoftSpokenOTRec<RecR1>,
-    gadget_vector: Vec<Scalar>,
+    gadget_vector: Box<[Scalar; L]>,
     omega: [u8; COT_BLOCK_SIZE_BYTES],
     temp_digest: [u8; 32],
 }
+
 ///
 impl PairwiseMtaRec<MtaRecR0> {
     /// Create a new Pairwise MTA receiver
     pub fn new<R: CryptoRngCore>(
         session_id: SessionId,
-        seed_ot_results: SenderOTSeed,
+        seed_ot_results: &SenderOTSeed,
         rng: &mut R,
     ) -> Self {
         let cot_receiver = SoftSpokenOTRec::new(session_id, seed_ot_results, rng);
         let gadget_vector = generate_gadget_vec();
         let mut output = [0u8; COT_BLOCK_SIZE_BYTES];
-        let extend: [u8; COT_BLOCK_SIZE_BYTES - KAPPA_BYTES] = random_bytes(rng);
-        output[KAPPA_BYTES..].copy_from_slice(&extend);
+
+        rng.fill_bytes(&mut output[KAPPA_BYTES..]);
 
         Self {
             session_id,
@@ -98,12 +98,12 @@ impl PairwiseMtaRec<MtaRecR0> {
 
     fn encode(&self, beta: &Scalar) -> [u8; COT_BLOCK_SIZE_BYTES] {
         let mut beta_minus_dot_product_bytes = beta.to_owned();
+
         for i in KAPPA..L {
             let i_bit = self.state.output.extract_bit(i);
-            let option_0 = beta_minus_dot_product_bytes;
-            let option_1 = option_0 - self.state.gadget_vector[i];
-            let chosen =
-                Scalar::conditional_select(&option_0, &option_1, Choice::from(i_bit as u8));
+            let option_0 = &beta_minus_dot_product_bytes;
+            let option_1 = option_0 - &self.state.gadget_vector[i];
+            let chosen = Scalar::conditional_select(option_0, &option_1, Choice::from(i_bit as u8));
             beta_minus_dot_product_bytes = chosen;
         }
 
@@ -111,18 +111,20 @@ impl PairwiseMtaRec<MtaRecR0> {
         beta_bytes.reverse();
 
         let mut new_output = self.state.output;
-        new_output[..KAPPA_BYTES].copy_from_slice(beta_bytes.as_ref());
+
+        new_output[..KAPPA_BYTES].copy_from_slice(&beta_bytes);
+
         new_output
     }
 }
 
-impl Round for PairwiseMtaRec<MtaRecR0> {
-    type Input = Scalar;
-    type Output = (PairwiseMtaRec<MtaRecR1>, Round1Output);
+impl PairwiseMtaRec<MtaRecR0> {
+    ///
+    pub fn process(self, beta: &Scalar) -> (PairwiseMtaRec<MtaRecR1>, Round1Output) {
+        let omega = self.encode(beta);
 
-    fn process(self, beta: Self::Input) -> Self::Output {
-        let omega = self.encode(&beta);
-        let (cot_receiver, round1_output) = self.state.cot_receiver.process(omega);
+        let (cot_receiver, round1_output) = self.state.cot_receiver.process(&omega);
+
         let mut hasher = Hasher::new();
         hasher.update(b"SL-DKLS-MTA");
         hasher.update(self.session_id.as_ref());
@@ -135,7 +137,7 @@ impl Round for PairwiseMtaRec<MtaRecR0> {
         hasher.update(b"w_prime");
         hasher.update(round1_output.w_prime.as_ref());
         hasher.update(b"v_prime");
-        for elem in round1_output.v_prime {
+        for elem in &round1_output.v_prime {
             hasher.update(elem.as_ref());
         }
 
@@ -155,34 +157,37 @@ impl Round for PairwiseMtaRec<MtaRecR0> {
     }
 }
 
-impl Round for PairwiseMtaRec<MtaRecR1> {
-    type Input = MtaRound2Output;
-    type Output = Result<[Scalar; 2], String>;
-
-    fn process(self, round2_output: Self::Input) -> Self::Output {
+impl PairwiseMtaRec<MtaRecR1> {
+    ///
+    pub fn process(self, round2_output: MtaRound2Output) -> Result<[Scalar; 2], &'static str> {
         let cot_additive_shares = self
             .state
             .cot_receiver
-            .process(round2_output.cot_round_2_output);
+            .process(&round2_output.cot_round_2_output);
 
         let mut chi = [Scalar::ZERO; 2];
+
         let mut h = Hasher::new();
+
         h.update(self.state.temp_digest.as_ref());
+
         for j in 0..ETA {
+            let scalars = &round2_output.cot_round_2_output.tau[j];
             for k in 0..2 {
                 h.update(format!("row_{}_{}_of_tau", j, k).as_bytes());
-                let b = round2_output.cot_round_2_output.tau[j][k];
-                h.update(b.to_bytes().as_ref());
+                let b = &scalars[k];
+                h.update(&b.to_bytes());
             }
         }
 
         chi.iter_mut().enumerate().for_each(|(k, chi_k)| {
             h.update(format!("chi_{}", k).as_bytes());
             let digest: [u8; 32] = h.finalize().into();
-            *chi_k = U256::from_be_slice(&digest).to_scalar::<Secp256k1>();
+            *chi_k = Scalar::reduce(U256::from_be_slice(&digest));
         });
 
         let mut output_additive_shares = [Scalar::ZERO; 2];
+
         let mut r_hash = Hasher::new();
         r_hash.update(b"SL-DKLS-MTA");
         r_hash.update(self.session_id.as_ref());
@@ -196,7 +201,7 @@ impl Round for PairwiseMtaRec<MtaRecR1> {
             // let mut value_to_hash = -sum_chi_mul_tb;
             let j_bit = self.state.omega.extract_bit(j);
             let option0 = -sum_chi_mul_tb;
-            let option1 = -sum_chi_mul_tb + round2_output.u;
+            let option1 = option0 + *round2_output.u;
 
             let value_to_hash =
                 Scalar::conditional_select(&option0, &option1, Choice::from(j_bit as u8));
@@ -212,30 +217,32 @@ impl Round for PairwiseMtaRec<MtaRecR1> {
         let r_hash_digest: [u8; 32] = r_hash.finalize().into();
 
         if round2_output.r != r_hash_digest {
-            Err("Consistency check failed".into())
+            Err("Consistency check failed")
         } else {
             Ok(output_additive_shares)
         }
     }
 }
+
 ///
 pub struct PairwiseMtaSender<T> {
     session_id: SessionId,
-    seed_ot_results: ReceiverOTSeed,
-    gadget_vec: Vec<Scalar>,
+    gadget_vec: Box<[Scalar; L]>,
     state: T,
 }
+
 ///
 pub struct MtaSendR0 {
     a_hat: Scalar,
-    cot_sender: SoftSpokenOTSender<Init>,
+    cot_sender: SoftSpokenOTSender,
 }
+
 ///
 impl PairwiseMtaSender<MtaSendR0> {
     ///
     pub fn new<R: CryptoRngCore>(
         session_id: SessionId,
-        seed_ot_results: ReceiverOTSeed,
+        seed_ot_results: &ReceiverOTSeed,
         rng: &mut R,
     ) -> Self {
         // TODO: Remove clone?
@@ -243,7 +250,7 @@ impl PairwiseMtaSender<MtaSendR0> {
         let gadget_vec = generate_gadget_vec();
         let a_hat = Scalar::generate_biased(rng);
         Self {
-            seed_ot_results,
+            // seed_ot_results: seed_ot_results.clone(),
             session_id,
             gadget_vec,
             state: MtaSendR0 { a_hat, cot_sender },
@@ -251,12 +258,12 @@ impl PairwiseMtaSender<MtaSendR0> {
     }
 }
 
-impl Round for PairwiseMtaSender<MtaSendR0> {
-    type Input = (Scalar, Scalar, Round1Output);
-
-    type Output = ([Scalar; 2], MtaRound2Output);
-
-    fn process(self, (alpha1, alpha2, round1_output): Self::Input) -> Self::Output {
+impl PairwiseMtaSender<MtaSendR0> {
+    ///
+    pub fn process(
+        self,
+        (alpha1, alpha2, round1_output): (Scalar, Scalar, Round1Output),
+    ) -> ([Scalar; 2], MtaRound2Output) {
         let mut alice_input = [[Scalar::ZERO; 3]; ETA];
 
         alice_input.iter_mut().for_each(|input| {
@@ -268,7 +275,7 @@ impl Round for PairwiseMtaSender<MtaSendR0> {
         let (cot_sender_shares, round2_output) = self
             .state
             .cot_sender
-            .process((round1_output, alice_input))
+            .process((&round1_output, &alice_input))
             .expect("error while processing soft_spoken ot message round 1");
 
         let mut hasher = Hasher::new();
@@ -302,10 +309,11 @@ impl Round for PairwiseMtaSender<MtaSendR0> {
         chi.iter_mut().enumerate().for_each(|(k, chi_k)| {
             hasher.update(format!("chi_{}", k).as_bytes());
             let digest: [u8; 32] = hasher.finalize().into();
-            *chi_k = U256::from_be_bytes(digest).to_scalar::<Secp256k1>();
+            *chi_k = Scalar::reduce(U256::from_be_bytes(digest));
         });
 
         let mut sender_additive_shares = [Scalar::ZERO; 2];
+
         hasher.reset();
 
         hasher.update(b"SL-DKLS-MTA");
@@ -330,7 +338,7 @@ impl Round for PairwiseMtaSender<MtaSendR0> {
         let output = MtaRound2Output {
             r,
             cot_round_2_output: round2_output,
-            u,
+            u: Opaque::from(u),
         };
 
         (sender_additive_shares, output)
@@ -338,18 +346,18 @@ impl Round for PairwiseMtaSender<MtaSendR0> {
 }
 
 /// Round 2 output in Pairwise Mta protocol
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Debug, bincode::Encode, bincode::Decode)]
 pub struct MtaRound2Output {
-    cot_round_2_output: Round2Output,
+    cot_round_2_output: Box<Round2Output>,
     r: [u8; 32],
-    u: Scalar,
+    u: Opaque<Scalar, PF>,
 }
-impl PersistentObject for MtaRound2Output {}
 
 #[cfg(test)]
 mod tests {
-    use k256::Scalar;
-    use sl_mpc_mate::{traits::Round, SessionId};
+    use super::*;
+
+    use sl_mpc_mate::SessionId;
     use sl_oblivious::soft_spoken_mod::generate_all_but_one_seed_ot;
 
     use super::{PairwiseMtaRec, PairwiseMtaSender};
@@ -357,18 +365,25 @@ mod tests {
     #[test]
     fn test_pairwise() {
         let mut rng = rand::thread_rng();
+
         let (sender_ot_seed, receiver_ot_seed) = generate_all_but_one_seed_ot(&mut rng);
+
         let session_id = SessionId::random(&mut rng);
-        let sender = PairwiseMtaSender::new(session_id, receiver_ot_seed, &mut rng);
-        let receiver = PairwiseMtaRec::new(session_id, sender_ot_seed, &mut rng);
+
+        let sender = PairwiseMtaSender::new(session_id, &receiver_ot_seed, &mut rng);
+
+        let receiver = PairwiseMtaRec::new(session_id, &sender_ot_seed, &mut rng);
+
         let (alpha1, alpha2, beta) = (
             Scalar::generate_biased(&mut rng),
             Scalar::generate_biased(&mut rng),
             Scalar::generate_biased(&mut rng),
         );
 
-        let (receiver, round1_output) = receiver.process(beta);
+        let (receiver, round1_output) = receiver.process(&beta);
+
         let (sender_shares, round2_output) = sender.process((alpha1, alpha2, round1_output));
+
         let receiver_shares = receiver.process(round2_output).unwrap();
 
         let t_0 = receiver_shares[0] + sender_shares[0];

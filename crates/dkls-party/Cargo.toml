@@ -1,0 +1,38 @@
+[package]
+name = "dkls-party"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+dkls23 = { path = "../.." }
+msg-relay-client = { path = "../msg-relay-client" }
+
+sl-mpc-mate = { workspace = true }
+sl-oblivious = { workspace = true }
+
+anyhow = { workspace = true }
+bincode = { workspace = true }
+rand = { workspace = true }
+k256 = { workspace = true, features= ["ecdsa", "serde"]}
+tokio = { workspace = true, features = ["full"] }
+sha2 = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+
+reqwest = { version = "0.11", features = ["json"] }
+
+xflags = "0.3"
+url = "2.3"
+serde = { version = "1", features = ["derive"] }
+hex = "0.4.3"
+
+tiny-keccak = { version = "2.0.2", features = ["keccak"] }
+axum = "0.6"
+tower = { version = "0.4", features = ["util", "timeout", "load-shed", "limit"] }
+tower-http = { version = "0.3.0", features = [
+    "limit",
+    "trace",
+    "cors"
+] }
+tower-layer = "0.3.2"
+base64 = "0.13"

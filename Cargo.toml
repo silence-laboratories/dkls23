@@ -6,17 +6,53 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-# TODO: update with git path later
-sl-mpc-mate = {git = "https://gitlab.com/com.silencelaboratories/sl-crypto", branch = "main", features =["nacl"]}
-sl-oblivious = {git = "https://gitlab.com/com.silencelaboratories/sl-crypto", branch = "main" }
-k256 = {version = "0.13", features= ["ecdsa", "serde"]}
-merlin = "3.0.0"
-rand = "0.8"
-serde = {version = "1.0", features = ["derive"]}
-rayon ="1"
-serde_arrays = "0.1.0"
-thiserror = "1"
-
+bincode.workspace = true
+sl-mpc-mate.workspace = true
+sl-oblivious.workspace = true
+digest.workspace = true
+sha2.workspace = true
+k256 = { workspace = true, features= [ "ecdsa" ] }
+merlin.workspace = true
+rand.workspace = true
+rand_chacha.workspace = true
+rayon.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tokio = { workspace = true, features = ["rt", "sync", "macros" ] }
 
 [dev-dependencies]
 hex ="0.4.3"
+tokio = { workspace = true, features = ["rt", "sync", "macros", "rt-multi-thread" ] }
+
+[workspace]
+members = [
+  ".",
+  "crates/dkls-party",
+  "crates/msg-relay",
+  "crates/msg-relay-svc",
+  "crates/msg-relay-client",
+  "wrapper/node",
+  # "wrapper/wasm"
+]
+
+[workspace.dependencies]
+bincode = "2.0.0-rc.3"
+digest = "0.10.7"
+sha2 = "0.10.7"
+k256 = "0.13"
+merlin = "3.0.0"
+rand = "0.8"
+rand_chacha = "0.3"
+rayon ="1"
+thiserror = "1"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+tokio = "1.32"
+anyhow = "1"
+sl-mpc-mate  = { git = "https://gitlab.com/com.silencelaboratories/sl-crypto", rev = "msg-relay/v0.1" }
+sl-oblivious = { git = "https://gitlab.com/com.silencelaboratories/sl-crypto", rev = "msg-relay/v0.1" }
+
+[profile.release]
+# lto = true
+strip = "symbols"
+# debug = true

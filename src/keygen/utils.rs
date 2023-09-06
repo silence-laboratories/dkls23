@@ -1,90 +1,37 @@
+#![allow(unused_imports)]
+
+use std::array;
+
 use k256::{NonZeroScalar, ProjectivePoint};
-use rayon::prelude::{IntoParallelIterator, ParallelIterator};
-use sl_mpc_mate::{
-    cooridinator::Coordinator,
-    math::birkhoff_coeffs,
-    nacl::EncryptedData,
-    recv_broadcast,
-    traits::{HasFromParty, PersistentObject, Round},
-};
+use rand::prelude::*;
+// use rayon::prelude::*;
+use sl_mpc_mate::{math::birkhoff_coeffs, message::*};
+
+#[cfg(test)]
 use sl_oblivious::{
     soft_spoken::{ReceiverOTSeed, SenderOTSeed},
-    soft_spoken_mod::{KAPPA_DIV_SOFT_SPOKEN_K, SOFT_SPOKEN_K, SOFT_SPOKEN_Q},
+    soft_spoken_mod::{KAPPA_DIV_SOFT_SPOKEN_K, SOFT_SPOKEN_Q},
 };
 
-use crate::utils::Init;
+use crate::{
+    setup::keygen::{SetupBuilder, ValidatedSetup},
+    setup::SETUP_MESSAGE_TAG,
+    utils::Init,
+};
 
-use super::{messages::Keyshare, KeygenError, KeygenParty, PartyKeys, R6};
-///
-pub fn setup_keygen<const T: usize, const N: usize>(
-    n_i_list: Option<[usize; N]>,
-    soft_spoken_k: u8,
-) -> Result<(Vec<KeygenParty<Init>>, Coordinator), KeygenError> {
-    let mut coord = Coordinator::new(N, 4 + 4);
-    let mut rng = rand::thread_rng();
-    // Initializing the keygen for each party.
-
-    let actors = n_i_list
-        .unwrap_or([0; N])
-        .into_iter()
-        .map(|n_i| {
-            // Generate or load from persistent storage
-            // set of party's keys
-            let party_keys = PartyKeys::new(&mut rng);
-
-            // extract public keys
-            let actor_pubkeys = party_keys.public_keys();
-
-            // and send them to the coordinator and get
-            // assigned pid in range 0..N
-            let pid = coord.send(0, actor_pubkeys.to_bytes().unwrap()).unwrap();
-
-            KeygenParty::new(T, N, pid, n_i, &party_keys, soft_spoken_k, &mut rng).unwrap()
-        })
-        .collect();
-
-    Ok((actors, coord))
-}
-
-/// Execute one round of DKG protocol, execute parties in parallel
-pub fn run_round<I, N, R, M, E>(coord: &mut Coordinator, actors: Vec<R>, round: usize) -> Vec<N>
-where
-    R: Round<Input = Vec<I>, Output = std::result::Result<(N, M), E>>,
-    I: PersistentObject + Clone + Sync,
-    M: PersistentObject,
-    E: std::fmt::Debug,
-    Vec<R>: IntoParallelIterator<Item = R>,
-    N: Send,
-{
-    let msgs = recv_broadcast(coord, round);
-
-    let (actors, msgs): (Vec<N>, Vec<M>) = actors
-        .into_par_iter()
-        .map(|actor| {
-            let (actor, msg) = actor.process(msgs.clone()).unwrap();
-
-            (actor, msg)
-        })
-        .unzip();
-
-    if round < coord.max_round() {
-        msgs.iter().for_each(|msg| {
-            coord.send(round + 1, msg.to_bytes().unwrap()).unwrap();
-        })
-    }
-    actors
-}
-
-pub(crate) trait HasVsotMsg: HasFromParty {
-    fn get_vsot_msg(&self, party_id: usize) -> &EncryptedData;
-}
+use super::{messages::Keyshare, KeygenError};
 
 /// Get the index of the message for the given party id.
-/// This is indexing is when a party wants to get message from id list, it's own id is not included in the list.
+///
+/// This is indexing is when a party wants to get message
+/// from id list, it's own id is not included in the list.
+///
 /// # Note
-/// For e.g if party id is 1 and there are 3 parties, then the id list will be `[0, 2]` and the index of the vsot message
-/// for party 0 will be 0, and for party 2 will be 1.
-pub fn get_idx_from_id(current_party_id: usize, for_party_id: usize) -> usize {
+/// For e.g if party id is 1 and there are 3 parties, then
+/// the id list will be `[0, 2]` and the index of the vsot
+/// message for party 0 will be 0, and for party 2 will be 1.
+///
+pub(crate) fn get_idx_from_id(current_party_id: u8, for_party_id: u8) -> u8 {
     if for_party_id > current_party_id {
         for_party_id - 1
     } else {
@@ -92,34 +39,10 @@ pub fn get_idx_from_id(current_party_id: usize, for_party_id: usize) -> usize {
     }
 }
 
-/// Utility function to process all rounds of keygen
-pub fn process_keygen<const T: usize, const N: usize>(
-    n_i_list: Option<[usize; N]>,
-) -> ([KeygenParty<R6>; N], [Keyshare; N]) {
-    let (parties, mut coord) = setup_keygen::<T, N>(n_i_list, SOFT_SPOKEN_K as u8).unwrap();
-    let parties1 = run_round(&mut coord, parties, 0);
-    let parties2 = run_round(&mut coord, parties1, 1);
-    let parties3 = run_round(&mut coord, parties2, 2);
-    let parties4 = run_round(&mut coord, parties3, 3);
-    let parties5 = run_round(&mut coord, parties4, 4);
-    let parties6 = run_round(&mut coord, parties5, 5);
-    let keyshares = run_round(&mut coord, parties6.clone(), 6);
-
-    (
-        parties6
-            .try_into()
-            .map_err(|_| "Failed to convert parties to array")
-            .unwrap(),
-        keyshares
-            .try_into()
-            .map_err(|_| "Failed to convert keyshares to array")
-            .unwrap(),
-    )
-}
-
+#[allow(dead_code)]
 pub(crate) fn check_secret_recovery(
     x_i_list: &[NonZeroScalar],
-    rank_list: &[usize],
+    rank_list: &[u8],
     big_s_list: &[ProjectivePoint],
     public_key: &ProjectivePoint,
 ) -> Result<(), KeygenError> {
@@ -128,13 +51,13 @@ pub(crate) fn check_secret_recovery(
         .iter()
         .zip(rank_list)
         .zip(big_s_list)
-        .collect::<Vec<((&NonZeroScalar, &usize), &ProjectivePoint)>>();
+        .collect::<Vec<((&NonZeroScalar, &u8), &ProjectivePoint)>>();
 
     party_params_list.sort_by_key(|((_, n_i), _)| *n_i);
 
     let params = party_params_list
         .iter()
-        .map(|((x_i, n_i), _)| (**x_i, **n_i))
+        .map(|((x_i, n_i), _)| (**x_i, **n_i as usize))
         .collect::<Vec<_>>();
 
     let sorted_big_s_list = party_params_list
@@ -155,23 +78,99 @@ pub(crate) fn check_secret_recovery(
         .ok_or(KeygenError::PublicKeyMismatch)
 }
 
-pub(crate) fn check_all_but_one_seeds(
-    seed_ot_sender: &SenderOTSeed,
-    seed_ot_receiver: &ReceiverOTSeed,
-) {
-    for i in 0..KAPPA_DIV_SOFT_SPOKEN_K {
-        let sender_pad = &seed_ot_sender.one_time_pad_enc_keys[i];
-        let receiver_pad = &seed_ot_receiver.one_time_pad_dec_keys[i];
-        let choice = seed_ot_receiver.random_choices[i];
+// #[cfg(test)]
+// pub(crate) fn check_all_but_one_seeds(
+//     seed_ot_sender: &SenderOTSeed,
+//     seed_ot_receiver: &ReceiverOTSeed,
+// ) {
+//     for i in 0..KAPPA_DIV_SOFT_SPOKEN_K {
+//         let sender_pad = &seed_ot_sender.one_time_pad_enc_keys[i];
+//         let receiver_pad = &seed_ot_receiver.one_time_pad_dec_keys[i];
+//         let choice = seed_ot_receiver.random_choices[i];
 
-        println!("sender pad len:{}", sender_pad.len());
-        println!("receiver pad len:{}", receiver_pad.len());
+//         println!("sender pad len:{}", sender_pad.len());
+//         println!("receiver pad len:{}", receiver_pad.len());
 
-        for j in 0..SOFT_SPOKEN_Q {
-            if j as u8 == choice {
-                continue;
+//         for j in 0..SOFT_SPOKEN_Q {
+//             if j as u8 == choice {
+//                 continue;
+//             }
+//             assert_eq!(sender_pad[j], receiver_pad[j]);
+//         }
+//     }
+// }
+
+/// Generate ValidatedSetup and seed for DKG parties
+pub fn setup_keygen(t: u8, n: u8, n_i_list: Option<&[u8]>) -> Vec<(ValidatedSetup, [u8; 32])> {
+    let n_i_list = if let Some(n_i_list) = n_i_list {
+        assert_eq!(n_i_list.len(), n as usize);
+        n_i_list.into()
+    } else {
+        vec![0, n]
+    };
+
+    let mut rng = rand::thread_rng();
+
+    let instance = InstanceId::from(rng.gen::<[u8; 32]>());
+
+    // signing key to sing the setup message
+    let setup_sk = SigningKey::from_bytes(&rng.gen());
+    let setup_vk = setup_sk.verifying_key();
+    let setup_pk = setup_vk.to_bytes();
+
+    let setup_msg_id = MsgId::new(&instance, &setup_pk, None, SETUP_MESSAGE_TAG);
+
+    // a signing key for each party.
+    let party_sk: Vec<SigningKey> = (0..n).map(|_| SigningKey::from_bytes(&rng.gen())).collect();
+
+    // Create a setup message. In a real world,
+    // this part will be created by an intiator.
+    // The setup message contail public keys of
+    // all parties that will participate in this
+    // protocol execution.
+    let mut setup = n_i_list
+        .iter()
+        .enumerate()
+        .fold(SetupBuilder::new(), |setup, (idx, rank)| {
+            let vk = party_sk[idx].verifying_key();
+            setup.add_party(*rank, &vk)
+        })
+        .build(&setup_msg_id, 100, t, &setup_sk)
+        .unwrap();
+
+    party_sk
+        .into_iter()
+        .map(|party_sk| {
+            ValidatedSetup::decode(&mut setup, &instance, &setup_vk, party_sk, |_, _, _| true)
+                .unwrap()
+        })
+        .map(|setup| (setup, rng.gen()))
+        .collect::<Vec<_>>()
+}
+
+/// Execute DGK for given parameters
+pub async fn gen_keyshares(t: u8, n: u8, n_i_list: Option<&[u8]>) -> Vec<Keyshare> {
+    let coord = sl_mpc_mate::coord::SimpleMessageRelay::new();
+
+    let mut parties = tokio::task::JoinSet::new();
+    for (setup, seed) in setup_keygen(t, n, n_i_list).into_iter() {
+        parties.spawn(crate::keygen::run(setup, seed, coord.connect()));
+    }
+
+    let mut shares = vec![];
+
+    while let Some(fini) = parties.join_next().await {
+        if let Err(ref err) = fini {
+            println!("error {err:?}");
+        } else {
+            match fini.unwrap() {
+                Err(err) => panic!("err {:?}", err),
+                Ok(share) => shares.push(share),
             }
-            assert_eq!(sender_pad[j], receiver_pad[j]);
         }
     }
+
+    shares.sort_by_key(|share| share.party_id);
+
+    shares
 }

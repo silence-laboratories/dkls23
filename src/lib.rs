@@ -1,25 +1,29 @@
 //! DKLs23 rust implementation
 #![deny(missing_docs, unsafe_code)]
 
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
+
 /// DKLs23 keygen protocol
 pub mod keygen;
 
 /// DKLs23 signing protocol
 pub mod sign;
 
+/// Setup message creation/parsing
+pub mod setup;
+
+pub use sl_mpc_mate::{coord::MessageRelay, message::*};
+
 /// Utilities
 pub mod utils {
     use k256::{
         ecdsa::{signature::hazmat::PrehashVerifier, Signature, VerifyingKey},
-        elliptic_curve::{generic_array::GenericArray, group::GroupEncoding},
+        // elliptic_curve::{generic_array::GenericArray, group::GroupEncoding},
         sha2::{Digest, Sha256},
-        ProjectivePoint,
+        // ProjectivePoint,
     };
-    use sl_mpc_mate::{
-        nacl::{BoxPrivKey, BoxPubkey, EncryptedData},
-        traits::PersistentObject,
-        SessionId,
-    };
+    use sl_mpc_mate::SessionId;
 
     /// Empty Initial state of a state machine
     pub struct Init;
@@ -48,24 +52,25 @@ pub mod utils {
         hasher.finalize().into()
     }
 
-    /// Decrypts the given ciphertext using the given sender public key and recipient secret key.
-    pub fn decrypt_point(
-        ciphertext: &EncryptedData,
-        sender_pubkey: &BoxPubkey,
-        recipient_secret_key: &BoxPrivKey,
-    ) -> Result<ProjectivePoint, String> {
-        let bytes = ciphertext
-            .enc_data
-            .decrypt_to_vec(&ciphertext.nonce, sender_pubkey, recipient_secret_key)
-            .map_err(|e| e.to_string())?;
+    // /// Decrypts the given ciphertext using the given sender public key and recipient secret key.
+    // pub fn decrypt_point(
+    //     ciphertext: &EncryptedData,
+    //     sender_pubkey: &BoxPubkey,
+    //     recipient_secret_key: &BoxPrivKey,
+    // ) -> Result<ProjectivePoint, String> {
+    //     let bytes = ciphertext
+    //         .enc_data
+    //         .decrypt_to_vec(&ciphertext.nonce, sender_pubkey, recipient_secret_key)
+    //         .map_err(|e| e.to_string())?;
 
-        let option = ProjectivePoint::from_bytes(GenericArray::from_slice(&bytes));
-        if option.is_none().unwrap_u8() == 1 {
-            return Err("Could not decrypt point".to_string());
-        }
+    //     let option = ProjectivePoint::from_bytes(GenericArray::from_slice(&bytes));
+    //     if option.is_none().unwrap_u8() == 1 {
+    //         return Err("Could not decrypt point".to_string());
+    //     }
 
-        Ok(option.unwrap())
-    }
+    //     Ok(option.unwrap())
+    // }
+
     /// Parse the raw signature (r, s) into a Signature object.
     pub fn parse_raw_sign(r: &[u8], s: &[u8]) -> Result<Signature, k256::ecdsa::Error> {
         // Pad r and s to 32 bytes
@@ -79,6 +84,7 @@ pub mod utils {
 
         Signature::try_from(raw_sign.as_slice())
     }
+
     /// Verify the ecdsa signature given the message hash, r, s and public key.
     /// # ⚠️ Security Warning
     /// If prehash is something other than the output of a cryptographically secure hash function,
@@ -94,3 +100,10 @@ pub mod utils {
         Ok(())
     }
 }
+
+/// Seed for our RNG
+pub type Seed = <ChaCha20Rng as SeedableRng>::Seed;
+
+///
+#[derive(Debug)]
+pub struct BadPartyIndex;

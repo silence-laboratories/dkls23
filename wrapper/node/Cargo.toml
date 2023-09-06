@@ -1,0 +1,20 @@
+[package]
+edition = "2021"
+name = "dkls23-node"
+version = "0.0.0"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+sl-mpc-mate = { path = "../../../sl-crypto/crates/sl-mpc-mate" }
+dkls23 = { path = "../.." }
+rand = "0.8"
+k256 = {version = "0.13", features= ["ecdsa", "serde"]}
+
+# Default enable napi4 feature, see https://nodejs.org/api/n-api.html#node-api-version-matrix
+napi = { version = "2.12.2", default-features = false, features = ["napi4"] }
+napi-derive = "2.12.2"
+
+[build-dependencies]
+napi-build = "2.0.1"

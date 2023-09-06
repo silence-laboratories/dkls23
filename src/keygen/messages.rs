@@ -1,236 +1,154 @@
-use k256::{AffinePoint, NonZeroScalar, ProjectivePoint, Scalar, Secp256k1};
-use serde::{Deserialize, Serialize};
-use sl_mpc_mate::{
-    impl_basemessage,
-    math::GroupPolynomial,
-    nacl::{EncryptedData, Signature},
-    traits::{HasFromParty, PersistentObject},
-    HashBytes, SessionId,
+use k256::{
+    elliptic_curve::{group::GroupEncoding, CurveArithmetic},
+    AffinePoint, NonZeroScalar, ProjectivePoint, Scalar, Secp256k1,
 };
+
+use sl_mpc_mate::{math::GroupPolynomial, message::*, HashBytes, SessionId};
+
 use sl_oblivious::{
-    serialization::serde_projective_point,
-    soft_spoken::{ReceiverOTSeed, SenderOTSeed},
+    soft_spoken::{PPRFOutput, ReceiverOTSeed, SenderOTSeed},
+    vsot::{VSOTMsg2, VSOTMsg5},
     zkproofs::DLogProof,
 };
 
-use super::{get_idx_from_id, HasVsotMsg};
-
-// TODO: Change all usizes to u32 or u64
-
 /// Type for the key generation protocol's message 1.
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(bincode::Encode, bincode::Decode)]
 pub struct KeygenMsg1 {
-    /// Participant Id of the sender
-    pub from_party: usize,
-
     /// Sesssion id
-    pub session_id: SessionId,
+    pub session_id: Opaque<SessionId>,
 
     /// Participant point x_i
-    pub x_i: NonZeroScalar,
-
-    /// Hierarchical level of the participant. In the range `[0, t-1]`.
-    pub rank: usize,
+    pub x_i: Opaque<Scalar, PF>, // FIXME: NonZeroScalar,
 
     /// Participants commitment
-    pub commitment: HashBytes,
+    pub commitment: Opaque<HashBytes>,
 
-    /// Participants signature of the message
-    #[serde(with = "serde_arrays")]
-    pub signature: Signature,
+    /// Participant encryption public key
+    pub enc_pk: Opaque<[u8; 32]>,
 }
 
 /// Type for the key generation protocol's message 2.
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct KeygenMsg2 {
-    /// Participant Id of the sender
-    pub from_party: usize,
-
-    /// Participants signature of the message
-    #[serde(with = "serde_arrays")]
-    pub signature: Signature,
-
+#[derive(bincode::Encode, bincode::Decode)]
+#[bincode(
+    bounds = "C: CurveArithmetic, C::ProjectivePoint: GroupEncoding",
+    // borrow_decode_bounds = "'__de: 'a, C: CurveArithmetic, C::ProjectivePoint: GroupEncoding"
+)]
+pub struct KeygenMsg2<C = Secp256k1>
+where
+    C: CurveArithmetic,
+    C::ProjectivePoint: GroupEncoding,
+{
     /// Sesssion id
-    pub session_id: SessionId,
+    pub session_id: Opaque<SessionId>,
 
     /// Random 32 bytes
-    pub r_i: [u8; 32],
+    pub r_i: Opaque<[u8; 32]>,
 
     /// Participants Fik values
-    pub big_f_i_vector: GroupPolynomial<Secp256k1>,
-
-    /// Encrypted VSOT msg 1
-    pub enc_vsot_msgs1: Vec<EncryptedData>,
+    pub big_f_i_vector: GroupPolynomial<C>,
 
     /// Participants dlog proof
     pub dlog_proofs_i: Vec<DLogProof>,
 }
 
 /// Type for the key generation protocol's message 3.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Clone, Debug, bincode::Encode, bincode::Decode)]
 pub struct KeygenMsg3 {
-    /// Participant Id of the sender
-    pub from_party: usize,
-
     /// Session id
-    pub session_id: SessionId,
+    pub session_id: Opaque<SessionId>,
 
     /// Participants Fi values
     pub big_f_vec: GroupPolynomial<Secp256k1>,
 
-    /// Encrypted fi values
-    pub encrypted_d_i_vec: Vec<EncryptedData>,
+    ///
+    pub d_i: Opaque<Scalar, PF>,
 
-    /// Encrypted VSOT msg 2
-    pub enc_vsot_msgs2: Vec<EncryptedData>,
-
-    /// Participants signature of the message
-    #[serde(with = "serde_arrays")]
-    pub signature: Signature,
-}
-
-impl HasVsotMsg for KeygenMsg2 {
-    fn get_vsot_msg(&self, party_id: usize) -> &EncryptedData {
-        &self.enc_vsot_msgs1[get_idx_from_id(self.get_pid(), party_id)]
-    }
-}
-
-// TODO: Remove multiple impls?
-impl HasVsotMsg for KeygenMsg3 {
-    fn get_vsot_msg(&self, party_id: usize) -> &EncryptedData {
-        &self.enc_vsot_msgs2[get_idx_from_id(self.get_pid(), party_id)]
-    }
-}
-
-impl HasVsotMsg for KeygenMsg4 {
-    fn get_vsot_msg(&self, party_id: usize) -> &EncryptedData {
-        &self.enc_vsot_msgs3[get_idx_from_id(self.get_pid(), party_id)]
-    }
-}
-
-impl HasVsotMsg for KeygenMsg5 {
-    fn get_vsot_msg(&self, party_id: usize) -> &EncryptedData {
-        &self.enc_vsot_msgs4[get_idx_from_id(self.get_pid(), party_id)]
-    }
-}
-
-impl HasVsotMsg for KeygenMsg6 {
-    fn get_vsot_msg(&self, party_id: usize) -> &EncryptedData {
-        &self.enc_vsot_msgs5[get_idx_from_id(self.get_pid(), party_id)]
-    }
+    /// VSOT msg 2
+    pub vsot_msg2: VSOTMsg2,
 }
 
 /// Type for the key generation protocol's message 4.
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Clone, Debug, bincode::Encode, bincode::Decode)]
 pub struct KeygenMsg4 {
-    /// Participant Id of the sender
-    pub from_party: usize,
-
     /// Session id
-    pub session_id: SessionId,
+    pub session_id: Opaque<SessionId>,
 
     /// Big s_i value
-    #[serde(with = "serde_projective_point")]
-    pub big_s_i: ProjectivePoint,
+    pub big_s_i: Opaque<ProjectivePoint, GR>,
 
     /// Public key
-    #[serde(with = "serde_projective_point")]
-    pub public_key: ProjectivePoint,
+    pub public_key: Opaque<ProjectivePoint, GR>,
 
     /// dlog proof
     pub dlog_proof: DLogProof,
-
-    /// Encrypted VSOT msg 3
-    pub enc_vsot_msgs3: Vec<EncryptedData>,
-
-    /// Participants signature of the message
-    #[serde(with = "serde_arrays")]
-    pub signature: Signature,
+    // /// Encrypted VSOT msg 3
+    // pub enc_vsot_msgs3: Vec<EncryptedData>,
 }
 
 /// Type for the key generation protocol's message 5.
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct KeygenMsg5 {
-    /// Participant Id of the sender
-    pub from_party: usize,
-
-    /// Session id
-    pub session_id: SessionId,
-
-    /// Encrypted VSOT msg 3
-    pub enc_vsot_msgs4: Vec<EncryptedData>,
-
-    /// Participants signature of the message
-    #[serde(with = "serde_arrays")]
-    pub signature: Signature,
-}
-/// Type for the key generation protocol's message 5.
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Clone, bincode::Encode, bincode::Decode)]
 pub struct KeygenMsg6 {
-    /// Participant Id of the sender
-    pub from_party: usize,
-
     /// Session id
-    pub session_id: SessionId,
+    pub session_id: Opaque<SessionId>,
 
-    /// Encrypted VSOT msg 3
-    pub enc_vsot_msgs5: Vec<EncryptedData>,
+    /// VSOT msg 5
+    pub vsot_msg5: VSOTMsg5,
 
     /// Encrypted pprf outputs
-    pub enc_pprf_outputs: Vec<EncryptedData>,
+    pub pprf_output: Vec<PPRFOutput>,
 
-    /// Encrypted seed_i_j values
-    pub enc_seed_i_j_list: Vec<EncryptedData>,
+    /// seed_i_j values
+    // pub enc_seed_i_j_list: Vec<EncryptedData>,
+    pub seed_i_j: Option<[u8; 32]>,
+}
 
-    /// Participants signature of the message
-    #[serde(with = "serde_arrays")]
-    pub signature: Signature,
+#[derive(Clone, bincode::Encode, bincode::Decode)]
+/// Final message of the key generation protocol.
+pub struct KeyGenCompleteMsg {
+    /// Public key of the generated key.
+    pub public_key: Opaque<AffinePoint, GR>,
 }
 
 /// Keyshare of a party.
 #[allow(unused)]
+#[derive(Clone, bincode::Encode, bincode::Decode)]
 pub struct Keyshare {
-    /// Threshold value
-    pub threshold: usize,
+    /// A marker
+    pub magic: u32,
+
     /// Total number of parties
-    pub total_parties: usize,
+    pub total_parties: u8,
+
+    /// Threshold value
+    pub threshold: u8,
+
+    /// Rank of each party
+    pub rank_list: Vec<u8>,
+
     /// Party Id of the sender
-    pub party_id: usize,
-    pub(crate) x_i: NonZeroScalar,
-    /// Participants rank
-    pub rank: usize,
-    pub(crate) s_i: Scalar,
+    pub party_id: u8,
+
     /// Public key of the generated key.
-    pub public_key: ProjectivePoint,
-    pub(crate) big_s_list: Vec<ProjectivePoint>,
-    pub(crate) x_i_list: Vec<NonZeroScalar>,
-    pub(crate) rank_list: Vec<usize>,
+    pub public_key: Opaque<ProjectivePoint, GR>,
+
     ///
     pub seed_ot_receivers: Vec<ReceiverOTSeed>,
+
     ///
     pub seed_ot_senders: Vec<SenderOTSeed>,
+
     /// Seed values sent to the other parties
     pub sent_seed_list: Vec<[u8; 32]>,
+
     /// Seed values received from the other parties
     pub rec_seed_list: Vec<[u8; 32]>,
+
+    pub(crate) s_i: Opaque<Scalar, PF>,
+    pub(crate) big_s_list: Vec<Opaque<ProjectivePoint, GR>>,
+    pub(crate) x_i_list: Vec<Opaque<NonZeroScalar, NZ>>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-/// Final message of the key generation protocol.
-pub struct KeyGenCompleteMsg {
-    /// Participant Id of the sender
-    pub from_party: usize,
-
-    /// Public key of the generated key.
-    pub public_key: AffinePoint,
+impl Keyshare {
+    /// Identified of key share data
+    pub const MAGIC: u32 = 1u32;
 }
-
-impl PersistentObject for KeygenMsg1 {}
-impl PersistentObject for KeygenMsg2 {}
-impl PersistentObject for KeygenMsg3 {}
-impl PersistentObject for KeygenMsg4 {}
-impl PersistentObject for KeygenMsg5 {}
-impl PersistentObject for KeygenMsg6 {}
-impl PersistentObject for KeyGenCompleteMsg {}
-
-impl_basemessage!(KeygenMsg1, KeygenMsg2, KeygenMsg3, KeygenMsg4, KeygenMsg5, KeygenMsg6);
