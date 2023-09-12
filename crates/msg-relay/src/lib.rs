@@ -18,7 +18,6 @@ use axum::{
 
 use sl_mpc_mate::message::*;
 
-// #[derive(PartialOrd)]
 struct Expire(Instant, MsgId, Kind);
 
 impl PartialEq for Expire {
@@ -46,18 +45,27 @@ enum MsgEntry {
     Ready(Vec<u8>),
 }
 
-pub type AppState = Arc<Mutex<AppStateInner>>;
+pub type AppState<F> = Arc<Mutex<AppStateInner<F>>>;
 
-pub struct AppStateInner {
+pub struct AppStateInner<F> {
     expire: BinaryHeap<Expire>,
     messages: HashMap<MsgId, MsgEntry>,
+    total_size: u64,
+    total_count: u64,
+    enqueue: F,
 }
 
-impl AppStateInner {
-    pub fn new() -> Self {
+impl<F> AppStateInner<F>
+where
+    F: FnMut(Vec<u8>) + Send + 'static,
+{
+    pub fn new(enqueue: F) -> Self {
         Self {
             expire: BinaryHeap::new(),
             messages: HashMap::new(),
+            enqueue,
+            total_size: 0,
+            total_count: 0,
         }
     }
 
@@ -80,37 +88,39 @@ impl AppStateInner {
 
             tracing::info!("expire {:?} {:X}", kind, id);
 
-            match self.messages.entry(id) {
-                Entry::Occupied(ocp) => match ocp.get() {
+            if let Entry::Occupied(ocp) = self.messages.entry(id) {
+                match ocp.get() {
                     MsgEntry::Ready(_) => {
-                        if matches!(kind, Kind::Pub) {
+                        if kind == Kind::Pub {
                             ocp.remove();
                         }
                     }
 
                     MsgEntry::Waiters((expire, _)) => {
-                        if matches!(kind, Kind::Ask) && *expire <= now {
+                        if kind == Kind::Ask && *expire <= now {
                             ocp.remove();
                         }
                     }
-                },
-
-                // FIXME: report error?
-                _ => {}
+                }
             }
         }
     }
 
     pub fn handle_message(
         &mut self,
-        hdr: MsgHdr,
         msg: Vec<u8>,
-        tx: &mpsc::Sender<Vec<u8>>,
+        tx: Option<&mpsc::Sender<Vec<u8>>>,
     ) {
-        let MsgHdr { id, ttl, kind } = hdr;
+        let MsgHdr { id, ttl, kind } = match MsgHdr::from(&msg) {
+            Some(hdr) => hdr,
+            None => return, // TODO report invalid message?
+        };
 
         let now = Instant::now();
         let expire = now + ttl;
+
+        self.total_size += msg.len() as u64;
+        self.total_count += 1;
 
         tracing::info!("handle {:X} {:?} {}", id, kind, msg.len());
 
@@ -124,24 +134,27 @@ impl AppStateInner {
                         if matches!(kind, Kind::Ask) {
                             // got an ASK for a Ready message
                             // send the message immediately
-                            let tx = tx.clone();
-                            let msg = msg.clone();
-                            tokio::spawn(async move {
-                                // ignore send error
-                                let _ = tx.send(msg).await;
-                            });
+                            if let Some(tx) = tx.cloned() {
+                                let msg = msg.clone();
+                                tokio::spawn(async move {
+                                    // ignore send error
+                                    let _ = tx.send(msg).await;
+                                });
+                            }
                         } else {
                             // ignore the duplicate message
+                            // TODO report duplicate message?
                         }
                     }
 
                     MsgEntry::Waiters((prev, b)) => {
                         if matches!(kind, Kind::Ask) {
                             // join other waiters
-                            if *prev < expire {
-                                *prev = expire;
+                            if let Some(tx) = tx.cloned() {
+                                *prev = expire.max(*prev);
+                                b.push(tx);
+                                (self.enqueue)(msg);
                             }
-                            b.push(tx.clone());
                         } else {
                             // wake up all waiters
                             for s in b.drain(..) {
@@ -152,7 +165,7 @@ impl AppStateInner {
                             }
                             // and replace with a Read message
                             ocp.insert(MsgEntry::Ready(msg));
-                        }
+                        };
 
                         // remember to cleanup this entry later
                         self.cleanup_later(id, expire, kind);
@@ -163,22 +176,26 @@ impl AppStateInner {
             Entry::Vacant(vac) => {
                 if matches!(kind, Kind::Ask) {
                     // This is the first ASK for the message
-                    vac.insert(MsgEntry::Waiters((
-                        expire,
-                        vec![tx.clone()],
-                    )));
+                    if let Some(tx) = tx.cloned() {
+                        vac.insert(MsgEntry::Waiters((
+                            expire,
+                            vec![tx],
+                        )));
+
+                        (self.enqueue)(msg);
+                    }
                 } else {
                     vac.insert(MsgEntry::Ready(msg));
-                }
+                };
 
                 self.cleanup_later(id, expire, kind);
             }
-        }
+        };
     }
 }
 
-pub async fn handler(
-    State(state): State<AppState>,
+pub async fn handler<F: FnMut(Vec<u8>) + Send + 'static>(
+    State(state): State<AppState<F>>,
     ws: WebSocketUpgrade,
 ) -> Response {
     ws.on_upgrade(|socket| async move {
@@ -201,15 +218,19 @@ pub async fn handler(
                 continue; // skip unknown message
             };
 
-            let hdr = if let Some(hdr) = MsgHdr::from(&msg) {
-                hdr
-            } else {
-                continue; // skip bad messages
-            };
-
-            state.lock().unwrap().handle_message(hdr, msg, &tx);
+            state.lock().unwrap().handle_message(msg, Some(&tx));
         }
     })
+}
+
+pub async fn stats<F>(State(state): State<AppState<F>>) -> String {
+    let (size, count) = {
+        let state = state.lock().unwrap();
+
+        (state.total_size, state.total_count)
+    };
+
+    format!("{} {}", size, count)
 }
 
 #[cfg(test)]
@@ -227,12 +248,12 @@ mod tests {
     #[tokio::test]
     async fn handle_msg() {
         let (tx, _rx) = mpsc::channel::<Vec<u8>>(16);
-        let mut app = AppStateInner::new();
+        let mut app = AppStateInner::new(|_| {});
 
         let msg = dummy_msg(10, 100);
 
-        let hdr = MsgHdr::from(&msg).unwrap();
+        let _hdr = MsgHdr::from(&msg).unwrap();
 
-        app.handle_message(hdr, msg, &tx);
+        app.handle_message(msg, Some(&tx));
     }
 }
