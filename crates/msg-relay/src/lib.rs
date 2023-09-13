@@ -199,27 +199,39 @@ pub async fn handler<F: FnMut(Vec<u8>) + Send + 'static>(
     ws: WebSocketUpgrade,
 ) -> Response {
     ws.on_upgrade(|socket| async move {
+        // TODO make buffer size configurable
         let (tx, mut rx) = mpsc::channel::<Vec<u8>>(16);
 
         let (mut sender, mut receiver) = socket.split();
 
-        tokio::spawn(async move {
-            while let Some(msg) = rx.recv().await {
-                let _ = sender.send(Message::Binary(msg)).await;
+        loop {
+            tokio::select!{
+                msg = rx.recv() => {
+                    if let Some(msg) = msg {
+                        let _ = sender.send(Message::Binary(msg)).await;
+                    }
+                }
+
+                msg = receiver.next() => {
+                    // FIXME should we report error here?
+                    let msg = if let Some(Ok(msg)) = msg { msg } else { break; };
+
+                    match msg {
+                        Message::Binary(msg) => {
+                            state.lock().unwrap().handle_message(msg, Some(&tx));
+                        }
+
+                        Message::Ping(msg) => {
+                            let _ = sender.send(Message::Pong(msg)).await;
+                        }
+
+                        _ => {}
+                    }
+                }
             }
-        });
+        };
 
-        while let Some(msg) = receiver.next().await {
-            let msg = if let Ok(msg) = msg { msg } else { return };
-
-            let msg = if let Message::Binary(msg) = msg {
-                msg
-            } else {
-                continue; // skip unknown message
-            };
-
-            state.lock().unwrap().handle_message(msg, Some(&tx));
-        }
+        tracing::info!("close ws connection");
     })
 }
 

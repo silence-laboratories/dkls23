@@ -41,6 +41,7 @@ async fn run_peer<F: FnMut(Vec<u8>) + Send + 'static>(
         let (mut sender, mut receiver) = ws.split();
 
         loop {
+            // TODO ping the peer to check the connection
             tokio::select! {
                 msg = queue.recv() => {
                     if let Ok(msg) = msg {
@@ -52,18 +53,30 @@ async fn run_peer<F: FnMut(Vec<u8>) + Send + 'static>(
                     if let Some(Ok(msg)) = msg {
                         match msg {
                             Message::Binary(msg) => {
-                                if msg.len() > 32 + 4 {
+                                if msg.len() > 32 + 4 { // TODO provide a constant
                                     state.lock().unwrap().handle_message(msg, None);
                                 }
                             },
 
-                            Message::Ping(_) => {}
+                            Message::Pong(_) => {
+                                tracing::info!("recv pong message");
+                            }
+
+                            Message::Ping(m) => {
+                                tracing::info!("recv ping message");
+                                let _ = sender.send(Message::Pong(m)).await;
+                            }
 
                             _ => {}
                         }
                     } else {
                         break; // reconnect
                     }
+                }
+
+                _ = tokio::time::sleep(Duration::new(15, 0)) => {
+                    tracing::info!("send ping message");
+                    let _ = sender.send(Message::Ping(vec![])).await;
                 }
             };
         }
