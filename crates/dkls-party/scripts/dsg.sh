@@ -7,6 +7,7 @@ set -e
 
 : ${DEST:="."}
 : ${COORD:="ws://localhost:8080/v1/msg-relay"}
+: ${COORD2:=${COORD}}
 
 message=${1}
 shift
@@ -35,7 +36,7 @@ $cmd sign-setup \
      --ttl 10 \
      --sign ${DEST}/setup_sk \
      --public-key ${public_key} \
-     --message ${message} --hash-fn SHA256 \
+     --message "${message}" --hash-fn SHA256 \
      --coordinator ${COORD} \
      ${pks}
 
@@ -43,6 +44,6 @@ $cmd sign-setup \
 $cmd sign-gen \
      --instance ${instance} \
      --setup-vk $( $cmd load-party-keys ${DEST}/setup_sk --public ) \
-     --coordinator ${COORD} \
+     --coordinator ${COORD2} \
      --prefix ${DEST} \
      ${sks}
