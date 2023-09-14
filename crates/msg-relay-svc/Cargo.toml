@@ -5,6 +5,8 @@ edition = "2021"
 
 [dependencies]
 msg-relay = { path = "../msg-relay" }
+futures-util = { version = "0.3.28" }
+tokio-tungstenite = { version = "0.20" }
 
 anyhow = { workspace = true }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros"] }
@@ -14,3 +16,5 @@ tracing-subscriber = { workspace = true, features = ["env-filter"] }
 axum = { version = "0.6" }
 tower-http = { version = "0.3.0", features = ["trace", "cors"] }
 tower-layer = "0.3.2"
+xflags = "0.3"
+url = "2.3"

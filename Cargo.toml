@@ -31,7 +31,7 @@ members = [
   "crates/msg-relay",
   "crates/msg-relay-svc",
   "crates/msg-relay-client",
-  "wrapper/node",
+  # "wrapper/node",
   # "wrapper/wasm"
 ]
 

@@ -11,6 +11,7 @@ set -eu
 : ${DEST:="."}
 
 COORD=${3:-"ws://localhost:8080/v1/msg-relay"}
+COORD2=${4:=${COORD}}
 
 N=${1:-3}
 T=${2:-2}
@@ -102,7 +103,7 @@ $cmd key-gen \
      --prefix ${DEST} \
      --setup-vk $( $cmd load-party-keys ${DEST}/setup_sk --public ) \
      --instance ${instance} \
-     --coordinator ${COORD} \
+     --coordinator ${COORD2} \
      ${all_party_sk}
 echo "keygen end   $(date)"
 

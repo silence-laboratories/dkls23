@@ -28,10 +28,15 @@ cargo run -p msg-relay-svc
 RUST_LOG=info cargo run -p msg-relay-svc
 
 # and listen on more then one addr:port
-RUST_LOG=info LISTEN="0.0.0.0:8080 127.0.0.1:8081" cargo run -p msg-relay-svc
+cargo run -p msg-relay-svc -- \
+  --listen 0.0.0.0:8080 \
+  --peer ws://localhost:8081/v1/msg-replay
 ```
+Option `--listen` understands IPv6 addresses.
 
-It understand IPv6 addresses too.
+Option `--peer` defines a peer instance. If the instance receives an ASK
+message and there is no the corresponding ready message then forwards ASK
+to all peers.
 
 ## crates/msg-relay
 

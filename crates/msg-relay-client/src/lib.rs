@@ -8,7 +8,7 @@ use url::Url;
 
 use tokio::{
     net::TcpStream,
-    sync::{oneshot, Mutex},
+    sync::{oneshot, watch, Mutex},
 };
 use tokio_tungstenite::{
     connect_async, tungstenite::Message as WsMessage, MaybeTlsStream, WebSocketStream,
@@ -24,11 +24,16 @@ type WS = WebSocketStream<MaybeTlsStream<TcpStream>>;
 struct Inner {
     sender: Mutex<SplitSink<WS, WsMessage>>,
     queue: Mutex<Vec<(MsgId, oneshot::Sender<Vec<u8>>)>>,
+    closed: watch::Sender<bool>,
 }
 
 impl Inner {
     async fn send(&self, msg: Vec<u8>) {
         let _ = self.sender.lock().await.send(WsMessage::Binary(msg)).await;
+    }
+
+    async fn pong(&self, msg: Vec<u8>) {
+        let _ = self.sender.lock().await.send(WsMessage::Pong(msg)).await;
     }
 }
 
@@ -45,9 +50,12 @@ impl MsgRelayClient {
 
         let (sender, mut receiver) = ws.split();
 
+        let (tx_close, mut rx_close) = watch::channel(false);
+
         let inner = Arc::new(Inner {
             sender: Mutex::new(sender),
             queue: Mutex::new(vec![]),
+            closed: tx_close,
         });
 
         let tx_inner = inner.clone();
@@ -55,36 +63,53 @@ impl MsgRelayClient {
         // task to pump messages from the WS connection
         // and dispatch to a receivers.
         tokio::spawn(async move {
-            while let Some(msg) = receiver.next().await {
-                let msg = match msg {
-                    Err(_) => return,
-                    Ok(msg) => msg,
-                };
-
-                match msg {
-                    WsMessage::Binary(mut data) => {
-                        let in_id = if let Ok(msg) = Message::from_buffer(&mut data) {
-                            msg.id()
-                        } else {
-                            continue;
+            loop {
+                tokio::select! {
+                    msg = receiver.next() => {
+                        let msg = match msg {
+                            Some(Ok(msg)) => msg,
+                            _ => return
                         };
 
-                        let mut queue = tx_inner.queue.lock().await;
-                        let pos = queue.iter().position(|(id, _)| id.eq(&in_id));
+                        match msg {
+                            WsMessage::Close(_) => return,
 
-                        if let Some(pos) = pos {
-                            let (_, tx) = queue.swap_remove(pos);
-                            // Ignore send error. Drop the message
-                            // if no one is waiting for it.
-                            let _ = tx.send(data);
-                        } else {
-                            // Drop the message, no one is waiting for.
-                            continue;
+                            WsMessage::Ping(m) => {
+                                tx_inner.pong(m).await;
+                            },
+
+                            WsMessage::Pong(_) => {
+                            },
+
+                            WsMessage::Binary(mut data) => {
+                                let in_id = if let Ok(msg) = Message::from_buffer(&mut data) {
+                                    msg.id()
+                                } else {
+                                    continue;
+                                };
+
+                                let mut queue = tx_inner.queue.lock().await;
+                                let pos = queue.iter().position(|(id, _)| id.eq(&in_id));
+
+                                if let Some(pos) = pos {
+                                    let (_, tx) = queue.swap_remove(pos);
+                                    // Ignore send error. Drop the message
+                                    // if no one is waiting for it.
+                                    let _ = tx.send(data);
+                                } else {
+                                    // Drop the message, no one is waiting for it.
+                                    continue;
+                                }
+                            }
+
+                            _ => {}
                         }
-                    }
 
-                    // TODO handle Ping messages?
-                    _ => {}
+                    },
+
+                    _closed = rx_close.changed() => {
+                        return;
+                    }
                 }
             }
         });
@@ -108,7 +133,7 @@ impl MsgRelayClient {
         let inner = self.inner.clone();
 
         Box::pin(async move {
-            // register itself as a wait for the message
+            // register itself as a waiter for the message
             inner.queue.lock().await.push((id, tx));
 
             // send an ASK message
@@ -119,6 +144,10 @@ impl MsgRelayClient {
 
             Some(msg)
         })
+    }
+
+    pub fn close(&self) {
+        let _ = self.inner.closed.send(true);
     }
 }
 

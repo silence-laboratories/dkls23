@@ -9,7 +9,7 @@ futures-util = { version = "0.3.28" }
 tokio-tungstenite = { version = "0.20" }
 
 anyhow = { workspace = true }
-tokio = { workspace = true, features = [ "net" ] }
+tokio = { workspace = true, features = [ "net", "macros" ] }
 tracing = { workspace = true }
 
 sl-mpc-mate = { workspace = true }
