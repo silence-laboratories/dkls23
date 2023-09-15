@@ -118,6 +118,15 @@ xflags::xflags! {
             /// Listen on host:port. Ignore --port/--host options
             repeated --listen listen: String
 
+            /// Public key of setup issuer
+            required --setup-vk setup_vk: String
+
+            /// This party signing key
+            required --party-key signing_key: PathBuf
+
+            /// Folder to store keyshares
+            required --storage storage: PathBuf
+
             /// Base of URL of the coordinator service
             optional --coordinator url: Url
         }

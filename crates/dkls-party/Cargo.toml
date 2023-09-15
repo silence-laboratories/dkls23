@@ -14,19 +14,16 @@ anyhow = { workspace = true }
 bincode = { workspace = true }
 rand = { workspace = true }
 k256 = { workspace = true, features= ["ecdsa", "serde"]}
-tokio = { workspace = true, features = ["full"] }
+tokio = { workspace = true, features = [ "net", "macros", "fs", "rt-multi-thread" ] }
 sha2 = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
-
-reqwest = { version = "0.11", features = ["json"] }
 
 xflags = "0.3"
 url = "2.3"
 serde = { version = "1", features = ["derive"] }
 hex = "0.4.3"
 
-tiny-keccak = { version = "2.0.2", features = ["keccak"] }
 axum = "0.6"
 tower = { version = "0.4", features = ["util", "timeout", "load-shed", "limit"] }
 tower-http = { version = "0.3.0", features = [

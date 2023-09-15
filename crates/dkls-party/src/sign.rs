@@ -6,7 +6,10 @@ use dkls23::setup::{self, *};
 use dkls23::{keygen::Keyshare, sign};
 
 use msg_relay_client::MsgRelayClient;
-use sl_mpc_mate::{coord::BoxedRelay, HashBytes};
+use sl_mpc_mate::{
+    coord::{BoxedRelay, Relay},
+    HashBytes,
+};
 
 use crate::{default_coord, flags, utils::*, SignHashFn};
 
@@ -29,7 +32,9 @@ pub async fn setup(opts: flags::SignSetup) -> anyhow::Result<()> {
             builder.with_hash(HashBytes::new(hash))
         }
 
-        SignHashFn::Sha256 => builder.with_sha256(opts.message.into_bytes()),
+        SignHashFn::Sha256 => {
+            builder.with_sha256(opts.message.into_bytes())
+        }
 
         _ => unimplemented!(),
     };
@@ -46,7 +51,8 @@ pub async fn setup(opts: flags::SignSetup) -> anyhow::Result<()> {
         .ok_or(anyhow::Error::msg("cant create setup message"))?;
 
     let coord = opts.coordinator.unwrap_or_else(default_coord);
-    let msg_relay: BoxedRelay = Box::new(MsgRelayClient::connect(&coord).await?);
+    let msg_relay: BoxedRelay =
+        Box::new(MsgRelayClient::connect(&coord).await?);
 
     msg_relay.send(setup).await;
 
@@ -57,7 +63,10 @@ fn load_keyshare(file_name: &str) -> anyhow::Result<Keyshare> {
     tracing::info!("load key share {}", file_name);
     let bytes = std::fs::read(file_name)?;
 
-    let (share, _) = bincode::decode_from_slice(&bytes, bincode::config::standard())?;
+    let (share, _) = bincode::decode_from_slice(
+        &bytes,
+        bincode::config::standard(),
+    )?;
 
     Ok(share)
 }
@@ -70,7 +79,12 @@ pub async fn run_sign(opts: flags::SignGen) -> anyhow::Result<()> {
 
     let coord = opts.coordinator.unwrap_or_else(default_coord);
 
-    let msg_id = MsgId::new(&instance, &setup_vk.to_bytes(), None, SETUP_MESSAGE_TAG);
+    let msg_id = MsgId::new(
+        &instance,
+        &setup_vk.to_bytes(),
+        None,
+        SETUP_MESSAGE_TAG,
+    );
 
     opts.party.into_iter().try_for_each(|desc| {
         let mut parts = desc.split(":");
@@ -94,12 +108,14 @@ pub async fn run_sign(opts: flags::SignGen) -> anyhow::Result<()> {
         let coord = coord.clone();
 
         parties.spawn(async move {
-            let msg_relay: BoxedRelay = Box::new(MsgRelayClient::connect(&coord).await?);
+            let msg_relay: BoxedRelay =
+                Box::new(MsgRelayClient::connect(&coord).await?);
+            let relay_stats = RelayStats::new(msg_relay);
+            let msg_relay = relay_stats.clone_relay();
 
-            let mut setup = msg_relay
-                .recv(msg_id, 10)
-                .await
-                .ok_or(anyhow::Error::msg("Can't receive setup message"))?;
+            let mut setup = msg_relay.recv(msg_id, 10).await.ok_or(
+                anyhow::Error::msg("Can't receive setup message"),
+            )?;
 
             let setup = setup::sign::ValidatedSetup::decode(
                 &mut setup,
@@ -111,21 +127,27 @@ pub async fn run_sign(opts: flags::SignGen) -> anyhow::Result<()> {
             .ok_or(anyhow::Error::msg("cant parse setup message"))?;
 
             let sign = sign::run(setup, seed, msg_relay).await?;
+            let stats = relay_stats.stats();
 
-            Ok::<_, anyhow::Error>((sign, party_id))
+            Ok::<_, anyhow::Error>((sign, party_id, stats))
         });
 
         Ok::<_, anyhow::Error>(())
     })?;
 
     while let Some(share) = parties.join_next().await {
-        let (sign, party_id) = share??;
+        let (sign, pid, stats) = share??;
 
-        let sign_file_name = opts.prefix.join(format!("sign.{}", party_id));
+        let sign_file_name = opts.prefix.join(format!("sign.{}", pid));
 
         let bytes = sign.to_der().to_bytes();
 
         std::fs::write(sign_file_name, bytes)?;
+
+        tracing::info!("send_count: {} {}", pid, stats.send_count);
+        tracing::info!("send_size:  {} {}", pid, stats.send_size);
+        tracing::info!("recv_count: {} {}", pid, stats.recv_count);
+        tracing::info!("recv_size:  {} {}", pid, stats.recv_size);
     }
 
     Ok(())
