@@ -148,6 +148,11 @@ impl Setup {
             _ => unimplemented!(),
         }
     }
+
+    /// Return the public key.
+    pub fn public_key(&self) -> &AffinePoint {
+        &self.public_key
+    }
 }
 
 ///

@@ -1,8 +1,8 @@
 use std::env;
+use std::net::ToSocketAddrs;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use anyhow::Context;
 use tokio::{sync::broadcast, task::JoinSet};
 
 use axum::{routing::get, Router};
@@ -119,27 +119,27 @@ async fn main() -> anyhow::Result<()> {
 
         if let Ok(var) = env::var("LISTEN") {
             for addr in var.split(' ') {
-                listen.push(
-                    addr.parse()
-                        .context("can't parse address in LISTEN")?,
-                )
+                listen.push(addr.into());
+
             }
         };
 
         if listen.is_empty() {
-            vec!["127.0.0.1:8080".parse().unwrap()]
+            vec!["127.0.0.1:8080".into()]
         } else {
             listen
         }
     };
 
-    for addr in &listen {
-        servers.spawn(
-            axum::Server::bind(addr)
-                .serve(app.clone().into_make_service()),
-        );
+    for addrs in &listen {
+        for addr in addrs.to_socket_addrs()? {
+            servers.spawn(
+                axum::Server::bind(&addr)
+                    .serve(app.clone().into_make_service()),
+            );
 
-        tracing::info!("listen on {:?}", addr);
+            tracing::info!("listen on {:?}", addr);
+        }
     }
 
     while servers.join_next().await.is_some() {}

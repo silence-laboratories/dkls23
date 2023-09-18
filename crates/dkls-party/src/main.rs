@@ -2,8 +2,8 @@
 
 use std::str::FromStr;
 
-use tracing_subscriber;
 use rand::prelude::*;
+use tracing_subscriber;
 
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -55,7 +55,10 @@ impl FromStr for SignHashFn {
 }
 
 impl std::fmt::Display for SignHashParseError {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(
+        &self,
+        fmt: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
         write!(fmt, "SignHashParseError: {}", self.0)
     }
 }
@@ -103,7 +106,9 @@ async fn main() -> anyhow::Result<()> {
         Dkls23PartyCmd::GenPartyKeys(opts) => gen_party_keys(opts),
         Dkls23PartyCmd::LoadPartyKeys(opts) => load_party_keys(opts),
         Dkls23PartyCmd::KeyGen(opts) => keygen::run_keygen(opts).await,
-        Dkls23PartyCmd::SharePubkey(opts) => keygen::run_share_pubkey(opts),
+        Dkls23PartyCmd::SharePubkey(opts) => {
+            keygen::run_share_pubkey(opts)
+        }
         Dkls23PartyCmd::SignSetup(opts) => sign::setup(opts).await,
         Dkls23PartyCmd::SignGen(opts) => sign::run_sign(opts).await,
         Dkls23PartyCmd::Serve(opts) => serve::run(opts).await,

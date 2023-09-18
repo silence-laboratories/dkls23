@@ -1,0 +1,8 @@
+.cargo
+target/
+dev/
+.git
+.env
+Dockerfile
+.dockerignore
+**/node_modules/

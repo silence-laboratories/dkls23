@@ -1,8 +1,8 @@
 use std::borrow::Cow;
-use std::net::SocketAddr;
+use std::net::ToSocketAddrs;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-
-// use k256::elliptic_curve::group::GroupEncoding;
 
 use tokio::task::JoinSet;
 
@@ -14,27 +14,33 @@ use axum::{
     routing::{get, post},
     Router,
 };
-
-// use url::Url;
+use url::Url;
 
 use tower::{BoxError, ServiceBuilder};
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
+use k256::elliptic_curve::group::GroupEncoding;
+
 use serde::{Deserialize, Serialize};
 
-// use dkls23::keygen::Keyshare;
+use dkls23::{
+    keygen,
+    setup::{self, SETUP_MESSAGE_TAG},
+    sign,
+};
+use sl_mpc_mate::{bincode, coord::*, message::*};
 
-// use crate::coord;
-use crate::flags;
-// use crate::keygen::keygen_party;
-// use crate::SignHashFn;
+use msg_relay_client::MsgRelayClient;
 
-// use crate::sign::sign_party;
+use crate::{default_coord, flags, utils::*};
 
 mod b64 {
     use serde::{Deserialize, Deserializer, Serializer};
 
-    pub fn serialize<T, S>(key: T, serializer: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<T, S>(
+        key: T,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
     where
         T: AsRef<[u8]>,
         S: Serializer,
@@ -46,154 +52,249 @@ mod b64 {
     where
         D: Deserializer<'de>,
     {
-        let v = base64::decode(<&str>::deserialize(d)?).map_err(serde::de::Error::custom)?;
+        let v = base64::decode(<&str>::deserialize(d)?)
+            .map_err(serde::de::Error::custom)?;
 
         Ok(v)
     }
 }
 
-#[derive(Clone)]
-struct AppState {
-    client: reqwest::Client,
+type AppState = Arc<Inner>;
+
+struct Inner {
+    coord: Url,
+    setup_vk: VerifyingKey,
+    party_key: SigningKey,
+    shares: Mutex<Vec<keygen::Keyshare>>,
+    storage: PathBuf,
 }
 
-impl AppState {
-    fn new() -> Self {
+impl Inner {
+    fn new(
+        setup_vk: VerifyingKey,
+        party_key: SigningKey,
+        coord: Url,
+        storage: PathBuf,
+    ) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            coord,
+            setup_vk,
+            party_key,
+            storage,
+            shares: Mutex::new(vec![]),
         }
     }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct KeygenParams {
-    coord: String,
-    session: String,
-
-    n: u8,
-    t: u8,
-    rank: u8,
-
+pub struct KeygenParams {
     #[serde(with = "b64")]
-    party_keys: Vec<u8>,
+    instance: Vec<u8>,
+}
+
+impl KeygenParams {
+    pub fn new(inst: &[u8; 32]) -> Self {
+        Self {
+            instance: inst.to_vec(),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct KeygenResponse {
+pub struct KeygenResponse {
     #[serde(with = "b64")]
-    keyshare: Vec<u8>,
+    pub public_key: Vec<u8>,
 
-    #[serde(with = "b64")]
-    public_key: Vec<u8>,
-
-    total_send: u32,
-    total_recv: u32,
-    total_wait: u32,
-    total_time: u32, // execution time in milliseconds
+    pub total_send: u32,
+    pub total_recv: u32,
+    pub total_wait: u32,
+    pub total_time: u32, // execution time in milliseconds
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct SignParams {
-    coord: String,
-    session: String,
-    hash_fn: String,
-
+pub struct SignParams {
     #[serde(with = "b64")]
-    keyshare: Vec<u8>,
+    instance: Vec<u8>,
+}
+
+impl SignParams {
+    pub fn new(inst: &[u8; 32]) -> Self {
+        Self {
+            instance: inst.to_vec(),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct SignResponse {
+pub struct SignResponse {
     #[serde(with = "b64")]
-    sign: Vec<u8>,
-    total_send: u32,
-    total_recv: u32,
-    total_wait: u32,
-    total_time: u32, // execution time in milliseconds
-    times: Option<Vec<(u32, Duration)>>,
+    pub sign: Vec<u8>,
+
+    pub total_send: u32,
+    pub total_recv: u32,
+    pub total_wait: u32,
+    pub total_time: u32, // execution time in milliseconds
+    pub times: Option<Vec<(u32, Duration)>>,
 }
 
 async fn handle_keygen(
-    State(_state): State<AppState>,
-    Json(_payload): Json<KeygenParams>,
+    State(state): State<AppState>,
+    Json(payload): Json<KeygenParams>,
 ) -> Result<Json<KeygenResponse>, StatusCode> {
-    let _start = Instant::now();
+    let start = Instant::now();
 
-    // let keys = PartyKeys::from_bytes(&payload.party_keys).ok_or(StatusCode::BAD_REQUEST)?;
+    let instance: [u8; 32] = payload
+        .instance
+        .try_into()
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    let instance = InstanceId::from(instance);
 
-    // let mut c = coord::Coordinator::new(
-    //     Url::parse(&payload.coord).map_err(|_| StatusCode::BAD_REQUEST)?,
-    //     &payload.session,
-    //     6 + 1,
-    //     Some(&state.client),
-    // );
+    tracing::info!("handle-keygen: inst {:?}", instance);
 
-    // let keyshare = keygen_party(&mut c, keys, payload.t, payload.n, payload.rank)
-    //     .await
-    //     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let msg_relay =
+        MsgRelayClient::connect(&state.coord).await.map_err(|err| {
+            tracing::error!("msg relay connect {:?}", err);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
-    // let total_time = Instant::now().duration_since(start).as_millis() as u32;
+    let relay_stats = RelayStats::new(Box::new(msg_relay));
 
-    // let resp = Json(KeygenResponse {
-    //     keyshare: keyshare.to_bytes().unwrap(),
-    //     total_send: c.total_send as u32,
-    //     total_recv: c.total_recv as u32,
-    //     total_wait: c.total_wait.as_millis() as u32,
-    //     public_key: keyshare.public_key.to_affine().to_bytes().to_vec(),
-    //     total_time,
-    // });
+    let msg_id = MsgId::new(
+        &instance,
+        state.setup_vk.as_bytes(),
+        None,
+        SETUP_MESSAGE_TAG,
+    );
 
-    // Ok(resp)
+    let mut setup = relay_stats
+        .recv(msg_id, 10)
+        .await
+        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    todo!()
+    tracing::info!("setup ok");
+
+    let setup = setup::keygen::ValidatedSetup::decode(
+        &mut setup,
+        &instance,
+        &state.setup_vk,
+        state.party_key.clone(),
+        |_, _, _| true,
+    )
+    .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let seed = rand::random();
+
+    let share = keygen::run(setup, seed, relay_stats.clone_relay())
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let total_time = start.elapsed().as_millis() as u32;
+
+    let stats = relay_stats.stats();
+
+    let pk_vec = share.public_key.to_affine().to_bytes().to_vec();
+    let pk_hex = hex::encode(&pk_vec);
+
+    let share =
+        bincode::encode_to_vec(&share, bincode::config::standard())
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let keyshare_file =
+        state.storage.join(format!("{}.keyshare", pk_hex));
+
+    std::fs::write(keyshare_file, share)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let resp = Json(KeygenResponse {
+        total_send: stats.send_size as u32,
+        total_recv: stats.recv_size as u32,
+        total_wait: stats.wait_time.as_millis() as u32,
+        public_key: pk_vec,
+        total_time,
+    });
+
+    Ok(resp)
 }
 
 async fn handle_sign(
-    State(_state): State<AppState>,
-    Json(_payload): Json<SignParams>,
+    State(state): State<AppState>,
+    Json(payload): Json<SignParams>,
 ) -> Result<Json<SignResponse>, StatusCode> {
     let start = Instant::now();
 
-    // let keyshare = Keyshare::from_bytes(&payload.keyshare).ok_or(StatusCode::BAD_REQUEST)?;
+    let instance: [u8; 32] = payload
+        .instance
+        .try_into()
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    let instance = InstanceId::from(instance);
 
-    // let hash_fn: SignHashFn = payload
-    //     .hash_fn
-    //     .parse()
-    //     .map_err(|_| StatusCode::BAD_REQUEST)?;
+    let msg_relay = MsgRelayClient::connect(&state.coord)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    // let mut c = coord::Coordinator::new(
-    //     Url::parse(&payload.coord).map_err(|_| StatusCode::BAD_REQUEST)?,
-    //     &payload.session,
-    //     5,
-    //     Some(&state.client),
-    // );
+    let msg_id = MsgId::new(
+        &instance,
+        state.setup_vk.as_bytes(),
+        None,
+        SETUP_MESSAGE_TAG,
+    );
 
-    // let (sign, times) = sign_party(&mut c, keyshare, hash_fn)
-    //     .await
-    //     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let relay_stats = RelayStats::new(Box::new(msg_relay));
 
-    let total_time = Instant::now().duration_since(start).as_millis() as u32;
+    let mut setup = relay_stats
+        .recv(msg_id, 10)
+        .await
+        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let sign = vec![];
+    let setup = setup::sign::ValidatedSetup::decode(
+        &mut setup,
+        &instance,
+        &state.setup_vk,
+        state.party_key.clone(),
+        |setup, _| {
+            let pk = hex::encode(&setup.public_key().to_bytes());
+            let path = state.storage.join(format!("{}.keyshare", &pk));
+
+            let bytes = std::fs::read(path).ok()?;
+
+            let (share, _) = bincode::decode_from_slice(
+                &bytes,
+                bincode::config::standard(),
+            )
+            .ok()?;
+
+            Some(share)
+        },
+    )
+    .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let seed = rand::random();
+
+    let sign = sign::run(setup, seed, relay_stats.clone_relay())
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let total_time = start.elapsed().as_millis() as u32;
+
+    let sign = sign.to_der().to_bytes().to_vec();
+
+    let stats = relay_stats.stats();
 
     Ok(Json(SignResponse {
         sign,
-        total_send: 0, //c.total_send as u32,
-        total_recv: 0, // c.total_recv as u32,
-        total_wait: 0, //c.total_wait.as_millis() as u32,
+        total_send: stats.send_size as u32,
+        total_recv: stats.recv_size as u32,
+        total_wait: stats.wait_time.as_millis() as u32,
         total_time,
         times: None,
     }))
 }
 
-async fn handle_party_keys() -> String {
-    // let mut rng = rand::thread_rng();
-    // base64::ecnode(PartyKeys::new(&mut rng).to_bytes().unwrap());
-
-    todo!()
+async fn handle_party_keys() -> &'static str {
+    "ok"
 }
 
-fn app(state: Option<AppState>) -> Router {
+fn app(state: AppState) -> Router {
     Router::new()
         .route("/", get(health_check))
         .route("/v1/party-keys", post(handle_party_keys))
@@ -206,14 +307,20 @@ fn app(state: Option<AppState>) -> Router {
                 .layer(HandleErrorLayer::new(handle_error))
                 .load_shed()
                 .concurrency_limit(1024)
-                .timeout(Duration::from_secs(500)) // 60
-                .layer(TraceLayer::new_for_http()),
+                .timeout(Duration::from_secs(500)), // 60
         )
-        .with_state(state.unwrap_or_else(|| AppState::new()))
+        .layer(TraceLayer::new_for_http())
+        .with_state(state)
 }
 
 pub async fn run(opts: flags::Serve) -> anyhow::Result<()> {
-    let app = app(None);
+    let setup_vk = load_verifying_key(opts.setup_vk_file)?;
+    let party_key = load_signing_key(opts.party_key)?;
+    let coord = opts.coordinator.unwrap_or_else(default_coord);
+
+    let state =
+        Arc::new(Inner::new(setup_vk, party_key, coord, opts.storage));
+    let app = app(state);
 
     let listen = {
         if opts.listen.len() > 0 {
@@ -229,15 +336,18 @@ pub async fn run(opts: flags::Serve) -> anyhow::Result<()> {
 
     let mut servers = JoinSet::new();
 
-    for addr in &listen {
-        let addr: SocketAddr = addr.parse()?;
+    for addrs in &listen {
+        for addr in addrs.to_socket_addrs()? {
+            tracing::info!("listening on {}", addr);
 
-        tracing::info!("listening on {}", addr);
-
-        servers.spawn(axum::Server::bind(&addr).serve(app.clone().into_make_service()));
+            servers.spawn(
+                axum::Server::bind(&addr)
+                    .serve(app.clone().into_make_service()),
+            );
+        }
     }
 
-    while let Some(_) = servers.join_next().await {}
+    while servers.join_next().await.is_some() {}
 
     Ok(())
 }
@@ -248,7 +358,10 @@ async fn health_check() -> &'static str {
 
 async fn handle_error(error: BoxError) -> impl IntoResponse {
     if error.is::<tower::timeout::error::Elapsed>() {
-        return (StatusCode::REQUEST_TIMEOUT, Cow::from("request timed out"));
+        return (
+            StatusCode::REQUEST_TIMEOUT,
+            Cow::from("request timed out"),
+        );
     }
 
     if error.is::<tower::load_shed::error::Overloaded>() {
