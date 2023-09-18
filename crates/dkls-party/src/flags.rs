@@ -38,6 +38,10 @@ xflags::xflags! {
 
             /// Base of URL of the coordinator service
             optional --coordinator url: Url
+
+            /// Send instance ID to begin key generation
+            /// and output public key
+            repeated --node node: Url
         }
 
         /// Participate as one or more parties in DKG protocol
@@ -88,6 +92,10 @@ xflags::xflags! {
 
             /// Base of URL of the coordinator service
             optional --coordinator url: Url
+
+            /// Send instance ID to begin key generation
+            /// and output public key
+            repeated --node node: Url
         }
 
         /// Participate as one or more parties in signature geneation protocol
@@ -119,7 +127,7 @@ xflags::xflags! {
             repeated --listen listen: String
 
             /// Public key of setup issuer
-            required --setup-vk setup_vk: String
+            required --setup-vk-file setup_vk: PathBuf
 
             /// This party signing key
             required --party-key signing_key: PathBuf

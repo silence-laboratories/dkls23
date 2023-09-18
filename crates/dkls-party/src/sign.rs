@@ -1,17 +1,18 @@
-use dkls23::MsgId;
 use rand;
 use tokio::task;
 
+use dkls23::MsgId;
 use dkls23::setup::{self, *};
 use dkls23::{keygen::Keyshare, sign};
 
 use msg_relay_client::MsgRelayClient;
 use sl_mpc_mate::{
+    message::*,
     coord::{BoxedRelay, Relay},
     HashBytes,
 };
 
-use crate::{default_coord, flags, utils::*, SignHashFn};
+use crate::{default_coord, flags, utils::*, SignHashFn, serve::*};
 
 pub async fn setup(opts: flags::SignSetup) -> anyhow::Result<()> {
     let pk = parse_affine_point(&opts.public_key)?;
@@ -39,9 +40,10 @@ pub async fn setup(opts: flags::SignSetup) -> anyhow::Result<()> {
         _ => unimplemented!(),
     };
 
+    let instance = parse_instance_bytes(&opts.instance)?;
     let msg_id = MsgId::new(
-        &parse_instance_id(&opts.instance)?,
-        &setup_vk.to_bytes(),
+        &InstanceId::from(instance),
+        setup_vk.as_bytes(),
         None,
         SETUP_MESSAGE_TAG,
     );
@@ -55,6 +57,37 @@ pub async fn setup(opts: flags::SignSetup) -> anyhow::Result<()> {
         Box::new(MsgRelayClient::connect(&coord).await?);
 
     msg_relay.send(setup).await;
+
+    if !opts.node.is_empty() {
+        let mut inits = tokio::task::JoinSet::new();
+
+        for node in &opts.node {
+            inits.spawn(
+                reqwest::Client::new()
+                    .post(node.join("/v1/signgen")?)
+                    .json(&SignParams::new(&instance))
+                    .send(),
+            );
+        }
+
+        let mut signs = vec![];
+
+        while let Some(resp) = inits.join_next().await {
+            let resp = resp?;
+            let resp = resp?;
+
+            let status = resp.status();
+
+            if status == reqwest::StatusCode::OK {
+                let resp: SignResponse = resp.json().await?;
+                signs.push(resp.sign);
+            } else {
+                return Err(anyhow::Error::msg("sign error"));
+            }
+        }
+
+        println!("{}", hex::encode(&signs[0]));
+    }
 
     Ok(())
 }

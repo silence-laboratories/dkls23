@@ -1,11 +1,10 @@
 use url::Url;
-use std::net::SocketAddr;
 
 xflags::xflags! {
     cmd msg-relay-svc {
         /// One or more address to listen on.
         /// Address in form ip:port.
-        repeated --listen listen: SocketAddr
+        repeated --listen listen: String
 
         /// One or more peer endpoints.
         repeated --peer listen: Url

@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::net::SocketAddr;
+use std::net::ToSocketAddrs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -87,38 +87,54 @@ impl Inner {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct KeygenParams {
+pub struct KeygenParams {
     #[serde(with = "b64")]
     instance: Vec<u8>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-struct KeygenResponse {
-    #[serde(with = "b64")]
-    public_key: Vec<u8>,
-
-    total_send: u32,
-    total_recv: u32,
-    total_wait: u32,
-    total_time: u32, // execution time in milliseconds
+impl KeygenParams {
+    pub fn new(inst: &[u8; 32]) -> Self {
+        Self {
+            instance: inst.to_vec(),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct SignParams {
+pub struct KeygenResponse {
+    #[serde(with = "b64")]
+    pub public_key: Vec<u8>,
+
+    pub total_send: u32,
+    pub total_recv: u32,
+    pub total_wait: u32,
+    pub total_time: u32, // execution time in milliseconds
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SignParams {
     #[serde(with = "b64")]
     instance: Vec<u8>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-struct SignResponse {
-    #[serde(with = "b64")]
-    sign: Vec<u8>,
+impl SignParams {
+    pub fn new(inst: &[u8; 32]) -> Self {
+        Self {
+            instance: inst.to_vec(),
+        }
+    }
+}
 
-    total_send: u32,
-    total_recv: u32,
-    total_wait: u32,
-    total_time: u32, // execution time in milliseconds
-    times: Option<Vec<(u32, Duration)>>,
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SignResponse {
+    #[serde(with = "b64")]
+    pub sign: Vec<u8>,
+
+    pub total_send: u32,
+    pub total_recv: u32,
+    pub total_wait: u32,
+    pub total_time: u32, // execution time in milliseconds
+    pub times: Option<Vec<(u32, Duration)>>,
 }
 
 async fn handle_keygen(
@@ -133,9 +149,13 @@ async fn handle_keygen(
         .map_err(|_| StatusCode::BAD_REQUEST)?;
     let instance = InstanceId::from(instance);
 
-    let msg_relay = MsgRelayClient::connect(&state.coord)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    tracing::info!("handle-keygen: inst {:?}", instance);
+
+    let msg_relay =
+        MsgRelayClient::connect(&state.coord).await.map_err(|err| {
+            tracing::error!("msg relay connect {:?}", err);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     let relay_stats = RelayStats::new(Box::new(msg_relay));
 
@@ -150,6 +170,8 @@ async fn handle_keygen(
         .recv(msg_id, 10)
         .await
         .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    tracing::info!("setup ok");
 
     let setup = setup::keygen::ValidatedSetup::decode(
         &mut setup,
@@ -285,14 +307,14 @@ fn app(state: AppState) -> Router {
                 .layer(HandleErrorLayer::new(handle_error))
                 .load_shed()
                 .concurrency_limit(1024)
-                .timeout(Duration::from_secs(500)) // 60
-                .layer(TraceLayer::new_for_http()),
+                .timeout(Duration::from_secs(500)), // 60
         )
+        .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
 
 pub async fn run(opts: flags::Serve) -> anyhow::Result<()> {
-    let setup_vk = parse_verifying_key(&opts.setup_vk)?;
+    let setup_vk = load_verifying_key(opts.setup_vk_file)?;
     let party_key = load_signing_key(opts.party_key)?;
     let coord = opts.coordinator.unwrap_or_else(default_coord);
 
@@ -314,15 +336,15 @@ pub async fn run(opts: flags::Serve) -> anyhow::Result<()> {
 
     let mut servers = JoinSet::new();
 
-    for addr in &listen {
-        let addr: SocketAddr = addr.parse()?;
+    for addrs in &listen {
+        for addr in addrs.to_socket_addrs()? {
+            tracing::info!("listening on {}", addr);
 
-        tracing::info!("listening on {}", addr);
-
-        servers.spawn(
-            axum::Server::bind(&addr)
-                .serve(app.clone().into_make_service()),
-        );
+            servers.spawn(
+                axum::Server::bind(&addr)
+                    .serve(app.clone().into_make_service()),
+            );
+        }
     }
 
     while servers.join_next().await.is_some() {}

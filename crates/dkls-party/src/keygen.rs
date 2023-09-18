@@ -14,7 +14,7 @@ use sl_mpc_mate::{
     message::*,
 };
 
-use crate::{default_coord, flags, utils::*};
+use crate::{default_coord, flags, serve::*, utils::*};
 
 pub async fn setup(opts: flags::KeygenSetup) -> anyhow::Result<()> {
     let setup_sk = load_signing_key(opts.sign)?;
@@ -37,8 +37,9 @@ pub async fn setup(opts: flags::KeygenSetup) -> anyhow::Result<()> {
         },
     )?;
 
+    let instance = parse_instance_bytes(&opts.instance)?;
     let msg_id = MsgId::new(
-        &parse_instance_id(&opts.instance)?,
+        &InstanceId::from(instance),
         setup_vk.as_bytes(),
         None,
         SETUP_MESSAGE_TAG,
@@ -53,6 +54,39 @@ pub async fn setup(opts: flags::KeygenSetup) -> anyhow::Result<()> {
         Box::new(MsgRelayClient::connect(&coord).await?);
 
     msg_relay.send(setup).await;
+
+    tracing::info!("sent setup message {:X}", msg_id);
+
+    if !opts.node.is_empty() {
+        let mut inits = tokio::task::JoinSet::new();
+
+        for node in &opts.node {
+            inits.spawn(
+                reqwest::Client::new()
+                    .post(node.join("/v1/keygen")?)
+                    .json(&KeygenParams::new(&instance))
+                    .send(),
+            );
+        }
+
+        let mut keys = vec![];
+
+        while let Some(resp) = inits.join_next().await {
+            let resp = resp?;
+            let resp = resp?;
+
+            let status = resp.status();
+
+            if status == reqwest::StatusCode::OK {
+                let resp: KeygenResponse = resp.json().await?;
+                keys.push(resp.public_key);
+            } else {
+                return Err(anyhow::Error::msg(""));
+            }
+        }
+
+        println!("{}", hex::encode(&keys[0]));
+    }
 
     Ok(())
 }

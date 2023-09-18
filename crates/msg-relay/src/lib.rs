@@ -1,6 +1,9 @@
 use std::cmp::Ordering;
 use std::collections::{hash_map::Entry, BinaryHeap, HashMap};
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicUsize, Ordering::SeqCst},
+    Arc, Mutex,
+};
 use std::time::Instant;
 
 use futures_util::stream::StreamExt;
@@ -41,7 +44,7 @@ impl Ord for Expire {
 }
 
 enum MsgEntry {
-    Waiters((Instant, Vec<mpsc::Sender<Vec<u8>>>)),
+    Waiters((Instant, Vec<(usize, mpsc::Sender<Vec<u8>>)>)),
     Ready(Vec<u8>),
 }
 
@@ -109,7 +112,7 @@ where
     pub fn handle_message(
         &mut self,
         msg: Vec<u8>,
-        tx: Option<&mpsc::Sender<Vec<u8>>>,
+        tx: Option<(usize, &mpsc::Sender<Vec<u8>>)>,
     ) {
         let MsgHdr { id, ttl, kind } = match MsgHdr::from(&msg) {
             Some(hdr) => hdr,
@@ -132,10 +135,11 @@ where
                 match ocp.get_mut() {
                     MsgEntry::Ready(msg) => {
                         if matches!(kind, Kind::Ask) {
-                            // got an ASK for a Ready message
-                            // send the message immediately
-                            if let Some(tx) = tx.cloned() {
+                            // Got an ASK for a Ready message.
+                            // Send the message immediately.
+                            if let Some((_, tx)) = tx {
                                 let msg = msg.clone();
+                                let tx = tx.clone();
                                 tokio::spawn(async move {
                                     // ignore send error
                                     let _ = tx.send(msg).await;
@@ -150,17 +154,22 @@ where
                     MsgEntry::Waiters((prev, b)) => {
                         if matches!(kind, Kind::Ask) {
                             // join other waiters
-                            if let Some(tx) = tx.cloned() {
-                                *prev = expire.max(*prev);
-                                b.push(tx);
-                                (self.enqueue)(msg);
+                            if let Some((id, tx)) = tx {
+                                if b.iter()
+                                    .find(|(tx_id, _)| *tx_id == id)
+                                    .is_none()
+                                {
+                                    *prev = expire.max(*prev);
+                                    b.push((id, tx.clone()));
+                                    (self.enqueue)(msg);
+                                }
                             }
                         } else {
                             // wake up all waiters
                             for s in b.drain(..) {
                                 let msg = msg.clone();
                                 tokio::spawn(async move {
-                                    let _ = s.send(msg).await;
+                                    let _ = s.1.send(msg).await;
                                 });
                             }
                             // and replace with a Read message
@@ -176,10 +185,10 @@ where
             Entry::Vacant(vac) => {
                 if matches!(kind, Kind::Ask) {
                     // This is the first ASK for the message
-                    if let Some(tx) = tx.cloned() {
+                    if let Some((id, tx)) = tx {
                         vac.insert(MsgEntry::Waiters((
                             expire,
-                            vec![tx],
+                            vec![(id, tx.clone())],
                         )));
 
                         (self.enqueue)(msg);
@@ -199,8 +208,13 @@ pub async fn handler<F: FnMut(Vec<u8>) + Send + 'static>(
     ws: WebSocketUpgrade,
 ) -> Response {
     ws.on_upgrade(|socket| async move {
+        static CONN_ID: AtomicUsize = AtomicUsize::new(0);
+
         // TODO make buffer size configurable
         let (tx, mut rx) = mpsc::channel::<Vec<u8>>(16);
+
+        // Generate unique connection ID.
+        let tx_id = CONN_ID.fetch_add(1, SeqCst);
 
         let (mut sender, mut receiver) = socket.split();
 
@@ -218,7 +232,7 @@ pub async fn handler<F: FnMut(Vec<u8>) + Send + 'static>(
 
                     match msg {
                         Message::Binary(msg) => {
-                            state.lock().unwrap().handle_message(msg, Some(&tx));
+                            state.lock().unwrap().handle_message(msg, Some((tx_id, &tx)));
                         }
 
                         Message::Ping(msg) => {
@@ -266,6 +280,6 @@ mod tests {
 
         let _hdr = MsgHdr::from(&msg).unwrap();
 
-        app.handle_message(msg, Some(&tx));
+        app.handle_message(msg, Some((0, &tx)));
     }
 }

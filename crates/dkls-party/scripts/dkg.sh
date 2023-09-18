@@ -42,6 +42,7 @@ cmd="cargo run -p dkls-party -q --release -- "
 # the following command generate fresh secret key and
 # saves it to ${DEST}/stup_sk
 $cmd gen-party-keys ${DEST}/setup_sk
+$cmd load-party-keys ${DEST}/setup_sk --public > ${DEST}/setup_vk
 
 # The next step will be create SK/PK pairs for all
 # parties. Each party has a unique index in range [0..N)
