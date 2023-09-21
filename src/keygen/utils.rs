@@ -106,7 +106,7 @@ pub fn setup_keygen(t: u8, n: u8, n_i_list: Option<&[u8]>) -> Vec<(ValidatedSetu
         assert_eq!(n_i_list.len(), n as usize);
         n_i_list.into()
     } else {
-        vec![0, n]
+        vec![0u8; n as usize]
     };
 
     let mut rng = rand::thread_rng();
@@ -124,7 +124,7 @@ pub fn setup_keygen(t: u8, n: u8, n_i_list: Option<&[u8]>) -> Vec<(ValidatedSetu
     let party_sk: Vec<SigningKey> = (0..n).map(|_| SigningKey::from_bytes(&rng.gen())).collect();
 
     // Create a setup message. In a real world,
-    // this part will be created by an intiator.
+    // this part will be created by an initiator.
     // The setup message contail public keys of
     // all parties that will participate in this
     // protocol execution.
