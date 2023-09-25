@@ -11,7 +11,7 @@ set -eu
 : ${DEST:="."}
 
 COORD=${3:-"ws://localhost:8080/v1/msg-relay"}
-COORD2=${4:=${COORD}}
+COORD2=${4:-${COORD}}
 
 N=${1:-3}
 T=${2:-2}
