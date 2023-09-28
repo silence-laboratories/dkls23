@@ -13,14 +13,9 @@ use k256::{
 };
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
-use tokio::task::{JoinError, JoinSet};
 
-use sl_mpc_mate::{
-    coord::{Relay, BoxedRelay},
-    math::birkhoff_coeffs,
-    message::*,
-    HashBytes, SessionId,
-};
+
+use sl_mpc_mate::{coord::*, math::birkhoff_coeffs, message::*, HashBytes, SessionId};
 
 use sl_oblivious::soft_spoken_mod::Round1Output;
 
@@ -28,8 +23,8 @@ use crate::{
     keygen::{get_idx_from_id, messages::Keyshare},
     setup::sign::ValidatedSetup,
     sign::{
-        pairwise_mta::{PairwiseMtaRec, PairwiseMtaSender},
         messages::{SignMsg1, SignMsg3, SignMsg4},
+        pairwise_mta::{PairwiseMtaRec, PairwiseMtaSender},
     },
     utils::{parse_raw_sign, verify_final_signature},
     BadPartyIndex, Seed,
@@ -59,87 +54,154 @@ fn pop_pair<K: Eq, T>(pairs: &mut Vec<(K, T)>, party_id: K) -> Result<T, BadPart
     Ok(pairs.remove(pos).1)
 }
 
-fn recv_p2p_messages(
-    setup: &ValidatedSetup,
-    tag: MessageTag,
-    relay: &BoxedRelay,
-) -> JoinSet<Result<(Vec<u8>, usize), SignError>> {
-    let mut js = JoinSet::new();
-    let me = Some(setup.party_idx());
-    setup.other_parties_iter().for_each(|(p, vk)| {
-        // P2P message from party VK (p) to me
-        let msg_id = setup.msg_id_from(vk, me, tag);
-        let relay = relay.clone_relay();
+fn pop_tag<T>(msg_map: &mut Vec<(MsgId, T)>, id: &MsgId) -> Option<T> {
+    if let Some(idx) = msg_map.iter().position(|prev| prev.0.eq(id)) {
+        let (_, tag) = msg_map.swap_remove(idx);
+        return Some(tag);
+    }
 
-        js.spawn(async move {
-            let msg = relay
-                .recv(msg_id, 10)
-                .await
-                .ok_or(SignError::InvalidMessage)?;
-            Ok::<_, SignError>((msg, p))
-        });
-    });
-
-    js
+    None
 }
 
-fn recv_broadcast_messages(
+async fn recv_messages<R: Relay>(
     setup: &ValidatedSetup,
     tag: MessageTag,
-    relay: &BoxedRelay,
-) -> JoinSet<Result<(Vec<u8>, usize), SignError>> {
-    let mut js = JoinSet::new();
-    setup.other_parties_iter().for_each(|(party_idx, vk)| {
-        // broadcast message from party `p'
-        let msg_id = setup.msg_id_from(vk, None, tag);
-        let relay = relay.clone_relay();
+    relay: &mut R,
+    p2p: bool,
+) -> Result<Vec<(MsgId, usize)>, InvalidMessage> {
+    let mut tags = vec![];
+    let me = if p2p { Some(setup.party_idx()) } else { None };
 
-        js.spawn(async move {
-            let msg = relay
-                .recv(msg_id, 10)
-                .await
-                .ok_or(SignError::InvalidMessage)?;
-            Ok::<_, SignError>((msg, party_idx))
-        });
-    });
+    for (p, vk) in setup.other_parties_iter() {
+        // A message from party VK (p) to me.
+        let msg_id = setup.msg_id_from(vk, me, tag);
 
-    js
+        let msg = AskMsg::allocate(&msg_id, setup.ttl().as_secs() as _);
+
+        tags.push((msg_id, p));
+
+        relay.send(msg).await?;
+    }
+
+    Ok(tags)
 }
 
 fn decode_signed_message<T: bincode::Decode>(
-    msg: Result<Result<(Vec<u8>, usize), SignError>, JoinError>,
+    tags: &mut Vec<(MsgId, usize)>,
+    mut msg: Vec<u8>,
     setup: &ValidatedSetup,
-) -> Result<(T, usize), SignError> {
-    let (mut msg, party_idx) = msg.map_err(|_| SignError::InvalidMessage)??; // it's ugly, I know
-
+) -> Result<(T, usize), InvalidMessage> {
     let msg = Message::from_buffer(&mut msg)?;
-    let msg = msg.verify_and_decode(setup.party_verifying_key(party_idx).unwrap())?;
+    let mid = msg.id();
 
-    Ok((msg, party_idx))
+    let party_id = pop_tag(tags, &mid).ok_or(InvalidMessage::RecvError)? as _;
+
+    let msg = msg.verify_and_decode(setup.party_verifying_key(party_id).unwrap())?;
+
+    Ok((msg, party_id))
 }
 
 fn decode_encrypted_message<T: bincode::Decode>(
-    msg: Result<Result<(Vec<u8>, usize), SignError>, JoinError>,
+    tags: &mut Vec<(MsgId, usize)>,
+    mut msg: Vec<u8>,
     secret: &ReusableSecret,
     enc_pub_keys: &[(usize, PublicKey)],
-) -> Result<(T, usize), SignError> {
-    let (mut msg, party_id) = msg.map_err(|_| SignError::InvalidMessage)??; // it's ugly, I know
-
+) -> Result<(T, usize), InvalidMessage> {
     let mut msg = Message::from_buffer(&mut msg)?;
+    let mid = msg.id();
+
+    let party_id = pop_tag(tags, &mid).ok_or(InvalidMessage::RecvError)? as _;
+
     let msg = msg.decrypt_and_decode(
         MESSAGE_HEADER_SIZE,
         secret,
-        find_pair(enc_pub_keys, party_id)?,
+        find_pair(enc_pub_keys, party_id).map_err(|_| InvalidMessage::RecvError)?,
     )?;
 
     Ok((msg, party_id))
 }
 
+// fn recv_p2p_messages(
+//     setup: &ValidatedSetup,
+//     tag: MessageTag,
+//     relay: &impl Relay,
+// ) -> JoinSet<Result<(Vec<u8>, usize), SignError>> {
+//     let mut js = JoinSet::new();
+//     let me = Some(setup.party_idx());
+//     setup.other_parties_iter().for_each(|(p, vk)| {
+//         // P2P message from party VK (p) to me
+//         let msg_id = setup.msg_id_from(vk, me, tag);
+//         let relay = relay.clone_relay();
+
+//         js.spawn(async move {
+//             let msg = relay
+//                 .recv(msg_id, 10)
+//                 .await
+//                 .ok_or(SignError::InvalidMessage)?;
+//             Ok::<_, SignError>((msg, p))
+//         });
+//     });
+
+//     js
+// }
+
+// fn recv_broadcast_messages(
+//     setup: &ValidatedSetup,
+//     tag: MessageTag,
+//     relay: &impl Relay,
+// ) -> JoinSet<Result<(Vec<u8>, usize), SignError>> {
+//     let mut js = JoinSet::new();
+//     setup.other_parties_iter().for_each(|(party_idx, vk)| {
+//         // broadcast message from party `p'
+//         let msg_id = setup.msg_id_from(vk, None, tag);
+//         let relay = relay.clone_relay();
+
+//         js.spawn(async move {
+//             let msg = relay
+//                 .recv(msg_id, 10)
+//                 .await
+//                 .ok_or(SignError::InvalidMessage)?;
+//             Ok::<_, SignError>((msg, party_idx))
+//         });
+//     });
+
+//     js
+// }
+
+// fn decode_signed_message<T: bincode::Decode>(
+//     msg: Result<Result<(Vec<u8>, usize), SignError>, JoinError>,
+//     setup: &ValidatedSetup,
+// ) -> Result<(T, usize), SignError> {
+//     let (mut msg, party_idx) = msg.map_err(|_| SignError::InvalidMessage)??; // it's ugly, I know
+
+//     let msg = Message::from_buffer(&mut msg)?;
+//     let msg = msg.verify_and_decode(setup.party_verifying_key(party_idx).unwrap())?;
+
+//     Ok((msg, party_idx))
+// }
+
+// fn decode_encrypted_message<T: bincode::Decode>(
+//     msg: Result<Result<(Vec<u8>, usize), SignError>, JoinError>,
+//     secret: &ReusableSecret,
+//     enc_pub_keys: &[(usize, PublicKey)],
+// ) -> Result<(T, usize), SignError> {
+//     let (mut msg, party_id) = msg.map_err(|_| SignError::InvalidMessage)??; // it's ugly, I know
+
+//     let mut msg = Message::from_buffer(&mut msg)?;
+//     let msg = msg.decrypt_and_decode(
+//         MESSAGE_HEADER_SIZE,
+//         secret,
+//         find_pair(enc_pub_keys, party_id)?,
+//     )?;
+
+//     Ok((msg, party_id))
+// }
+
 ///
-pub async fn run(
+pub async fn run<R: Relay>(
     setup: ValidatedSetup,
     seed: Seed,
-    relay: Box<dyn Relay>,
+    mut relay: R,
 ) -> Result<Signature, SignError> {
     let mut rng = ChaCha20Rng::from_seed(seed);
     let mut nonce_counter = NonceCounter::new();
@@ -181,14 +243,15 @@ pub async fn run(
                 enc_pk: Opaque::from(PublicKey::from(&enc_keys).to_bytes()),
             },
         )?)
-        .await;
+        .await?;
 
     // vector of pairs (party_idx, party_id)
     let mut party_idx_to_id_map = vec![(my_party_idx, my_party_id)];
 
-    let mut js = recv_broadcast_messages(&setup, DSG_MSG_R1, &relay);
-    while let Some(msg) = js.join_next().await {
-        let (msg, party_idx) = decode_signed_message::<SignMsg1>(msg, &setup)?;
+    let mut js = recv_messages(&setup, DSG_MSG_R1, &mut relay, false).await?;
+    while !js.is_empty() {
+        let msg = relay.next().await.ok_or(SignError::MissingMessage)?;
+        let (msg, party_idx) = decode_signed_message::<SignMsg1>(&mut js, msg, &setup)?;
 
         party_idx_to_id_map.push((party_idx, msg.party_id));
         commitments.push((party_idx, (*msg.session_id, *msg.commitment_r_i)));
@@ -244,7 +307,7 @@ pub async fn run(
         .collect::<Result<Vec<_>, SignError>>()?;
 
     for msg in to_send.into_iter() {
-        relay.send(msg).await;
+        relay.send(msg).await?;
     }
 
     let mut mta_senders = setup
@@ -291,10 +354,11 @@ pub async fn run(
 
     let mut sender_additive_shares = vec![];
 
-    let mut js = recv_p2p_messages(&setup, DSG_MSG_R2, &relay);
-    while let Some(msg) = js.join_next().await {
+    let mut js = recv_messages(&setup, DSG_MSG_R2, &mut relay, true).await?;
+    while !js.is_empty() {
+        let msg = relay.next().await.ok_or(SignError::MissingMessage)?;
         let (msg1, party_idx) =
-            decode_encrypted_message::<Round1Output>(msg, &enc_keys, &enc_pub_keys)?;
+            decode_encrypted_message::<Round1Output>(&mut js, msg, &enc_keys, &enc_pub_keys)?;
 
         let mta_sender = pop_pair(&mut mta_senders, party_idx as u8)?;
 
@@ -323,7 +387,7 @@ pub async fn run(
                 &msg3,
                 nonce_counter.next_nonce(),
             )?)
-            .await;
+            .await?;
 
         sender_additive_shares.push(additive_shares);
     }
@@ -337,10 +401,11 @@ pub async fn run(
 
     let mut receiver_additive_shares = vec![];
 
-    let mut js = recv_p2p_messages(&setup, DSG_MSG_R3, &relay);
-    while let Some(msg) = js.join_next().await {
+    let mut js = recv_messages(&setup, DSG_MSG_R3, &mut relay, true).await?;
+    while !js.is_empty() {
+        let msg = relay.next().await.ok_or(SignError::MissingMessage)?;
         let (msg3, party_idx) =
-            decode_encrypted_message::<SignMsg3>(msg, &enc_keys, &enc_pub_keys)?;
+            decode_encrypted_message::<SignMsg3>(&mut js, msg, &enc_keys, &enc_pub_keys)?;
 
         let mta_receiver = pop_pair(&mut mta_receivers, party_idx as u8)?;
 
@@ -424,14 +489,15 @@ pub async fn run(
                 s_1: Opaque::from(s_1),
             },
         )?)
-        .await;
+        .await?;
 
     let mut sum_s_0 = s_0;
     let mut sum_s_1 = s_1;
 
-    let mut js = recv_broadcast_messages(&setup, DSG_MSG_R4, &relay);
-    while let Some(msg) = js.join_next().await {
-        let (msg, _party_idx) = decode_signed_message::<SignMsg4>(msg, &setup)?;
+    let mut js = recv_messages(&setup, DSG_MSG_R4, &mut relay, false).await?;
+    while !js.is_empty() {
+        let msg = relay.next().await.ok_or(SignError::MissingMessage)?;
+        let (msg, _party_idx) = decode_signed_message::<SignMsg4>(&mut js, msg, &setup)?;
 
         sum_s_0 += &*msg.s_0;
         sum_s_1 += &*msg.s_1;
@@ -563,6 +629,8 @@ fn mta_session_id(final_session_id: &SessionId, sender_id: u8, receiver_id: u8) 
 
 #[cfg(test)]
 mod tests {
+    use tokio::task::JoinSet;
+
     use super::*;
     use k256::AffinePoint;
     use std::array;

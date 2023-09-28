@@ -1,18 +1,12 @@
-use rand;
 use tokio::task;
 
-use dkls23::MsgId;
 use dkls23::setup::{self, *};
 use dkls23::{keygen::Keyshare, sign};
 
 use msg_relay_client::MsgRelayClient;
-use sl_mpc_mate::{
-    message::*,
-    coord::{BoxedRelay, Relay},
-    HashBytes,
-};
+use sl_mpc_mate::{coord::*, message::*, HashBytes};
 
-use crate::{default_coord, flags, utils::*, SignHashFn, serve::*};
+use crate::{default_coord, flags, serve::*, utils::*, SignHashFn};
 
 pub async fn setup(opts: flags::SignSetup) -> anyhow::Result<()> {
     let pk = parse_affine_point(&opts.public_key)?;
@@ -53,10 +47,12 @@ pub async fn setup(opts: flags::SignSetup) -> anyhow::Result<()> {
         .ok_or(anyhow::Error::msg("cant create setup message"))?;
 
     let coord = opts.coordinator.unwrap_or_else(default_coord);
-    let msg_relay: BoxedRelay =
-        Box::new(MsgRelayClient::connect(&coord).await?);
+    let mut msg_relay = MsgRelayClient::connect(&coord).await?;
 
-    msg_relay.send(setup).await;
+    msg_relay
+        .send(setup)
+        .await
+        .map_err(|_| anyhow::Error::msg("setup msg send error"))?;
 
     if !opts.node.is_empty() {
         let mut inits = tokio::task::JoinSet::new();
@@ -120,7 +116,7 @@ pub async fn run_sign(opts: flags::SignGen) -> anyhow::Result<()> {
     );
 
     opts.party.into_iter().try_for_each(|desc| {
-        let mut parts = desc.split(":");
+        let mut parts = desc.split(':');
 
         let party_sk = parts
             .next()
@@ -141,12 +137,13 @@ pub async fn run_sign(opts: flags::SignGen) -> anyhow::Result<()> {
         let coord = coord.clone();
 
         parties.spawn(async move {
-            let msg_relay: BoxedRelay =
-                Box::new(MsgRelayClient::connect(&coord).await?);
-            let relay_stats = RelayStats::new(msg_relay);
-            let msg_relay = relay_stats.clone_relay();
+            let stats = Stats::alloc();
 
-            let mut setup = msg_relay.recv(msg_id, 10).await.ok_or(
+            let msg_relay = MsgRelayClient::connect(&coord).await?;
+            let msg_relay = RelayStats::new(msg_relay, stats.clone());
+            let mut msg_relay = BufferedMsgRelay::new(msg_relay);
+
+            let mut setup = msg_relay.recv(&msg_id, 10).await.ok_or(
                 anyhow::Error::msg("Can't receive setup message"),
             )?;
 
@@ -160,7 +157,6 @@ pub async fn run_sign(opts: flags::SignGen) -> anyhow::Result<()> {
             .ok_or(anyhow::Error::msg("cant parse setup message"))?;
 
             let sign = sign::run(setup, seed, msg_relay).await?;
-            let stats = relay_stats.stats();
 
             Ok::<_, anyhow::Error>((sign, party_id, stats))
         });
@@ -176,6 +172,8 @@ pub async fn run_sign(opts: flags::SignGen) -> anyhow::Result<()> {
         let bytes = sign.to_der().to_bytes();
 
         std::fs::write(sign_file_name, bytes)?;
+
+        let stats = stats.lock().unwrap();
 
         tracing::info!("send_count: {} {}", pid, stats.send_count);
         tracing::info!("send_size:  {} {}", pid, stats.send_size);

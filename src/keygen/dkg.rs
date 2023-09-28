@@ -22,7 +22,7 @@ use sl_oblivious::{
 };
 
 use sl_mpc_mate::{
-    coord::{BoxedRelay, Relay},
+    coord::*,
     math::{feldman_verify, polynomial_coeff_multipliers, GroupPolynomial, Polynomial},
     message::*,
     HashBytes, SessionId,
@@ -65,88 +65,92 @@ fn remove_ids_and_wrap<T, K>(mut pairs: Vec<(u8, T)>) -> Vec<Opaque<T, K>> {
     pairs.into_iter().map(|(_, v)| Opaque::from(v)).collect()
 }
 
-fn recv_p2p_messages(
-    setup: &ValidatedSetup,
-    tag: MessageTag,
-    relay: &BoxedRelay,
-) -> JoinSet<Result<(Vec<u8>, u8), InvalidMessage>> {
-    let mut js = JoinSet::new();
-    let me = Some(setup.party_id());
-    setup.other_parties_iter().for_each(|(p, vk)| {
-        // P2P message from party VK (p) to me
-        let msg_id = setup.msg_id_from(vk, me, tag);
-        let relay = relay.clone_relay();
+fn pop_tag<T>(msg_map: &mut Vec<(MsgId, T)>, id: &MsgId) -> Option<T> {
+    if let Some(idx) = msg_map.iter().position(|prev| prev.0.eq(id)) {
+        let (_, tag) = msg_map.swap_remove(idx);
+        return Some(tag);
+    }
 
-        js.spawn(async move {
-            let msg = relay
-                .recv(msg_id, 10)
-                .await
-                .ok_or(InvalidMessage::RecvError)?;
-            Ok::<_, InvalidMessage>((msg, p))
-        });
-    });
+    println!("unexpected message {:X}", id);
 
-    js
+    None
 }
 
-fn recv_broadcast_messages(
+async fn request_messages<R: Relay>(
     setup: &ValidatedSetup,
     tag: MessageTag,
-    relay: &BoxedRelay,
-) -> JoinSet<Result<(Vec<u8>, u8), InvalidMessage>> {
-    let mut js = JoinSet::new();
-    setup.other_parties_iter().for_each(|(p, vk)| {
-        // broadcast the message from party `p'
-        let msg_id = setup.msg_id_from(vk, None, tag);
-        let relay = relay.clone_relay();
+    relay: &mut R,
+    p2p: bool,
+) -> Result<Vec<(MsgId, u8)>, InvalidMessage> {
+    let mut tags = vec![];
+    let me = if p2p { Some(setup.party_id()) } else { None };
 
-        js.spawn(async move {
-            let msg = relay
-                .recv(msg_id, 10)
-                .await
-                .ok_or(InvalidMessage::RecvError)?;
-            Ok::<_, InvalidMessage>((msg, p))
-        });
-    });
+    for (p, vk) in setup.other_parties_iter() {
+        // A message from party VK (p) to me.
+        let msg_id = setup.msg_id_from(vk, me, tag);
 
-    js
+        tracing::info!("ask msg {:X} tag {:?} {} p2p {}", msg_id, tag, setup.party_id(), p2p);
+
+        let msg = AskMsg::allocate(&msg_id, setup.ttl().as_secs() as _);
+
+        tags.push((msg_id, p));
+
+        relay.send(msg).await?;
+    }
+
+    Ok(tags)
 }
 
 fn decode_signed_message<T: bincode::Decode>(
-    msg: Result<Result<(Vec<u8>, u8), InvalidMessage>, JoinError>,
+    tags: &mut Vec<(MsgId, u8)>,
+    mut msg: Vec<u8>,
     setup: &ValidatedSetup,
 ) -> Result<(T, u8), InvalidMessage> {
-    let (mut msg, party_id) = msg.map_err(|_| InvalidMessage::RecvError)??; // it's ugly, I know
-
     let msg = Message::from_buffer(&mut msg)?;
+    let mid = msg.id();
+
+    let party_id = pop_tag(tags, &mid).unwrap(); // ok_or(InvalidMessage::RecvError)?;
+
     let msg = msg.verify_and_decode(setup.party_verifying_key(party_id).unwrap())?;
+
+    tracing::info!("got msg {:X} {}", mid, setup.party_id());
 
     Ok((msg, party_id))
 }
 
 fn decode_encrypted_message<T: bincode::Decode>(
-    msg: Result<Result<(Vec<u8>, u8), InvalidMessage>, JoinError>,
+    tags: &mut Vec<(MsgId, u8)>,
+    mut msg: Vec<u8>,
     secret: &ReusableSecret,
     enc_pub_keys: &[(u8, PublicKey)],
 ) -> Result<(T, u8), InvalidMessage> {
-    let (mut msg, party_id) = msg.map_err(|_| InvalidMessage::RecvError)??; // it's ugly, I know
-
     let mut msg = Message::from_buffer(&mut msg)?;
+    let mid = msg.id();
+
+    let party_id = pop_tag(tags, &mid).unwrap(); // .ok_or(InvalidMessage::RecvError)?;
+
     let msg = msg.decrypt_and_decode(
         MESSAGE_HEADER_SIZE,
         secret,
         find_pair(enc_pub_keys, party_id).map_err(|_| InvalidMessage::RecvError)?,
     )?;
 
+    tracing::info!("got msg {:X} p2p", mid);
+
     Ok((msg, party_id))
 }
 
 ///
-pub async fn run(
+pub async fn run<R>(
     setup: ValidatedSetup,
     seed: Seed,
-    relay: BoxedRelay,
-) -> Result<Keyshare, KeygenError> {
+    relay: R,
+) -> Result<Keyshare, KeygenError>
+where
+    R: Relay,
+{
+    let mut relay = BufferedMsgRelay::new(relay);
+
     let mut rng = ChaCha20Rng::from_seed(seed);
     let mut nonce_counter = NonceCounter::new();
 
@@ -192,10 +196,12 @@ pub async fn run(
                 enc_pk: Opaque::from(PublicKey::from(&enc_keys).to_bytes()),
             },
         )?)
-        .await;
+        .await?;
 
-    let mut r1_msgs = recv_broadcast_messages(&setup, DKG_MSG_R1, &relay);
-    while let Some(msg) = r1_msgs.join_next().await {
+    let mut r1_tags = request_messages(&setup, DKG_MSG_R1, &mut relay, false).await?;
+    while !r1_tags.is_empty() {
+        let msg = relay.next().await.ok_or(KeygenError::MissingMessage)?;
+
         let (
             KeygenMsg1 {
                 session_id,
@@ -204,13 +210,15 @@ pub async fn run(
                 enc_pk,
             },
             party_id,
-        ) = decode_signed_message(msg, &setup)?;
+        ) = decode_signed_message(&mut r1_tags, msg, &setup)?;
 
         sid_i_list.push((party_id, *session_id));
         commitment_list.push((party_id, *commitment));
         x_i_list.push((party_id, NonZeroScalar::new(*x_i).unwrap())); // FIXME handle unwrap()!
         enc_pub_key.push((party_id, PublicKey::from(*enc_pk)));
     }
+
+    tracing::info!("R1 done {}", setup.party_id());
 
     // Create a common session ID from pieces od random data that we received
     // from other parties.
@@ -297,11 +305,12 @@ pub async fn run(
         })
         .collect::<Result<Vec<_>, KeygenError>>()?;
 
+    // send out R2 P2P messages
     for msg in to_send.into_iter() {
-        relay.send(msg).await;
+        relay.send(msg).await?;
     }
 
-    // send out message
+    // send out our R2 broadcast message
     relay
         .send(Builder::<Signed>::encode(
             &setup.msg_id(None, DKG_MSG_R2),
@@ -314,16 +323,16 @@ pub async fn run(
                 dlog_proofs_i: dlog_proofs,
             },
         )?)
-        .await;
-
-    // start receiving P2P messages
-    let mut r2_p2p = recv_p2p_messages(&setup, DKG_MSG_R2, &relay);
+        .await?;
 
     // ... and while we are receiving P2P messages,
     // receive and process broadcast messages from parties.
-    let mut r2_msgs = recv_broadcast_messages(&setup, DKG_MSG_R2, &relay);
-    while let Some(msg) = r2_msgs.join_next().await {
-        let (msg, party_id) = decode_signed_message::<KeygenMsg2>(msg, &setup)?;
+    let mut r2_msgs = request_messages(&setup, DKG_MSG_R2, &mut relay, false).await?;
+    while !r2_msgs.is_empty() {
+        tracing::info!("r2_msgs {} {:?}", setup.party_id(), r2_msgs);
+
+        let msg = relay.next().await.ok_or(KeygenError::MissingMessage)?;
+        let (msg, party_id) = decode_signed_message::<KeygenMsg2>(&mut r2_msgs, msg, &setup)?;
 
         // Verify commitments.
         let rank = setup.party_rank(party_id).unwrap();
@@ -360,6 +369,9 @@ pub async fn run(
 
         big_f_i_vecs.push((party_id, msg.big_f_i_vector));
     }
+    drop(r2_msgs);
+
+    tracing::info!("R2 broadcast done {}", setup.party_id());
 
     drop(commitment_list);
 
@@ -373,9 +385,16 @@ pub async fn run(
         big_f_vec.add_mut(v);
     }
 
+    // start receiving P2P messages
+    let mut r2_p2p = request_messages(&setup, DKG_MSG_R2, &mut relay, true).await?;
+
     let mut vsot_next_receivers = vec![];
-    while let Some(msg) = r2_p2p.join_next().await {
-        let (vsot_msg1, party_id) = decode_encrypted_message(msg, &enc_keys, &enc_pub_key)?;
+    while !r2_p2p.is_empty() {
+        tracing::info!("r2_p2p {} {:?}", setup.party_id(), r2_p2p);
+
+        let msg = relay.next().await.ok_or(KeygenError::MissingMessage)?;
+        let (vsot_msg1, party_id) =
+            decode_encrypted_message(&mut r2_p2p, msg, &enc_keys, &enc_pub_key)?;
 
         let rank = setup.party_rank(party_id).unwrap();
 
@@ -404,15 +423,23 @@ pub async fn run(
                 &msg3,
                 nonce_counter.next_nonce(),
             )?)
-            .await;
+            .await?;
     }
+    drop(r2_p2p);
+
+    tracing::info!("R2 P2P done {}", setup.party_id());
+
     let mut vsot_receivers = vsot_next_receivers;
 
     let mut vsot_next_senders = vec![];
-    let mut r3_msgs = recv_p2p_messages(&setup, DKG_MSG_R3, &relay);
-    while let Some(msg) = r3_msgs.join_next().await {
+    let mut r3_msgs = request_messages(&setup, DKG_MSG_R3, &mut relay, true).await?;
+    while !r3_msgs.is_empty() {
+
+        tracing::info!("r3_msgs {} {:?}", setup.party_id(), r3_msgs);
+
+        let msg = relay.next().await.ok_or(KeygenError::MissingMessage)?;
         let (msg3, party_id) =
-            decode_encrypted_message::<KeygenMsg3>(msg, &enc_keys, &enc_pub_key)?;
+            decode_encrypted_message::<KeygenMsg3>(&mut r3_msgs, msg, &enc_keys, &enc_pub_key)?;
 
         (msg3.big_f_vec == big_f_vec)
             .then_some(())
@@ -435,8 +462,11 @@ pub async fn run(
                 &vsot_msg3,
                 nonce_counter.next_nonce(),
             )?)
-            .await;
+            .await?;
     }
+
+    tracing::info!("R3 P2P done {}", setup.party_id());
+
     let mut vsot_senders = vsot_next_senders;
 
     d_i_list.sort_by_key(|(p, _)| *p);
@@ -485,13 +515,14 @@ pub async fn run(
             setup.signing_key(),
             &msg4,
         )?)
-        .await;
+        .await?;
 
     let mut big_s_list = vec![(my_party_id, big_s_i)];
 
-    let mut r4_msgs = recv_broadcast_messages(&setup, DKG_MSG_R4, &relay);
-    while let Some(msg) = r4_msgs.join_next().await {
-        let (msg, party_id) = decode_signed_message::<KeygenMsg4>(msg, &setup)?;
+    let mut r4_msgs = request_messages(&setup, DKG_MSG_R4, &mut relay, false).await?;
+    while !r4_msgs.is_empty() {
+        let msg = relay.next().await.ok_or(KeygenError::MissingMessage)?;
+        let (msg, party_id) = decode_signed_message::<KeygenMsg4>(&mut r4_msgs, msg, &setup)?;
 
         if public_key != *msg.public_key {
             return Err(KeygenError::PublicKeyMismatch);
@@ -543,9 +574,11 @@ pub async fn run(
     )?;
 
     let mut vsot_next_receivers = vec![];
-    let mut js = recv_p2p_messages(&setup, DKG_MSG_R4, &relay);
-    while let Some(msg) = js.join_next().await {
-        let (msg, party_id) = decode_encrypted_message::<VSOTMsg3>(msg, &enc_keys, &enc_pub_key)?;
+    let mut js = request_messages(&setup, DKG_MSG_R4, &mut relay, true).await?;
+    while !js.is_empty() {
+        let msg = relay.next().await.ok_or(KeygenError::MissingMessage)?;
+        let (msg, party_id) =
+            decode_encrypted_message::<VSOTMsg3>(&mut js, msg, &enc_keys, &enc_pub_key)?;
         let receiver = pop_pair(&mut vsot_receivers, party_id)?;
 
         let (receiver, vsot_msg4) = receiver.process(msg)?;
@@ -560,16 +593,17 @@ pub async fn run(
                 &vsot_msg4,
                 nonce_counter.next_nonce(),
             )?)
-            .await;
+            .await?;
     }
     let mut vsot_receivers = vsot_next_receivers;
 
     let mut seed_ot_senders = vec![];
     let mut seed_i_j_list = vec![];
 
-    let mut js = recv_p2p_messages(&setup, DKG_MSG_R5, &relay);
-    while let Some(msg) = js.join_next().await {
-        let (msg, party_id) = decode_encrypted_message(msg, &enc_keys, &enc_pub_key)?;
+    let mut js = request_messages(&setup, DKG_MSG_R5, &mut relay, true).await?;
+    while !js.is_empty() {
+        let msg = relay.next().await.ok_or(KeygenError::MissingMessage)?;
+        let (msg, party_id) = decode_encrypted_message(&mut js, msg, &enc_keys, &enc_pub_key)?;
         let sender = pop_pair(&mut vsot_senders, party_id)?;
 
         let (sender_output, vsot_msg5) = sender.process(msg)?;
@@ -603,15 +637,17 @@ pub async fn run(
                 &msg6,
                 nonce_counter.next_nonce(),
             )?)
-            .await;
+            .await?;
     }
 
     let mut seed_ot_receivers = vec![];
     let mut rec_seed_list = vec![];
 
-    let mut js = recv_p2p_messages(&setup, DKG_MSG_R6, &relay);
-    while let Some(msg) = js.join_next().await {
-        let (msg, party_id) = decode_encrypted_message::<KeygenMsg6>(msg, &enc_keys, &enc_pub_key)?;
+    let mut js = request_messages(&setup, DKG_MSG_R6, &mut relay, true).await?;
+    while !js.is_empty() {
+        let msg = relay.next().await.ok_or(KeygenError::MissingMessage)?;
+        let (msg, party_id) =
+            decode_encrypted_message::<KeygenMsg6>(&mut js, msg, &enc_keys, &enc_pub_key)?;
 
         let receiver = pop_pair(&mut vsot_receivers, party_id)?;
 

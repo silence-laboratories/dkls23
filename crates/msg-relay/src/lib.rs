@@ -155,9 +155,9 @@ where
                         if matches!(kind, Kind::Ask) {
                             // join other waiters
                             if let Some((id, tx)) = tx {
-                                if b.iter()
-                                    .find(|(tx_id, _)| *tx_id == id)
-                                    .is_none()
+                                if !b
+                                    .iter()
+                                    .any(|(tx_id, _)| *tx_id == id)
                                 {
                                     *prev = expire.max(*prev);
                                     b.push((id, tx.clone()));

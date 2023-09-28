@@ -276,6 +276,7 @@ impl ValidatedSetup {
 }
 
 ///
+#[derive(Default)]
 pub struct SetupBuilder {
     parties: Vec<(u8, VerifyingKey)>,
 }

@@ -157,7 +157,9 @@ async fn handle_keygen(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    let relay_stats = RelayStats::new(Box::new(msg_relay));
+    let stats = Stats::alloc();
+    let relay_stats = RelayStats::new(msg_relay, stats.clone());
+    let mut relay_stats = BufferedMsgRelay::new(relay_stats);
 
     let msg_id = MsgId::new(
         &instance,
@@ -167,13 +169,13 @@ async fn handle_keygen(
     );
 
     let mut setup = relay_stats
-        .recv(msg_id, 10)
+        .recv(&msg_id, 10)
         .await
         .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
 
     tracing::info!("setup ok");
 
-    let setup = setup::keygen::ValidatedSetup::decode(
+    let setup = keygen::ValidatedSetup::decode(
         &mut setup,
         &instance,
         &state.setup_vk,
@@ -184,13 +186,13 @@ async fn handle_keygen(
 
     let seed = rand::random();
 
-    let share = keygen::run(setup, seed, relay_stats.clone_relay())
+    let share = keygen::run(setup, seed, relay_stats)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let total_time = start.elapsed().as_millis() as u32;
 
-    let stats = relay_stats.stats();
+    let stats = stats.lock().unwrap();
 
     let pk_vec = share.public_key.to_affine().to_bytes().to_vec();
     let pk_hex = hex::encode(&pk_vec);
@@ -239,10 +241,13 @@ async fn handle_sign(
         SETUP_MESSAGE_TAG,
     );
 
-    let relay_stats = RelayStats::new(Box::new(msg_relay));
+    let stats = Stats::alloc();
+
+    let relay_stats = RelayStats::new(msg_relay, stats.clone());
+    let mut relay_stats = BufferedMsgRelay::new(relay_stats);
 
     let mut setup = relay_stats
-        .recv(msg_id, 10)
+        .recv(&msg_id, 10)
         .await
         .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -252,7 +257,7 @@ async fn handle_sign(
         &state.setup_vk,
         state.party_key.clone(),
         |setup, _| {
-            let pk = hex::encode(&setup.public_key().to_bytes());
+            let pk = hex::encode(setup.public_key().to_bytes());
             let path = state.storage.join(format!("{}.keyshare", &pk));
 
             let bytes = std::fs::read(path).ok()?;
@@ -270,7 +275,7 @@ async fn handle_sign(
 
     let seed = rand::random();
 
-    let sign = sign::run(setup, seed, relay_stats.clone_relay())
+    let sign = sign::run(setup, seed, relay_stats)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -278,7 +283,7 @@ async fn handle_sign(
 
     let sign = sign.to_der().to_bytes().to_vec();
 
-    let stats = relay_stats.stats();
+    let stats = stats.lock().unwrap();
 
     Ok(Json(SignResponse {
         sign,
@@ -323,7 +328,7 @@ pub async fn run(opts: flags::Serve) -> anyhow::Result<()> {
     let app = app(state);
 
     let listen = {
-        if opts.listen.len() > 0 {
+        if !opts.listen.is_empty() {
             opts.listen
         } else {
             vec![format!(

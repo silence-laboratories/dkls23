@@ -168,7 +168,10 @@ This is signal to start distributed key generation.
 ### Generate signature
 
 ```shell
-DEST=./data ./crates/dkls-party/scripts/dsg-setup.sh 2 <public key> 0 1
+DEST=./data ./crates/dkls-party/scripts/dsg-setup.sh 2 \
+   <public key> \
+   "message to sign" \
+   0 1
 ```
 
 The command above will generate signature.

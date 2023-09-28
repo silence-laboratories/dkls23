@@ -3,7 +3,6 @@
 use std::str::FromStr;
 
 use rand::prelude::*;
-use tracing_subscriber;
 
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -72,7 +71,7 @@ fn gen_party_keys(opts: flags::GenPartyKeys) -> anyhow::Result<()> {
 
     let setup_sk = SigningKey::from_bytes(&rng.gen());
 
-    std::fs::write(opts.output, &setup_sk.to_bytes())?;
+    std::fs::write(opts.output, setup_sk.to_bytes())?;
 
     Ok(())
 }

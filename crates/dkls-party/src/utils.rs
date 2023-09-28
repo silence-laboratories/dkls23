@@ -1,6 +1,8 @@
 use std::{
+    pin::Pin,
     sync::{Arc, Mutex},
-    time::{Duration, Instant},
+    task::{Context, Poll},
+    time::Duration,
 };
 
 use k256::{
@@ -71,17 +73,20 @@ pub struct Stats {
     pub wait_time: Duration,
 }
 
-pub struct RelayStats {
-    relay: BoxedRelay,
+impl Stats {
+    pub fn alloc() -> Arc<Mutex<Self>> {
+        Arc::new(Mutex::new(Self::default()))
+    }
+}
+
+pub struct RelayStats<R: Relay> {
+    relay: R,
     stats: Arc<Mutex<Stats>>,
 }
 
-impl RelayStats {
-    pub fn new(relay: BoxedRelay) -> Box<RelayStats> {
-        Box::new(RelayStats {
-            relay,
-            stats: Arc::new(Mutex::new(Stats::default())),
-        })
+impl<R: Relay> RelayStats<R> {
+    pub fn new(relay: R, stats: Arc<Mutex<Stats>>) -> Self {
+        Self { relay, stats }
     }
 
     pub fn stats(&self) -> Stats {
@@ -89,40 +94,63 @@ impl RelayStats {
     }
 }
 
-impl Relay for RelayStats {
-    fn send(&self, msg: Vec<u8>) -> BoxedSend {
-        let mut stats = self.stats.lock().unwrap();
-        stats.send_size += msg.len();
-        stats.send_count += 1;
+impl<R: Relay> Stream for RelayStats<R> {
+    type Item = <R as Stream>::Item;
 
-        self.relay.send(msg)
-    }
+    fn poll_next(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Self::Item>> {
+        match self.relay.poll_next_unpin(cx) {
+            Poll::Ready(Some(msg)) => {
+                let mut stats = self.stats.lock().unwrap();
 
-    fn recv(&self, id: MsgId, ttl: u32) -> BoxedRecv {
-        let recv = self.relay.recv(id, ttl);
-        let stats = self.stats.clone();
-
-        Box::pin(async move {
-            let start = Instant::now();
-            let msg = recv.await;
-
-            let wait_time = start.elapsed();
-
-            if let Some(msg) = &msg {
-                let mut stats = stats.lock().unwrap();
                 stats.recv_size += msg.len();
                 stats.recv_count += 1;
-                stats.wait_time += wait_time;
-            };
 
-            msg
-        })
+                Poll::Ready(Some(msg))
+            }
+
+            r => r,
+        }
+    }
+}
+
+impl<R: Relay> Sink<Vec<u8>> for RelayStats<R> {
+    type Error = <R as Sink<Vec<u8>>>::Error;
+
+    fn poll_ready(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<(), Self::Error>> {
+        self.relay.poll_ready_unpin(cx)
     }
 
-    fn clone_relay(&self) -> BoxedRelay {
-        Box::new(RelayStats {
-            relay: self.relay.clone_relay(),
-            stats: self.stats.clone(),
-        })
+    fn start_send(
+        mut self: Pin<&mut Self>,
+        item: Vec<u8>,
+    ) -> Result<(), Self::Error> {
+
+        let mut stats = self.stats.lock().unwrap();
+
+        stats.send_size += item.len();
+        stats.send_count += 1;
+        drop(stats);
+
+        self.relay.start_send_unpin(item)
+    }
+
+    fn poll_flush(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<(), Self::Error>> {
+        self.relay.poll_flush_unpin(cx)
+    }
+
+    fn poll_close(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<(), Self::Error>> {
+        self.relay.poll_close_unpin(cx)
     }
 }

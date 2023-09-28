@@ -5,12 +5,11 @@ use sl_mpc_mate::{message::*, HashBytes};
 
 use crate::{
     keygen::Keyshare,
-    setup::{
-        sign::{SetupBuilder, ValidatedSetup},
-        SETUP_MESSAGE_TAG,
-    },
+    setup::{sign::SetupBuilder, SETUP_MESSAGE_TAG},
     Seed,
 };
+
+pub use crate::setup::sign::ValidatedSetup;
 
 /// Pairwise MTA
 pub mod pairwise_mta;

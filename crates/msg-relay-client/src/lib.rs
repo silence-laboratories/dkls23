@@ -1,45 +1,21 @@
-use std::sync::Arc;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 
-use futures_util::{
-    stream::{SplitSink, StreamExt},
-    SinkExt,
-};
+use futures_util::FutureExt;
+use futures_util::{stream::StreamExt, Sink, SinkExt, Stream};
 use url::Url;
 
-use tokio::{
-    net::TcpStream,
-    sync::{oneshot, watch, Mutex},
-};
+use tokio::net::TcpStream;
 use tokio_tungstenite::{
     connect_async, tungstenite::Message as WsMessage, MaybeTlsStream, WebSocketStream,
 };
 
-use sl_mpc_mate::{
-    coord::{BoxedRecv, BoxedRelay, BoxedSend, Relay},
-    message::*,
-};
+use sl_mpc_mate::message::*;
 
 type WS = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
-struct Inner {
-    sender: Mutex<SplitSink<WS, WsMessage>>,
-    queue: Mutex<Vec<(MsgId, oneshot::Sender<Vec<u8>>)>>,
-    closed: watch::Sender<bool>,
-}
-
-impl Inner {
-    async fn send(&self, msg: Vec<u8>) {
-        let _ = self.sender.lock().await.send(WsMessage::Binary(msg)).await;
-    }
-
-    async fn pong(&self, msg: Vec<u8>) {
-        let _ = self.sender.lock().await.send(WsMessage::Pong(msg)).await;
-    }
-}
-
-#[derive(Clone)]
 pub struct MsgRelayClient {
-    inner: Arc<Inner>,
+    ws: WS,
 }
 
 impl MsgRelayClient {
@@ -48,119 +24,61 @@ impl MsgRelayClient {
 
         let (ws, _) = connect_async(endpoint).await?;
 
-        let (sender, mut receiver) = ws.split();
-
-        let (tx_close, mut rx_close) = watch::channel(false);
-
-        let inner = Arc::new(Inner {
-            sender: Mutex::new(sender),
-            queue: Mutex::new(vec![]),
-            closed: tx_close,
-        });
-
-        let tx_inner = inner.clone();
-
-        // task to pump messages from the WS connection
-        // and dispatch to a receivers.
-        tokio::spawn(async move {
-            loop {
-                tokio::select! {
-                    msg = receiver.next() => {
-                        let msg = match msg {
-                            Some(Ok(msg)) => msg,
-                            _ => return
-                        };
-
-                        match msg {
-                            WsMessage::Close(_) => return,
-
-                            WsMessage::Ping(m) => {
-                                tx_inner.pong(m).await;
-                            },
-
-                            WsMessage::Pong(_) => {
-                            },
-
-                            WsMessage::Binary(mut data) => {
-                                let in_id = if let Ok(msg) = Message::from_buffer(&mut data) {
-                                    msg.id()
-                                } else {
-                                    continue;
-                                };
-
-                                let mut queue = tx_inner.queue.lock().await;
-                                let pos = queue.iter().position(|(id, _)| id.eq(&in_id));
-
-                                if let Some(pos) = pos {
-                                    let (_, tx) = queue.swap_remove(pos);
-                                    // Ignore send error. Drop the message
-                                    // if no one is waiting for it.
-                                    let _ = tx.send(data);
-                                } else {
-                                    // Drop the message, no one is waiting for it.
-                                    continue;
-                                }
-                            }
-
-                            _ => {}
-                        }
-
-                    },
-
-                    _closed = rx_close.changed() => {
-                        return;
-                    }
-                }
-            }
-        });
-
-        Ok(Self { inner })
-    }
-
-    pub fn send(&self, msg: Vec<u8>) -> BoxedSend {
-        let inner = self.inner.clone();
-
-        Box::pin(async move {
-            inner.send(msg).await;
-        })
-    }
-
-    pub fn recv(&self, id: MsgId, ttl: u32) -> BoxedRecv {
-        let msg = AskMsg::allocate(&id, ttl);
-
-        let (tx, rx) = oneshot::channel();
-
-        let inner = self.inner.clone();
-
-        Box::pin(async move {
-            // register itself as a waiter for the message
-            inner.queue.lock().await.push((id, tx));
-
-            // send an ASK message
-            inner.send(msg).await;
-
-            // wait for the message
-            let msg = rx.await.ok()?;
-
-            Some(msg)
-        })
-    }
-
-    pub fn close(&self) {
-        let _ = self.inner.closed.send(true);
+        Ok(Self { ws })
     }
 }
 
-impl Relay for MsgRelayClient {
-    fn send(&self, msg: Vec<u8>) -> BoxedSend {
-        self.send(msg)
+impl Stream for MsgRelayClient {
+    type Item = Vec<u8>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        loop {
+            match self.ws.poll_next_unpin(cx) {
+                Poll::Pending => return Poll::Pending,
+                Poll::Ready(None) => return Poll::Ready(None),
+                Poll::Ready(Some(Err(_err))) => return Poll::Ready(None),
+
+                Poll::Ready(Some(Ok(WsMessage::Binary(msg)))) => return Poll::Ready(Some(msg)),
+
+                Poll::Ready(Some(Ok(WsMessage::Ping(m)))) => {
+                    match self.ws.send(WsMessage::Pong(m)).poll_unpin(cx) {
+                        Poll::Pending => return Poll::Pending,
+                        Poll::Ready(_) => {}
+                    }
+                }
+
+                Poll::Ready(Some(Ok(WsMessage::Close(_)))) => return Poll::Ready(None),
+
+                Poll::Ready(Some(Ok(_))) => {}
+            }
+        }
+    }
+}
+
+impl Sink<Vec<u8>> for MsgRelayClient {
+    type Error = InvalidMessage;
+
+    fn poll_ready(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.ws
+            .poll_ready_unpin(cx)
+            .map_err(|_| InvalidMessage::SendError)
     }
 
-    fn recv(&self, id: MsgId, ttl: u32) -> BoxedRecv {
-        self.recv(id, ttl)
+    fn start_send(mut self: Pin<&mut Self>, item: Vec<u8>) -> Result<(), Self::Error> {
+        self.ws
+            .start_send_unpin(WsMessage::Binary(item))
+            .map_err(|_| InvalidMessage::SendError)
     }
 
-    fn clone_relay(&self) -> BoxedRelay {
-        Box::new(self.clone())
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.ws
+            .poll_flush_unpin(cx)
+            .map_err(|_| InvalidMessage::SendError)
+    }
+
+    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.ws
+            .poll_close_unpin(cx)
+            .map_err(|_| InvalidMessage::SendError)
     }
 }

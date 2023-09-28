@@ -53,10 +53,15 @@ pub enum KeygenError {
     /// corresponding to the party-id
     #[error("Missing piece of state")]
     InvalidParty(u8),
+
+    ///
+    #[error("Missing message")]
+    MissingMessage,
 }
 
 impl From<InvalidMessage> for KeygenError {
     fn from(_err: InvalidMessage) -> Self {
+        println!("inv msg {:?}", _err);
         KeygenError::InvalidMessage
     }
 }
