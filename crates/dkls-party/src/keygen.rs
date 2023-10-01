@@ -1,4 +1,5 @@
 use std::str::FromStr;
+use std::time::Instant;
 
 use k256::elliptic_curve::group::GroupEncoding;
 use tokio::task;
@@ -84,13 +85,15 @@ pub async fn setup(opts: flags::KeygenSetup) -> anyhow::Result<()> {
             }
         }
 
-        println!("{}", hex::encode(&keys[0]));
+        println!("{} {}", hex::encode(&keys[0]), keys.len());
     }
 
     Ok(())
 }
 
 pub async fn run_keygen(opts: flags::KeyGen) -> anyhow::Result<()> {
+    let start = Instant::now();
+
     let mut parties = task::JoinSet::new();
 
     let instance = parse_instance_id(&opts.instance)?;
@@ -163,6 +166,8 @@ pub async fn run_keygen(opts: flags::KeyGen) -> anyhow::Result<()> {
         tracing::info!("recv_count: {} {}", pid, stats.recv_count);
         tracing::info!("recv_size:  {} {}", pid, stats.recv_size);
     }
+
+    tracing::info!("total time {:?}", start.elapsed());
 
     Ok(())
 }

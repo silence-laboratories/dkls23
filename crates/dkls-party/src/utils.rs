@@ -64,7 +64,7 @@ pub fn parse_affine_point(s: &str) -> anyhow::Result<AffinePoint> {
     }
 }
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Debug)]
 pub struct Stats {
     pub send_count: usize,
     pub send_size: usize,

@@ -6,9 +6,6 @@ use std::sync::{
 };
 use std::time::Instant;
 
-use futures_util::stream::StreamExt;
-use futures_util::SinkExt;
-
 use tokio::sync::mpsc;
 
 use axum::{
@@ -125,7 +122,7 @@ where
         self.total_size += msg.len() as u64;
         self.total_count += 1;
 
-        tracing::info!("handle {:X} {:?} {}", id, kind, msg.len());
+        tracing::debug!("handle {:X} {:?} {}", id, kind, msg.len());
 
         // we have a locked state, let's cleanup some old entries
         self.cleanup(now);
@@ -207,26 +204,24 @@ pub async fn handler<F: FnMut(Vec<u8>) + Send + 'static>(
     State(state): State<AppState<F>>,
     ws: WebSocketUpgrade,
 ) -> Response {
-    ws.on_upgrade(|socket| async move {
+    ws.on_upgrade(|mut socket| async move {
         static CONN_ID: AtomicUsize = AtomicUsize::new(0);
 
         // TODO make buffer size configurable
-        let (tx, mut rx) = mpsc::channel::<Vec<u8>>(16);
+        let (tx, mut rx) = mpsc::channel::<Vec<u8>>(1000);
 
         // Generate unique connection ID.
         let tx_id = CONN_ID.fetch_add(1, SeqCst);
-
-        let (mut sender, mut receiver) = socket.split();
 
         loop {
             tokio::select!{
                 msg = rx.recv() => {
                     if let Some(msg) = msg {
-                        let _ = sender.send(Message::Binary(msg)).await;
+                        let _ = socket.send(Message::Binary(msg)).await;
                     }
                 }
 
-                msg = receiver.next() => {
+                msg = socket.recv() => {
                     // FIXME should we report error here?
                     let msg = if let Some(Ok(msg)) = msg { msg } else { break; };
 
@@ -236,7 +231,7 @@ pub async fn handler<F: FnMut(Vec<u8>) + Send + 'static>(
                         }
 
                         Message::Ping(msg) => {
-                            let _ = sender.send(Message::Pong(msg)).await;
+                            let _ = socket.send(Message::Pong(msg)).await;
                         }
 
                         _ => {}

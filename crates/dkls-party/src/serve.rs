@@ -14,7 +14,6 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use url::Url;
 
 use tower::{BoxError, ServiceBuilder};
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
@@ -30,7 +29,7 @@ use dkls23::{
 };
 use sl_mpc_mate::{bincode, coord::*, message::*};
 
-use msg_relay_client::MsgRelayClient;
+use msg_relay_client::{MsgRelayClient, MsgRelayMux};
 
 use crate::{default_coord, flags, utils::*};
 
@@ -62,7 +61,7 @@ mod b64 {
 type AppState = Arc<Inner>;
 
 struct Inner {
-    coord: Url,
+    mux: MsgRelayMux,
     setup_vk: VerifyingKey,
     party_key: SigningKey,
     shares: Mutex<Vec<keygen::Keyshare>>,
@@ -73,11 +72,11 @@ impl Inner {
     fn new(
         setup_vk: VerifyingKey,
         party_key: SigningKey,
-        coord: Url,
+        mux: MsgRelayMux,
         storage: PathBuf,
     ) -> Self {
         Self {
-            coord,
+            mux,
             setup_vk,
             party_key,
             storage,
@@ -151,11 +150,7 @@ async fn handle_keygen(
 
     tracing::info!("handle-keygen: inst {:?}", instance);
 
-    let msg_relay =
-        MsgRelayClient::connect(&state.coord).await.map_err(|err| {
-            tracing::error!("msg relay connect {:?}", err);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let msg_relay = state.mux.connect(100);
 
     let stats = Stats::alloc();
     let relay_stats = RelayStats::new(msg_relay, stats.clone());
@@ -207,6 +202,8 @@ async fn handle_keygen(
     std::fs::write(keyshare_file, share)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    tracing::info!("keygen stats {:?} {:?}", *stats, start.elapsed());
+
     let resp = Json(KeygenResponse {
         total_send: stats.send_size as u32,
         total_recv: stats.recv_size as u32,
@@ -230,9 +227,7 @@ async fn handle_sign(
         .map_err(|_| StatusCode::BAD_REQUEST)?;
     let instance = InstanceId::from(instance);
 
-    let msg_relay = MsgRelayClient::connect(&state.coord)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let msg_relay = state.mux.connect(100);
 
     let msg_id = MsgId::new(
         &instance,
@@ -285,6 +280,8 @@ async fn handle_sign(
 
     let stats = stats.lock().unwrap();
 
+    tracing::info!("stats {:?} {:?}", *stats, start.elapsed());
+
     Ok(Json(SignResponse {
         sign,
         total_send: stats.send_size as u32,
@@ -323,8 +320,20 @@ pub async fn run(opts: flags::Serve) -> anyhow::Result<()> {
     let party_key = load_signing_key(opts.party_key)?;
     let coord = opts.coordinator.unwrap_or_else(default_coord);
 
-    let state =
-        Arc::new(Inner::new(setup_vk, party_key, coord, opts.storage));
+    let msg_relay: MsgRelayClient = loop {
+        if let Ok(relay) = MsgRelayClient::connect(&coord).await {
+            break relay;
+        }
+        tracing::info!("connect to {} failed, retry", &coord);
+        tokio::time::sleep(Duration::new(3, 0)).await;
+    };
+
+    let state = Arc::new(Inner::new(
+        setup_vk,
+        party_key,
+        MsgRelayMux::new(msg_relay, 1000),
+        opts.storage,
+    ));
     let app = app(state);
 
     let listen = {
