@@ -62,7 +62,7 @@ services:
         --setup-vk-file /run/secrets/setup-vk
         --coordinator ws://p-1-coord:8080/v1/msg-relay
     environment:
-      RUST_LOG: deubg
+      RUST_LOG: info
     ports:
       - 8081:8080
     volumes:
