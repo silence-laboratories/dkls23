@@ -11,7 +11,7 @@ use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use rayon::prelude::*;
 use sha2::Sha256;
-use tokio::task::{block_in_place, JoinError, JoinSet};
+use tokio::task::{block_in_place, JoinError, JoinHandle, JoinSet};
 
 use sl_oblivious::{
     soft_spoken::{build_pprf, eval_pprf, PPRFOutput, SenderOTSeed},
@@ -147,16 +147,60 @@ fn decode_encrypted_message<T: bincode::Decode>(
 }
 
 ///
-pub async fn run<R>(
+pub async fn run<R>(setup: ValidatedSetup, seed: Seed, relay: R) -> Result<Keyshare, KeygenError>
+where
+    R: Relay,
+{
+    run_inner(setup, seed, |_| {}, relay).await
+}
+
+/// A version of DKG that return a public as soon as possbile and
+/// continues execution of the rest protocol in background.
+///
+/// It returns a piblic key and a handle to a tokio task that executes
+/// the rest of the DKG protocol. The caller should await the handle
+/// to receive resulting keyshare object or and error.
+pub async fn fast_pk<R, F>(
     setup: ValidatedSetup,
     seed: Seed,
+    relay: R,
+) -> Result<(ProjectivePoint, JoinHandle<Result<Keyshare, KeygenError>>), KeygenError>
+where
+    R: Relay + Send,
+{
+    let (tx, rx) = tokio::sync::oneshot::channel();
+
+    let recv_pk = move |pk| {
+        // Ignore error here.
+        //
+        // If it returns OK it doesn't mean that the value is actually received.
+        // It it returns Err than the value can't be sent at all and the can not
+        // handle error in any way.
+        //
+        let _ = tx.send(pk);
+    };
+
+    let handle = tokio::spawn(run_inner(setup, seed, recv_pk, relay));
+
+    // If rx.await returns Err, then sender was dropped without sending
+    // PK. This mean that run_inner() is finished at this point.
+    // Convert error and fail without return join handle.
+    let pk = rx.await.map_err(|_| KeygenError::NoPublicKey)?;
+
+    // Everything looks good, let's be optimistic
+    Ok((pk, handle))
+}
+
+async fn run_inner<R, F>(
+    setup: ValidatedSetup,
+    seed: Seed,
+    recv_pk: F,
     mut relay: R,
 ) -> Result<Keyshare, KeygenError>
 where
     R: Relay,
+    F: FnOnce(ProjectivePoint),
 {
-    // let mut relay = BufferedMsgRelay::new(relay);
-
     let mut rng = ChaCha20Rng::from_seed(seed);
     let mut nonce_counter = NonceCounter::new();
 
@@ -180,7 +224,7 @@ where
         &r_i,
     );
 
-    let d_i = polynomial.derivative_at(setup.rank() as usize, &x_i);
+    let d_i = block_in_place(|| polynomial.derivative_at(setup.rank() as usize, &x_i));
 
     let mut commitment_list = vec![(my_party_id, commitment)];
     let mut sid_i_list = vec![(my_party_id, session_id)];
@@ -390,6 +434,9 @@ where
         big_f_vec.add_mut(v);
     }
 
+    let public_key = *big_f_vec.get(0).unwrap(); // FIXME dup data
+    recv_pk(public_key.clone());
+
     // start receiving P2P messages
     let mut r2_p2p = request_messages(&setup, DKG_MSG_R2, &mut relay, true).await?;
 
@@ -488,7 +535,6 @@ where
         }
     }
 
-    let public_key = *big_f_vec.get(0).unwrap(); // FIXME dup data
     let s_i: Scalar = d_i_list.iter().map(|(_, p)| p).sum();
     let big_s_i = ProjectivePoint::GENERATOR * s_i;
 

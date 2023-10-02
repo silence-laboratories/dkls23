@@ -40,6 +40,10 @@ pub enum KeygenError {
     #[error("Public key mismatch between the message and the party")]
     PublicKeyMismatch,
 
+    ///
+    #[error("DKG failed before generating PK")]
+    NoPublicKey,
+
     /// Big S value mismatch
     #[error("Big S value mismatch")]
     BigSMismatch,
