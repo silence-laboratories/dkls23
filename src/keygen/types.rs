@@ -40,6 +40,10 @@ pub enum KeygenError {
     #[error("Public key mismatch between the message and the party")]
     PublicKeyMismatch,
 
+    ///
+    #[error("DKG failed before generating PK")]
+    NoPublicKey,
+
     /// Big S value mismatch
     #[error("Big S value mismatch")]
     BigSMismatch,
@@ -53,10 +57,15 @@ pub enum KeygenError {
     /// corresponding to the party-id
     #[error("Missing piece of state")]
     InvalidParty(u8),
+
+    ///
+    #[error("Missing message")]
+    MissingMessage,
 }
 
 impl From<InvalidMessage> for KeygenError {
     fn from(_err: InvalidMessage) -> Self {
+        println!("inv msg {:?}", _err);
         KeygenError::InvalidMessage
     }
 }

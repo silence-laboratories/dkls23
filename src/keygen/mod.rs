@@ -15,7 +15,7 @@ pub mod messages;
 pub mod constants;
 
 pub use messages::Keyshare;
-
+pub use crate::setup::keygen::ValidatedSetup;
 
 
 #[cfg(test)]

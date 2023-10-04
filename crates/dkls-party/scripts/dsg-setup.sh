@@ -30,8 +30,8 @@ for p in ${pids}; do
 done
 
 nodes=""
-for p in $(jot ${T} 8081); do
-    nodes="${nodes} --node http://localhost:${p}/"
+for p in ${pids}; do
+    nodes="${nodes} --node http://localhost:$(( 8081 + ${p}))/"
 done
 
 # Create a setup message for DSG.

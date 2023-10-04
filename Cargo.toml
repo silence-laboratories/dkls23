@@ -18,11 +18,13 @@ rand_chacha.workspace = true
 rayon.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+futures-util.workspace = true
 tokio = { workspace = true, features = ["rt", "sync", "macros" ] }
 
 [dev-dependencies]
 hex ="0.4.3"
 tokio = { workspace = true, features = ["rt", "sync", "macros", "rt-multi-thread" ] }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 [workspace]
 members = [
@@ -48,11 +50,12 @@ thiserror = "1"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 tokio = "1.32"
+futures-util = "0.3.0"
 anyhow = "1"
-sl-mpc-mate  = { git = "https://gitlab.com/com.silencelaboratories/sl-crypto", rev = "msg-relay/v0.1" }
-sl-oblivious = { git = "https://gitlab.com/com.silencelaboratories/sl-crypto", rev = "msg-relay/v0.1" }
+sl-mpc-mate  = { git = "https://gitlab.com/com.silencelaboratories/sl-crypto", ref = "msg-relay/v0.3" }
+sl-oblivious = { git = "https://gitlab.com/com.silencelaboratories/sl-crypto", ref = "msg-relay/v0.3" }
 
 [profile.release]
 # lto = true
-strip = "symbols"
+# strip = "symbols"
 # debug = true
