@@ -27,7 +27,11 @@ use dkls23::{
     setup::{self, SETUP_MESSAGE_TAG},
     sign,
 };
-use sl_mpc_mate::{bincode, coord::*, message::*};
+use sl_mpc_mate::{
+    bincode,
+    coord::{stats::*, *},
+    message::*,
+};
 
 use msg_relay_client::{MsgRelayClient, MsgRelayMux};
 
@@ -142,19 +146,22 @@ async fn handle_keygen(
 ) -> Result<Json<KeygenResponse>, StatusCode> {
     let start = Instant::now();
 
+    tracing::info!(
+        "handle-keygen: inst {:?}",
+        hex::encode(&payload.instance)
+    );
+
     let instance: [u8; 32] = payload
         .instance
         .try_into()
         .map_err(|_| StatusCode::BAD_REQUEST)?;
     let instance = InstanceId::from(instance);
 
-    tracing::info!("handle-keygen: inst {:?}", instance);
-
     let msg_relay = state.mux.connect(100);
 
     let stats = Stats::alloc();
-    let relay_stats = RelayStats::new(msg_relay, stats.clone());
-    let mut relay_stats = BufferedMsgRelay::new(relay_stats);
+    let msg_relay = RelayStats::new(msg_relay, stats.clone());
+    let mut msg_relay = BufferedMsgRelay::new(msg_relay);
 
     let msg_id = MsgId::new(
         &instance,
@@ -163,12 +170,12 @@ async fn handle_keygen(
         SETUP_MESSAGE_TAG,
     );
 
-    let mut setup = relay_stats
+    let mut setup = msg_relay
         .recv(&msg_id, 10)
         .await
         .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    tracing::info!("setup ok");
+    tracing::debug!("setup received");
 
     let setup = keygen::ValidatedSetup::decode(
         &mut setup,
@@ -179,9 +186,11 @@ async fn handle_keygen(
     )
     .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    tracing::debug!("setup validated");
+
     let seed = rand::random();
 
-    let share = keygen::run(setup, seed, relay_stats)
+    let share = keygen::run(setup, seed, msg_relay)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -202,7 +211,17 @@ async fn handle_keygen(
     std::fs::write(keyshare_file, share)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    tracing::info!("keygen stats {:?} {:?}", *stats, start.elapsed());
+    tracing::info!("keygen send_count: {}", stats.send_count);
+    tracing::info!("keygen send_size:  {}", stats.send_size);
+    tracing::info!("keygen recv_count: {}", stats.recv_count);
+    tracing::info!("keygen recv_size:  {}", stats.recv_size);
+    tracing::info!("keygen wait_time:  {:?}", stats.wait_time);
+
+    for (id, wait) in &stats.wait_times {
+        tracing::debug!(" - {:?} {:?}", id, wait);
+    }
+
+    tracing::info!("keygen total_time: {:?}", total_time);
 
     let resp = Json(KeygenResponse {
         total_send: stats.send_size as u32,
@@ -238,10 +257,10 @@ async fn handle_sign(
 
     let stats = Stats::alloc();
 
-    let relay_stats = RelayStats::new(msg_relay, stats.clone());
-    let mut relay_stats = BufferedMsgRelay::new(relay_stats);
+    let msg_relay = RelayStats::new(msg_relay, stats.clone());
+    let mut msg_relay = BufferedMsgRelay::new(msg_relay);
 
-    let mut setup = relay_stats
+    let mut setup = msg_relay
         .recv(&msg_id, 10)
         .await
         .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -270,7 +289,7 @@ async fn handle_sign(
 
     let seed = rand::random();
 
-    let sign = sign::run(setup, seed, relay_stats)
+    let sign = sign::run(setup, seed, msg_relay)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -331,7 +350,7 @@ pub async fn run(opts: flags::Serve) -> anyhow::Result<()> {
     let state = Arc::new(Inner::new(
         setup_vk,
         party_key,
-        MsgRelayMux::new(msg_relay, 1000),
+        MsgRelayMux::new(msg_relay),
         opts.storage,
     ));
     let app = app(state);

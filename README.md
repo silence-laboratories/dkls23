@@ -175,3 +175,10 @@ DEST=./data ./crates/dkls-party/scripts/dsg-setup.sh 2 \
 ```
 
 The command above will generate signature.
+
+## Configuration
+
+The library uses two thread pools. One is controlled by variable
+`RAYON_NUM_THREADS` and another one by `TOKIO_WORKER_THREADS`. Sum of
+these numbers should match a number of CPU cores available for an
+instance of a service.

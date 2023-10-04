@@ -120,7 +120,6 @@ async fn main() -> anyhow::Result<()> {
         if let Ok(var) = env::var("LISTEN") {
             for addr in var.split(' ') {
                 listen.push(addr.into());
-
             }
         };
 

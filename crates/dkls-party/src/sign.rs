@@ -4,7 +4,11 @@ use dkls23::setup::{self, *};
 use dkls23::{keygen::Keyshare, sign};
 
 use msg_relay_client::MsgRelayClient;
-use sl_mpc_mate::{coord::*, message::*, HashBytes};
+use sl_mpc_mate::{
+    coord::{stats::*, *},
+    message::*,
+    HashBytes,
+};
 
 use crate::{default_coord, flags, serve::*, utils::*, SignHashFn};
 

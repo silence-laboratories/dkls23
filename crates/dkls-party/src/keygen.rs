@@ -10,7 +10,10 @@ use dkls23::{
 };
 
 use msg_relay_client::MsgRelayClient;
-use sl_mpc_mate::{coord::*, message::*};
+use sl_mpc_mate::{
+    coord::{stats::*, *},
+    message::*,
+};
 
 use crate::{default_coord, flags, serve::*, utils::*};
 
@@ -145,8 +148,16 @@ pub async fn run_keygen(opts: flags::KeyGen) -> anyhow::Result<()> {
 
     let prefix = opts.prefix.unwrap_or_else(|| ".".into());
 
+    let mut results = vec![];
+
     while let Some(share) = parties.join_next().await {
         let (keyshare, stats) = share??;
+        results.push((keyshare, Stats::inner(stats)));
+    }
+
+    tracing::info!("total time {:?}", start.elapsed());
+
+    for (keyshare, stats) in &results {
         let pid = keyshare.party_id;
 
         let share = bincode::encode_to_vec(
@@ -159,15 +170,16 @@ pub async fn run_keygen(opts: flags::KeyGen) -> anyhow::Result<()> {
 
         std::fs::write(keyshare_file, share)?;
 
-        let stats = stats.lock().unwrap();
-
         tracing::info!("send_count: {} {}", pid, stats.send_count);
         tracing::info!("send_size:  {} {}", pid, stats.send_size);
         tracing::info!("recv_count: {} {}", pid, stats.recv_count);
         tracing::info!("recv_size:  {} {}", pid, stats.recv_size);
-    }
+        tracing::info!("wait_time:  {} {:?}", pid, stats.wait_time);
 
-    tracing::info!("total time {:?}", start.elapsed());
+        for (id, wait) in &stats.wait_times {
+            tracing::info!(" - {} {:?} {:?}", pid, id, wait);
+        }
+    }
 
     Ok(())
 }

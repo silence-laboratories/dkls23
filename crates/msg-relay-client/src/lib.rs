@@ -1,11 +1,9 @@
 use std::collections::HashMap;
-use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 use std::time::Instant;
 
-use futures_util::FutureExt;
 use futures_util::{stream::StreamExt, Sink, SinkExt, Stream};
 use url::Url;
 
@@ -20,6 +18,7 @@ type WS = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 pub struct MsgRelayClient {
     ws: WS,
+    pong: Option<Vec<u8>>,
 }
 
 impl MsgRelayClient {
@@ -28,7 +27,7 @@ impl MsgRelayClient {
 
         let (ws, _) = connect_async(endpoint).await?;
 
-        Ok(Self { ws })
+        Ok(Self { ws, pong: None })
     }
 }
 
@@ -44,11 +43,9 @@ impl Stream for MsgRelayClient {
 
                 Poll::Ready(Some(Ok(WsMessage::Binary(msg)))) => return Poll::Ready(Some(msg)),
 
+                // TODO: handle Ping
                 Poll::Ready(Some(Ok(WsMessage::Ping(m)))) => {
-                    match self.ws.send(WsMessage::Pong(m)).poll_unpin(cx) {
-                        Poll::Pending => return Poll::Pending,
-                        Poll::Ready(_) => {}
-                    }
+                    self.pong = Some(m);
                 }
 
                 Poll::Ready(Some(Ok(WsMessage::Close(_)))) => return Poll::Ready(None),
@@ -63,9 +60,23 @@ impl Sink<Vec<u8>> for MsgRelayClient {
     type Error = InvalidMessage;
 
     fn poll_ready(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.ws
-            .poll_ready_unpin(cx)
-            .map_err(|_| InvalidMessage::SendError)
+        loop {
+            match self.ws.poll_ready_unpin(cx) {
+                Poll::Pending => return Poll::Pending,
+
+                Poll::Ready(Err(_)) => return Poll::Ready(Err(InvalidMessage::SendError)),
+
+                Poll::Ready(Ok(_)) => {
+                    if let Some(m) = self.pong.take() {
+                        if self.ws.start_send_unpin(WsMessage::Pong(m)).is_err() {
+                            return Poll::Ready(Err(InvalidMessage::SendError));
+                        }
+                    } else {
+                        return Poll::Ready(Ok(()));
+                    }
+                }
+            }
+        }
     }
 
     fn start_send(mut self: Pin<&mut Self>, item: Vec<u8>) -> Result<(), Self::Error> {
@@ -92,21 +103,20 @@ struct DistatchTable {
 }
 
 pub struct MsgRelayMux {
-    tx: mpsc::Sender<Vec<u8>>,
+    tx: mpsc::UnboundedSender<Vec<u8>>,
     tbl: Arc<Mutex<DistatchTable>>,
 }
 
 pub struct MsgRelayMuxConn {
-    tx: mpsc::Sender<Vec<u8>>,
+    tx: mpsc::UnboundedSender<Vec<u8>>,
     in_tx: mpsc::Sender<Vec<u8>>,
     in_rx: mpsc::Receiver<Vec<u8>>,
-    out_buf: Vec<Pin<Box<dyn Future<Output = ()> + Send + 'static>>>,
     tbl: Arc<Mutex<DistatchTable>>,
 }
 
 impl MsgRelayMux {
-    pub fn new<R: Relay + Send + 'static>(mut relay: R, output_buffer_size: usize) -> Self {
-        let (tx, mut rx) = mpsc::channel::<Vec<u8>>(output_buffer_size);
+    pub fn new<R: Relay + Send + 'static>(mut relay: R) -> Self {
+        let (tx, mut rx) = mpsc::unbounded_channel::<Vec<u8>>();
 
         let tbl = Arc::new(Mutex::new(DistatchTable {
             id_map: HashMap::new(),
@@ -163,33 +173,19 @@ impl MsgRelayMux {
             in_tx,
             in_rx,
             tx: self.tx.clone(),
-            out_buf: vec![],
             tbl: self.tbl.clone(),
         }
-    }
-}
-
-impl MsgRelayMuxConn {
-    fn flush_output(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), InvalidMessage>> {
-        while let Some(mut fut) = self.out_buf.pop() {
-            if fut.poll_unpin(cx).is_pending() {
-                self.out_buf.push(fut);
-                return Poll::Pending;
-            }
-        }
-
-        Poll::Ready(Ok(()))
     }
 }
 
 impl Sink<Vec<u8>> for MsgRelayMuxConn {
     type Error = InvalidMessage;
 
-    fn poll_ready(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.flush_output(cx)
+    fn poll_ready(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
     }
 
-    fn start_send(mut self: Pin<&mut Self>, item: Vec<u8>) -> Result<(), Self::Error> {
+    fn start_send(self: Pin<&mut Self>, item: Vec<u8>) -> Result<(), Self::Error> {
         if let Some(hdr) = MsgHdr::from(&item) {
             if hdr.kind == Kind::Ask {
                 let expire = Instant::now() + hdr.ttl;
@@ -199,21 +195,18 @@ impl Sink<Vec<u8>> for MsgRelayMuxConn {
                 tbl.id_map.insert(hdr.id, (expire, self.in_tx.clone()));
             }
 
-            let tx = self.tx.clone();
-            self.out_buf.push(Box::pin(async move {
-                let _ = tx.send(item).await;
-            }));
+            let _ = self.tx.send(item); // TODO handle error
         }
 
         Ok(())
     }
 
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.flush_output(cx)
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
     }
 
-    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.flush_output(cx)
+    fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
     }
 }
 
@@ -247,7 +240,7 @@ mod test {
         let c1 = s.connect();
         let mut c2 = s.connect();
 
-        let c1 = MsgRelayMux::new(c1, 10);
+        let c1 = MsgRelayMux::new(c1);
 
         let mut m1 = c1.connect(10);
         let mut m2 = c1.connect(10);
@@ -287,6 +280,5 @@ mod test {
         let msg_1_in = c2.next().await.unwrap();
 
         assert_eq!(msg_1, msg_1_in);
-
     }
 }
