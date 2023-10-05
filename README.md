@@ -1,13 +1,17 @@
 # Implementation of DKLs23 and related code
 
 The cates in this repository uses create sl-mpc-mate and sl-oblivious
-from https://gitlab.com/com.silencelaboratories/sl-crypto
+from [`sl-crypto`](https://gitlab.com/com.silencelaboratories/sl-crypto), and building with cargo will require the user to perform a `git pull` on that repository. If you don't have access, please contact a team member for help.
+
+This stack is dockerised! We recommend reading this whole document for proper understanding, but if you just want to see how it runs you can skip to [this section](#run-an-example-of-the-full-system)
 
 # Crates
 
+The DKLs23 codebase has several components. All are necessary to ensure smooth operation, and the relationship between them is important to understand.
+
 ## dkls23-rs
 
-This is the core crate. The main functions are:
+This is the core crate, and handles the cryptographic heavy lifting. The main functions are:
 
 ```rust
 dkls23::keygen::dkg::run()
@@ -15,13 +19,22 @@ dkls23::keygen::dkg::run()
 dkls23::sign::dsg::run()
 ```
 
+Please refer to the cargo-generated documentation for information on their usage.
+
+
 ## crates/msg-relay-svc
 
-Driver of simple implmentation of a message relay service.
+The DKLs23 algorithm has a complex communication flow. At times, all parties need to exchange messages with a central message broker; other times, they need to be able to communicate in a peer-to-peer manner. The communication structure is not rigorously defined and will change from run to run - sessions will require differing amounts of p2p communications. In order to handle this, a generalized message broker has been created that allows highly flexible messaging within a network.
+
+This is a driver for a simple implementation of a message relay service. It handles both peer-to-peer communications (defined when it is invoked) and broadcasts from a central coordinator, and by temporarily caching messages in volatile memory, can act as a message buffer for devices with unreliable connections (e.g. mobile phones).
+
+Broadly speaking, it follows something analogous to a pub/sub model, but without the "sub" aspect, and with some custom logic to allow for party identities, and for specific messages to be requested from specific entities. 
+Rather than subscribing to a channel, parties request a specific message by constructing a message ID from the hash of the sender, receiver (if any), a message tag (e.g. "keygen message 4", or something similar), and an instance ID. If the corresponding message exists with the relay, it is returned.
 
 A few examples how to run it:
 
 ```shell
+# Default options
 cargo run -p msg-relay-svc
 
 # or, with some trace output
@@ -32,10 +45,10 @@ cargo run -p msg-relay-svc -- \
   --listen 0.0.0.0:8080 \
   --peer ws://localhost:8081/v1/msg-replay
 ```
-Option `--listen` understands IPv6 addresses.
+Option `--listen` understands both IPv4 and IPv6 addresses.
 
 Option `--peer` defines a peer instance. If the instance receives an ASK
-message and there is no the corresponding ready message then forwards ASK
+message and there is no corresponding ready message then it forwards the ASK
 to all peers.
 
 ## crates/msg-relay
@@ -47,12 +60,13 @@ A reusable reference implementation of a message relay.
 
 This is client library to access message relay service.
 
-An implementation of sl_mpc_mate::message::Relay trait.
+An implementation of `sl_mpc_mate::message::Relay` trait.
 
 ## crates/dkls-party
 
-This commad line utility to execute all steps of distributed
+This command line utility to execute all steps of distributed
 key generation (DKG) and distributed signature generation (DSG).
+Invoking this handles the complete process, and returns the output.
 
 The simplest way to build and run it would be:
 
@@ -60,11 +74,15 @@ The simplest way to build and run it would be:
 cargo run -p dkls-party -q --release -- --help
 ```
 
-## crates/dkls-party/scripts/dkg.sh
+The following scripts invoke the DKG and DSG components as a script - 
+for more information on how exactly this is done, we recommend 
+inspecting these scripts directly.
 
-This is a hleper script to generate all required keys, create
-and initial message (setup message) and execute distributed
-key generation and save result keyshares to files.
+### crates/dkls-party/scripts/dkg.sh
+
+This is a helper script to generate all the required keys for a party, 
+create an initial message (a setup message), execute the distributed
+key generation and save the resulting keyshares to files.
 
 ```shell
 # create a directory for keyshares and various addtional files
@@ -85,54 +103,61 @@ RUST_LOG=debug DEST=./data ./crates/dkls-party/scripts/dkg.sh 5 3
 
 # a last line of output pf dsg.sh will be public key of new key
 
-# make sure there are keyshares
+# make sure there are keyshares. Should be one for each party
 
 ls -l ./data/keyshare.*
 
 ```
 
-## crates/dkls-party/dsg.sh
+### crates/dkls-party/dsg.sh
 
-We generated key, now we are ready to genreate a signature
+We generated key, now we are ready to generate a signature with it.
 
 ```shell
 # we will use ./data directory populated by dkg.sh script
 
 # This command will generate a signature for message "test"
-# using first 3 keyshares
+# using first 3 keyshares, parties 0, 1, and 2.
 #
 RUST_LOG=debug DEST=./data ./crates/dkls-party/scripts/dsg.sh "test" 0 1 2
 ```
 
-Please, read comments in these scripts to get more details.
+Please, read the comments in these scripts to get more details.
 
-## Run example of full system.
+## Run an example of the full system.
 
 ### Build docker image
+
+To build the docker image for a `dkls-party`, you will need a personal 
+access token from GitLab. Give it read access to repositories, and 
+store it in a text file somewhere on your system. Then, you can build
+the image with the following command:
 
 ```shell
 docker build -t dkls-party \
     --secret id=token,src=/path/to/file/containing/gitlab-token \
     .
 ```
+Make sure you replace the `/path/to/file/containing/gitlab-token` with the actual path to your token file.
 
-This image contains `dkls-party` and `msg-relay-svc`
+This image contains both an instance of `dkls-party`, and `msg-relay-svc` to facilitate communications.
 
 ### Create keys
 
+From outside the docker container, run:
 ```shell
 mkdir data
 DEST=data ./crates/dkls-party/scripts/gen-keys.sh 3
 ```
 
-This command will create set of keys for 3 node MPC network
+This command will create set of keys for 3 node MPC network. 
 
 ### Start "all cloud nodes" MPC network
 
+The `docker-compose.yml` file is pre-configured for 3 nodes. To run this stack,
 ```shell
 docker-compose up -d
 ```
-
 This command will start set of services.
 
 Three instances of "cloud nodes" with signing keys generated by
@@ -153,17 +178,19 @@ other services are not peer for this instance.
 
 ### Generate distributed key
 
+To trigger the DKG session, a script is provided.
 ```shell
 DEST=data ./crates/dkls-party/scripts/dkg-setup.sh 3 2
 ```
 
-It will generate distributed key and print public key.
+This will generate distributed key and print the resulting public key.
 
 This command will generate a setup message for key generation and
-send it (publish) to desigrated message relay instance.
+publish it to the designated message relay instance.
 
-Then it will contant all computation nodes and send them instance ID.
-This is signal to start distributed key generation.
+Then, it will contact all computation nodes and send them the instance ID.
+This is signal to start distributed key generation, and from there the nodes
+will communicate directly with one another to carry out the protocol.
 
 ### Generate signature
 
@@ -174,7 +201,8 @@ DEST=./data ./crates/dkls-party/scripts/dsg-setup.sh 2 \
    0 1
 ```
 
-The command above will generate signature.
+The command above will trigger the nodes to generate a signature, 
+and print it to the console.
 
 ## Configuration
 
