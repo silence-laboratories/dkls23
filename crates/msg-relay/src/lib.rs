@@ -6,9 +6,6 @@ use std::sync::{
 };
 use std::time::Instant;
 
-use futures_util::stream::StreamExt;
-use futures_util::SinkExt;
-
 use tokio::sync::mpsc;
 
 use axum::{
@@ -44,8 +41,14 @@ impl Ord for Expire {
 }
 
 enum MsgEntry {
-    Waiters((Instant, Vec<(usize, mpsc::Sender<Vec<u8>>)>)),
-    Ready(Vec<u8>),
+    Waiters {
+        expire: Instant,
+        waiters: Vec<(usize, mpsc::UnboundedSender<Vec<u8>>)>,
+    },
+
+    Ready {
+        msg: Vec<u8>,
+    },
 }
 
 pub type AppState<F> = Arc<Mutex<AppStateInner<F>>>;
@@ -89,17 +92,17 @@ where
 
             let Expire(_, id, kind) = self.expire.pop().unwrap();
 
-            tracing::info!("expire {:?} {:X}", kind, id);
+            tracing::debug!("expire {:?} {:X}", kind, id);
 
             if let Entry::Occupied(ocp) = self.messages.entry(id) {
                 match ocp.get() {
-                    MsgEntry::Ready(_) => {
+                    MsgEntry::Ready { .. } => {
                         if kind == Kind::Pub {
                             ocp.remove();
                         }
                     }
 
-                    MsgEntry::Waiters((expire, _)) => {
+                    MsgEntry::Waiters { expire, .. } => {
                         if kind == Kind::Ask && *expire <= now {
                             ocp.remove();
                         }
@@ -112,38 +115,33 @@ where
     pub fn handle_message(
         &mut self,
         msg: Vec<u8>,
-        tx: Option<(usize, &mpsc::Sender<Vec<u8>>)>,
+        tx: Option<(usize, &mpsc::UnboundedSender<Vec<u8>>)>,
     ) {
         let MsgHdr { id, ttl, kind } = match MsgHdr::from(&msg) {
             Some(hdr) => hdr,
             None => return, // TODO report invalid message?
         };
 
-        let now = Instant::now();
-        let expire = now + ttl;
+        let ts = Instant::now();
+        let msg_expire = ts + ttl;
 
         self.total_size += msg.len() as u64;
         self.total_count += 1;
 
-        tracing::info!("handle {:X} {:?} {}", id, kind, msg.len());
+        tracing::debug!("handle {:X} {:?} {}", id, kind, msg.len());
 
         // we have a locked state, let's cleanup some old entries
-        self.cleanup(now);
+        self.cleanup(ts);
 
         match self.messages.entry(id) {
             Entry::Occupied(mut ocp) => {
                 match ocp.get_mut() {
-                    MsgEntry::Ready(msg) => {
+                    MsgEntry::Ready { msg, .. } => {
                         if matches!(kind, Kind::Ask) {
                             // Got an ASK for a Ready message.
                             // Send the message immediately.
                             if let Some((_, tx)) = tx {
-                                let msg = msg.clone();
-                                let tx = tx.clone();
-                                tokio::spawn(async move {
-                                    // ignore send error
-                                    let _ = tx.send(msg).await;
-                                });
+                                let _ = tx.send(msg.clone()); // TODO handle error
                             }
                         } else {
                             // ignore the duplicate message
@@ -151,33 +149,32 @@ where
                         }
                     }
 
-                    MsgEntry::Waiters((prev, b)) => {
+                    MsgEntry::Waiters {
+                        expire, waiters, ..
+                    } => {
                         if matches!(kind, Kind::Ask) {
                             // join other waiters
                             if let Some((id, tx)) = tx {
-                                if b.iter()
-                                    .find(|(tx_id, _)| *tx_id == id)
-                                    .is_none()
+                                if !waiters
+                                    .iter()
+                                    .any(|(tx_id, _)| *tx_id == id)
                                 {
-                                    *prev = expire.max(*prev);
-                                    b.push((id, tx.clone()));
+                                    *expire = msg_expire.max(*expire);
+                                    waiters.push((id, tx.clone()));
                                     (self.enqueue)(msg);
                                 }
                             }
                         } else {
                             // wake up all waiters
-                            for s in b.drain(..) {
-                                let msg = msg.clone();
-                                tokio::spawn(async move {
-                                    let _ = s.1.send(msg).await;
-                                });
+                            for (_, tx) in waiters.drain(..) {
+                                let _ = tx.send(msg.clone()); // TODO handle error
                             }
                             // and replace with a Read message
-                            ocp.insert(MsgEntry::Ready(msg));
+                            ocp.insert(MsgEntry::Ready { msg });
                         };
 
                         // remember to cleanup this entry later
-                        self.cleanup_later(id, expire, kind);
+                        self.cleanup_later(id, msg_expire, kind);
                     }
                 }
             }
@@ -186,18 +183,18 @@ where
                 if matches!(kind, Kind::Ask) {
                     // This is the first ASK for the message
                     if let Some((id, tx)) = tx {
-                        vac.insert(MsgEntry::Waiters((
-                            expire,
-                            vec![(id, tx.clone())],
-                        )));
+                        vac.insert(MsgEntry::Waiters {
+                            expire: msg_expire,
+                            waiters: vec![(id, tx.clone())],
+                        });
 
                         (self.enqueue)(msg);
                     }
                 } else {
-                    vac.insert(MsgEntry::Ready(msg));
+                    vac.insert(MsgEntry::Ready { msg });
                 };
 
-                self.cleanup_later(id, expire, kind);
+                self.cleanup_later(id, msg_expire, kind);
             }
         };
     }
@@ -207,26 +204,24 @@ pub async fn handler<F: FnMut(Vec<u8>) + Send + 'static>(
     State(state): State<AppState<F>>,
     ws: WebSocketUpgrade,
 ) -> Response {
-    ws.on_upgrade(|socket| async move {
+    ws.on_upgrade(|mut socket| async move {
         static CONN_ID: AtomicUsize = AtomicUsize::new(0);
 
         // TODO make buffer size configurable
-        let (tx, mut rx) = mpsc::channel::<Vec<u8>>(16);
+        let (tx, mut rx) = mpsc::unbounded_channel::<Vec<u8>>();
 
         // Generate unique connection ID.
         let tx_id = CONN_ID.fetch_add(1, SeqCst);
-
-        let (mut sender, mut receiver) = socket.split();
 
         loop {
             tokio::select!{
                 msg = rx.recv() => {
                     if let Some(msg) = msg {
-                        let _ = sender.send(Message::Binary(msg)).await;
+                        let _ = socket.send(Message::Binary(msg)).await;
                     }
                 }
 
-                msg = receiver.next() => {
+                msg = socket.recv() => {
                     // FIXME should we report error here?
                     let msg = if let Some(Ok(msg)) = msg { msg } else { break; };
 
@@ -236,7 +231,7 @@ pub async fn handler<F: FnMut(Vec<u8>) + Send + 'static>(
                         }
 
                         Message::Ping(msg) => {
-                            let _ = sender.send(Message::Pong(msg)).await;
+                            let _ = socket.send(Message::Pong(msg)).await;
                         }
 
                         _ => {}
@@ -273,7 +268,7 @@ mod tests {
 
     #[tokio::test]
     async fn handle_msg() {
-        let (tx, _rx) = mpsc::channel::<Vec<u8>>(16);
+        let (tx, _rx) = mpsc::unbounded_channel::<Vec<u8>>();
         let mut app = AppStateInner::new(|_| {});
 
         let msg = dummy_msg(10, 100);

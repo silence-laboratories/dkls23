@@ -1,45 +1,24 @@
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll};
+use std::time::Instant;
 
-use futures_util::{
-    stream::{SplitSink, StreamExt},
-    SinkExt,
-};
+use futures_util::{stream::StreamExt, Sink, SinkExt, Stream};
 use url::Url;
 
-use tokio::{
-    net::TcpStream,
-    sync::{oneshot, watch, Mutex},
-};
+use tokio::{net::TcpStream, sync::mpsc};
 use tokio_tungstenite::{
     connect_async, tungstenite::Message as WsMessage, MaybeTlsStream, WebSocketStream,
 };
 
-use sl_mpc_mate::{
-    coord::{BoxedRecv, BoxedRelay, BoxedSend, Relay},
-    message::*,
-};
+use sl_mpc_mate::{coord::*, message::*};
 
 type WS = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
-struct Inner {
-    sender: Mutex<SplitSink<WS, WsMessage>>,
-    queue: Mutex<Vec<(MsgId, oneshot::Sender<Vec<u8>>)>>,
-    closed: watch::Sender<bool>,
-}
-
-impl Inner {
-    async fn send(&self, msg: Vec<u8>) {
-        let _ = self.sender.lock().await.send(WsMessage::Binary(msg)).await;
-    }
-
-    async fn pong(&self, msg: Vec<u8>) {
-        let _ = self.sender.lock().await.send(WsMessage::Pong(msg)).await;
-    }
-}
-
-#[derive(Clone)]
 pub struct MsgRelayClient {
-    inner: Arc<Inner>,
+    ws: WS,
+    pong: Option<Vec<u8>>,
 }
 
 impl MsgRelayClient {
@@ -48,119 +27,258 @@ impl MsgRelayClient {
 
         let (ws, _) = connect_async(endpoint).await?;
 
-        let (sender, mut receiver) = ws.split();
-
-        let (tx_close, mut rx_close) = watch::channel(false);
-
-        let inner = Arc::new(Inner {
-            sender: Mutex::new(sender),
-            queue: Mutex::new(vec![]),
-            closed: tx_close,
-        });
-
-        let tx_inner = inner.clone();
-
-        // task to pump messages from the WS connection
-        // and dispatch to a receivers.
-        tokio::spawn(async move {
-            loop {
-                tokio::select! {
-                    msg = receiver.next() => {
-                        let msg = match msg {
-                            Some(Ok(msg)) => msg,
-                            _ => return
-                        };
-
-                        match msg {
-                            WsMessage::Close(_) => return,
-
-                            WsMessage::Ping(m) => {
-                                tx_inner.pong(m).await;
-                            },
-
-                            WsMessage::Pong(_) => {
-                            },
-
-                            WsMessage::Binary(mut data) => {
-                                let in_id = if let Ok(msg) = Message::from_buffer(&mut data) {
-                                    msg.id()
-                                } else {
-                                    continue;
-                                };
-
-                                let mut queue = tx_inner.queue.lock().await;
-                                let pos = queue.iter().position(|(id, _)| id.eq(&in_id));
-
-                                if let Some(pos) = pos {
-                                    let (_, tx) = queue.swap_remove(pos);
-                                    // Ignore send error. Drop the message
-                                    // if no one is waiting for it.
-                                    let _ = tx.send(data);
-                                } else {
-                                    // Drop the message, no one is waiting for it.
-                                    continue;
-                                }
-                            }
-
-                            _ => {}
-                        }
-
-                    },
-
-                    _closed = rx_close.changed() => {
-                        return;
-                    }
-                }
-            }
-        });
-
-        Ok(Self { inner })
-    }
-
-    pub fn send(&self, msg: Vec<u8>) -> BoxedSend {
-        let inner = self.inner.clone();
-
-        Box::pin(async move {
-            inner.send(msg).await;
-        })
-    }
-
-    pub fn recv(&self, id: MsgId, ttl: u32) -> BoxedRecv {
-        let msg = AskMsg::allocate(&id, ttl);
-
-        let (tx, rx) = oneshot::channel();
-
-        let inner = self.inner.clone();
-
-        Box::pin(async move {
-            // register itself as a waiter for the message
-            inner.queue.lock().await.push((id, tx));
-
-            // send an ASK message
-            inner.send(msg).await;
-
-            // wait for the message
-            let msg = rx.await.ok()?;
-
-            Some(msg)
-        })
-    }
-
-    pub fn close(&self) {
-        let _ = self.inner.closed.send(true);
+        Ok(Self { ws, pong: None })
     }
 }
 
-impl Relay for MsgRelayClient {
-    fn send(&self, msg: Vec<u8>) -> BoxedSend {
-        self.send(msg)
+impl Stream for MsgRelayClient {
+    type Item = Vec<u8>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        loop {
+            match self.ws.poll_next_unpin(cx) {
+                Poll::Pending => return Poll::Pending,
+                Poll::Ready(None) => return Poll::Ready(None),
+                Poll::Ready(Some(Err(_err))) => return Poll::Ready(None),
+
+                Poll::Ready(Some(Ok(WsMessage::Binary(msg)))) => return Poll::Ready(Some(msg)),
+
+                // TODO: handle Ping
+                Poll::Ready(Some(Ok(WsMessage::Ping(m)))) => {
+                    self.pong = Some(m);
+                }
+
+                Poll::Ready(Some(Ok(WsMessage::Close(_)))) => return Poll::Ready(None),
+
+                Poll::Ready(Some(Ok(_))) => {}
+            }
+        }
+    }
+}
+
+impl Sink<Vec<u8>> for MsgRelayClient {
+    type Error = InvalidMessage;
+
+    fn poll_ready(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        loop {
+            match self.ws.poll_ready_unpin(cx) {
+                Poll::Pending => return Poll::Pending,
+
+                Poll::Ready(Err(_)) => return Poll::Ready(Err(InvalidMessage::SendError)),
+
+                Poll::Ready(Ok(_)) => {
+                    if let Some(m) = self.pong.take() {
+                        if self.ws.start_send_unpin(WsMessage::Pong(m)).is_err() {
+                            return Poll::Ready(Err(InvalidMessage::SendError));
+                        }
+                    } else {
+                        return Poll::Ready(Ok(()));
+                    }
+                }
+            }
+        }
     }
 
-    fn recv(&self, id: MsgId, ttl: u32) -> BoxedRecv {
-        self.recv(id, ttl)
+    fn start_send(mut self: Pin<&mut Self>, item: Vec<u8>) -> Result<(), Self::Error> {
+        self.ws
+            .start_send_unpin(WsMessage::Binary(item))
+            .map_err(|_| InvalidMessage::SendError)
     }
 
-    fn clone_relay(&self) -> BoxedRelay {
-        Box::new(self.clone())
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.ws
+            .poll_flush_unpin(cx)
+            .map_err(|_| InvalidMessage::SendError)
+    }
+
+    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.ws
+            .poll_close_unpin(cx)
+            .map_err(|_| InvalidMessage::SendError)
+    }
+}
+
+struct DistatchTable {
+    id_map: HashMap<MsgId, (Instant, mpsc::Sender<Vec<u8>>)>,
+}
+
+pub struct MsgRelayMux {
+    tx: mpsc::UnboundedSender<Vec<u8>>,
+    tbl: Arc<Mutex<DistatchTable>>,
+}
+
+pub struct MsgRelayMuxConn {
+    tx: mpsc::UnboundedSender<Vec<u8>>,
+    in_tx: mpsc::Sender<Vec<u8>>,
+    in_rx: mpsc::Receiver<Vec<u8>>,
+    tbl: Arc<Mutex<DistatchTable>>,
+}
+
+impl MsgRelayMux {
+    pub fn new<R: Relay + Send + 'static>(mut relay: R) -> Self {
+        let (tx, mut rx) = mpsc::unbounded_channel::<Vec<u8>>();
+
+        let tbl = Arc::new(Mutex::new(DistatchTable {
+            id_map: HashMap::new(),
+        }));
+
+        let in_tbl = tbl.clone();
+
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    msg = rx.recv() => {
+                        if let Some(msg) = msg {
+                            let _ = relay.send(msg).await;
+                        } else {
+                            return;
+                        }
+                    }
+
+                    msg = relay.next() => {
+                        if let Some(msg) = msg {
+                            if let Some(hdr) = MsgHdr::from(&msg) {
+                                if let Some((_, tx)) = {
+                                    let mut tbl = in_tbl.lock().unwrap();
+                                    let ent = tbl.id_map.remove(&hdr.id);
+
+                                    // make sure we do not hold tbl
+                                    // across await point
+                                    drop(tbl);
+
+                                    ent
+                                } {
+                                    let _ = tx.send(msg).await;
+                                }
+                            } else {
+                                // skip invalid message
+                                continue;
+                            }
+                        } else {
+                            // end of input stream,  exit
+                            return;
+                        }
+                    }
+                };
+            }
+        });
+
+        Self { tx, tbl }
+    }
+
+    pub fn connect(&self, input_buffer_size: usize) -> MsgRelayMuxConn {
+        let (in_tx, in_rx) = mpsc::channel(input_buffer_size);
+
+        MsgRelayMuxConn {
+            in_tx,
+            in_rx,
+            tx: self.tx.clone(),
+            tbl: self.tbl.clone(),
+        }
+    }
+}
+
+impl Sink<Vec<u8>> for MsgRelayMuxConn {
+    type Error = InvalidMessage;
+
+    fn poll_ready(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn start_send(self: Pin<&mut Self>, item: Vec<u8>) -> Result<(), Self::Error> {
+        if let Some(hdr) = MsgHdr::from(&item) {
+            if hdr.kind == Kind::Ask {
+                let expire = Instant::now() + hdr.ttl;
+
+                let mut tbl = self.tbl.lock().unwrap();
+
+                tbl.id_map.insert(hdr.id, (expire, self.in_tx.clone()));
+            }
+
+            let _ = self.tx.send(item); // TODO handle error
+        }
+
+        Ok(())
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+}
+
+impl Stream for MsgRelayMuxConn {
+    type Item = Vec<u8>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        self.in_rx.poll_recv(cx)
+    }
+}
+
+#[cfg(test)]
+mod test {
+
+    use std::time::Duration;
+
+    use super::*;
+
+    fn mk_msg(id: &MsgId, sk: &SigningKey) -> Vec<u8> {
+        Builder::<Signed>::encode(id, Duration::new(10, 0), sk, &(0u32, 255u64)).unwrap()
+    }
+
+    // (flavor = "multi_thread")
+    #[tokio::test(flavor = "multi_thread")]
+    async fn mux() {
+        let sk = SigningKey::from_bytes(&rand::random());
+        let instance = InstanceId::from(rand::random::<[u8; 32]>());
+
+        let s = SimpleMessageRelay::new();
+
+        let c1 = s.connect();
+        let mut c2 = s.connect();
+
+        let c1 = MsgRelayMux::new(c1);
+
+        let mut m1 = c1.connect(10);
+        let mut m2 = c1.connect(10);
+
+        let msg_0_id = MsgId::new(
+            &instance,
+            &sk.verifying_key().as_bytes(),
+            None,
+            MessageTag::tag(0),
+        );
+        let msg_0 = mk_msg(&msg_0_id, &sk);
+
+        // request a msg_0 on m1
+        m1.send(AskMsg::allocate(&msg_0_id, 10)).await.unwrap();
+
+        // c2 -> s -> c1 -> m1
+        c2.send(msg_0.clone()).await.unwrap();
+
+        let msg_0_in = m1.next().await.unwrap();
+
+        assert_eq!(msg_0, msg_0_in);
+
+        let msg_1_id = MsgId::new(
+            &instance,
+            &sk.verifying_key().as_bytes(),
+            None,
+            MessageTag::tag(1),
+        );
+        let msg_1 = mk_msg(&msg_1_id, &sk);
+
+        // m2 -> c1 -> s -> c2
+        m2.send(msg_1.clone()).await.unwrap();
+
+        // request msg_1
+        c2.send(AskMsg::allocate(&msg_1_id, 10)).await.unwrap();
+        // recv msg_1
+        let msg_1_in = c2.next().await.unwrap();
+
+        assert_eq!(msg_1, msg_1_in);
     }
 }

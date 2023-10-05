@@ -59,11 +59,11 @@ async fn run_peer<F: FnMut(Vec<u8>) + Send + 'static>(
                             },
 
                             Message::Pong(_) => {
-                                tracing::info!("recv pong message");
+                                tracing::debug!("recv pong message");
                             }
 
                             Message::Ping(m) => {
-                                tracing::info!("recv ping message");
+                                tracing::debug!("recv ping message");
                                 let _ = sender.send(Message::Pong(m)).await;
                             }
 
@@ -75,7 +75,7 @@ async fn run_peer<F: FnMut(Vec<u8>) + Send + 'static>(
                 }
 
                 _ = tokio::time::sleep(Duration::new(15, 0)) => {
-                    tracing::info!("send ping message");
+                    tracing::debug!("send ping message");
                     let _ = sender.send(Message::Ping(vec![])).await;
                 }
             };
@@ -120,7 +120,6 @@ async fn main() -> anyhow::Result<()> {
         if let Ok(var) = env::var("LISTEN") {
             for addr in var.split(' ') {
                 listen.push(addr.into());
-
             }
         };
 

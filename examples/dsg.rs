@@ -10,8 +10,8 @@ use sl_mpc_mate::coord::SimpleMessageRelay;
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
-    let t: u8 = 3;
-    let n: u8 = 5;
+    let t: u8 = 2;
+    let n: u8 = 3;
 
     const K: usize = 100;
 

@@ -1,4 +1,5 @@
 use std::str::FromStr;
+use std::time::Instant;
 
 use k256::elliptic_curve::group::GroupEncoding;
 use tokio::task;
@@ -10,7 +11,7 @@ use dkls23::{
 
 use msg_relay_client::MsgRelayClient;
 use sl_mpc_mate::{
-    coord::{BoxedRelay, Relay},
+    coord::{stats::*, *},
     message::*,
 };
 
@@ -23,7 +24,7 @@ pub async fn setup(opts: flags::KeygenSetup) -> anyhow::Result<()> {
     let builder = opts.party.into_iter().try_fold(
         setup::keygen::SetupBuilder::new(),
         |builder, party| {
-            let mut parts = party.split(":");
+            let mut parts = party.split(':');
 
             let vk = parts
                 .next()
@@ -50,10 +51,12 @@ pub async fn setup(opts: flags::KeygenSetup) -> anyhow::Result<()> {
         .ok_or(anyhow::Error::msg("Cant create setup message"))?;
 
     let coord = opts.coordinator.unwrap_or_else(default_coord);
-    let msg_relay: BoxedRelay =
-        Box::new(MsgRelayClient::connect(&coord).await?);
+    let mut msg_relay = MsgRelayClient::connect(&coord).await?;
 
-    msg_relay.send(setup).await;
+    msg_relay
+        .send(setup)
+        .await
+        .map_err(|_| anyhow::Error::msg("send error"))?;
 
     tracing::info!("sent setup message {:X}", msg_id);
 
@@ -85,13 +88,15 @@ pub async fn setup(opts: flags::KeygenSetup) -> anyhow::Result<()> {
             }
         }
 
-        println!("{}", hex::encode(&keys[0]));
+        println!("{} {}", hex::encode(&keys[0]), keys.len());
     }
 
     Ok(())
 }
 
 pub async fn run_keygen(opts: flags::KeyGen) -> anyhow::Result<()> {
+    let start = Instant::now();
+
     let mut parties = task::JoinSet::new();
 
     let instance = parse_instance_id(&opts.instance)?;
@@ -114,12 +119,13 @@ pub async fn run_keygen(opts: flags::KeyGen) -> anyhow::Result<()> {
         let coord = coord.clone();
 
         parties.spawn(async move {
-            let msg_relay: BoxedRelay =
-                Box::new(MsgRelayClient::connect(&coord).await?);
-            let relay_stats = RelayStats::new(msg_relay);
-            let msg_relay = relay_stats.clone_relay();
+            let stats = Stats::alloc();
 
-            let mut setup = msg_relay.recv(msg_id, 10).await.ok_or(
+            let msg_relay = MsgRelayClient::connect(&coord).await?;
+            let msg_relay = RelayStats::new(msg_relay, stats.clone());
+            let mut msg_relay = BufferedMsgRelay::new(msg_relay);
+
+            let mut setup = msg_relay.recv(&msg_id, 10).await.ok_or(
                 anyhow::Error::msg("Can't receive setup message"),
             )?;
 
@@ -134,8 +140,6 @@ pub async fn run_keygen(opts: flags::KeyGen) -> anyhow::Result<()> {
 
             let share = keygen::run(setup, seed, msg_relay).await?;
 
-            let stats = relay_stats.stats();
-
             Ok::<_, anyhow::Error>((share, stats))
         });
 
@@ -144,8 +148,16 @@ pub async fn run_keygen(opts: flags::KeyGen) -> anyhow::Result<()> {
 
     let prefix = opts.prefix.unwrap_or_else(|| ".".into());
 
+    let mut results = vec![];
+
     while let Some(share) = parties.join_next().await {
         let (keyshare, stats) = share??;
+        results.push((keyshare, Stats::inner(stats)));
+    }
+
+    tracing::info!("total time {:?}", start.elapsed());
+
+    for (keyshare, stats) in &results {
         let pid = keyshare.party_id;
 
         let share = bincode::encode_to_vec(
@@ -162,6 +174,11 @@ pub async fn run_keygen(opts: flags::KeyGen) -> anyhow::Result<()> {
         tracing::info!("send_size:  {} {}", pid, stats.send_size);
         tracing::info!("recv_count: {} {}", pid, stats.recv_count);
         tracing::info!("recv_size:  {} {}", pid, stats.recv_size);
+        tracing::info!("wait_time:  {} {:?}", pid, stats.wait_time);
+
+        for (id, wait) in &stats.wait_times {
+            tracing::info!(" - {} {:?} {:?}", pid, id, wait);
+        }
     }
 
     Ok(())

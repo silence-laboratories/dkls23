@@ -16,7 +16,6 @@ use sl_oblivious::{
 use crate::{
     setup::keygen::{SetupBuilder, ValidatedSetup},
     setup::SETUP_MESSAGE_TAG,
-    utils::Init,
 };
 
 use super::{messages::Keyshare, KeygenError};
@@ -154,7 +153,10 @@ pub async fn gen_keyshares(t: u8, n: u8, n_i_list: Option<&[u8]>) -> Vec<Keyshar
 
     let mut parties = tokio::task::JoinSet::new();
     for (setup, seed) in setup_keygen(t, n, n_i_list).into_iter() {
-        parties.spawn(crate::keygen::run(setup, seed, coord.connect()));
+        parties.spawn( {
+            let relay = coord.connect();
+            crate::keygen::run(setup, seed, relay)
+        });
     }
 
     let mut shares = vec![];

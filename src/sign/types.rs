@@ -37,6 +37,10 @@ pub enum SignError {
     /// Invalid party
     #[error("Bad Party")]
     BadParty,
+
+    ///
+    #[error("Missing message")]
+    MissingMessage,
 }
 
 impl From<InvalidMessage> for SignError {
