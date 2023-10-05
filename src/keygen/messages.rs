@@ -7,7 +7,7 @@ use sl_mpc_mate::{math::GroupPolynomial, message::*, HashBytes, SessionId};
 
 use sl_oblivious::{
     soft_spoken::{PPRFOutput, ReceiverOTSeed, SenderOTSeed},
-    vsot::{VSOTMsg2, VSOTMsg5},
+    endemic_ot::EndemicOTMsg2,
     zkproofs::DLogProof,
 };
 
@@ -63,8 +63,14 @@ pub struct KeygenMsg3 {
     ///
     pub d_i: Opaque<Scalar, PF>,
 
-    /// VSOT msg 2
-    pub vsot_msg2: VSOTMsg2,
+    /// base OT msg 2
+    pub base_ot_msg2: EndemicOTMsg2,
+
+    /// pprf outputs
+    pub pprf_output: Vec<PPRFOutput>,
+
+    /// seed_i_j values
+    pub seed_i_j: Option<[u8; 32]>,
 }
 
 /// Type for the key generation protocol's message 4.
@@ -81,25 +87,6 @@ pub struct KeygenMsg4 {
 
     /// dlog proof
     pub dlog_proof: DLogProof,
-    // /// Encrypted VSOT msg 3
-    // pub enc_vsot_msgs3: Vec<EncryptedData>,
-}
-
-/// Type for the key generation protocol's message 5.
-#[derive(Clone, bincode::Encode, bincode::Decode)]
-pub struct KeygenMsg6 {
-    /// Session id
-    pub session_id: Opaque<SessionId>,
-
-    /// VSOT msg 5
-    pub vsot_msg5: VSOTMsg5,
-
-    /// Encrypted pprf outputs
-    pub pprf_output: Vec<PPRFOutput>,
-
-    /// seed_i_j values
-    // pub enc_seed_i_j_list: Vec<EncryptedData>,
-    pub seed_i_j: Option<[u8; 32]>,
 }
 
 #[derive(Clone, bincode::Encode, bincode::Decode)]
