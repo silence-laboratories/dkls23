@@ -17,7 +17,7 @@ use sl_oblivious::{
     soft_spoken::{build_pprf, eval_pprf, PPRFOutput, SenderOTSeed},
     soft_spoken_mod::SOFT_SPOKEN_K,
     utils::TranscriptProtocol,
-    vsot::{VSOTError, VSOTMsg3, VSOTReceiver, VSOTSender},
+    endemic_ot::{EndemicOTSender, EndemicOTReceiver, EndemicOTMsg1, EndemicOTMsg2},
     zkproofs::DLogProof,
 };
 
@@ -307,13 +307,14 @@ where
         })
         .collect::<Vec<_>>();
 
-    let mut vsot_receivers = setup
+
+    let mut base_ot_senders = setup
         .other_parties_iter()
         .map(|(p, _)| {
             (
                 p,
-                VSOTReceiver::new(
-                    get_vsot_session_id(p as usize, my_party_id as usize, &final_session_id),
+                EndemicOTSender::new(
+                    get_base_ot_session_id(p as usize, my_party_id as usize, &final_session_id),
                     &mut rng,
                 ),
             )
@@ -321,8 +322,7 @@ where
         .collect::<Vec<_>>();
 
     let mut to_send = vec![];
-
-    let mut vsot_senders = setup
+    let mut base_ot_receivers = setup
         .other_parties_iter()
         .map(|(p, _vk)| {
             (
@@ -337,10 +337,10 @@ where
         .map(|(p, msg_id, seed, enc_pk, nonce)| {
             let mut rng = ChaCha20Rng::from_seed(seed); // TODO check!!!
 
-            let vsot_session_id =
-                get_vsot_session_id(my_party_id as usize, p as usize, &final_session_id);
+            let base_ot_session_id =
+                get_base_ot_session_id(my_party_id as usize, p as usize, &final_session_id);
 
-            let (sender, msg1) = VSOTSender::new(vsot_session_id, &mut rng);
+            let (receiver, msg1) = EndemicOTReceiver::new(base_ot_session_id, &mut rng);
 
             to_send.push(Builder::<Encrypted>::encode(
                 &msg_id,
@@ -351,7 +351,7 @@ where
                 nonce,
             )?);
 
-            Ok((p, sender))
+            Ok((p, receiver))
         })
         .collect::<Result<Vec<_>, KeygenError>>()?;
 
@@ -439,26 +439,39 @@ where
 
     // start receiving P2P messages
     let mut r2_p2p = request_messages(&setup, DKG_MSG_R2, &mut relay, true).await?;
-
-    let mut vsot_next_receivers = vec![];
+    let mut seed_ot_senders = vec![];
+    let mut seed_i_j_list = vec![];
     while !r2_p2p.is_empty() {
         let msg = relay.next().await.ok_or(KeygenError::MissingMessage)?;
-        let (vsot_msg1, party_id) =
+        let (base_ot_msg1, party_id) =
             decode_encrypted_message(&mut r2_p2p, msg, &enc_keys, &enc_pub_key)?;
 
         let rank = setup.party_rank(party_id).unwrap();
 
-        let receiver = pop_pair(&mut vsot_receivers, party_id)?;
+        let sender = pop_pair(&mut base_ot_senders, party_id)?;
 
-        let (receiver, vsot_msg2) = block_in_place(|| receiver.process(vsot_msg1))?;
+        let (sender_output, base_ot_msg2) = block_in_place(|| sender.process(base_ot_msg1));
 
-        vsot_next_receivers.push((party_id, receiver));
+        let (all_but_one_sender_seed, pprf_output) =
+            build_pprf(&final_session_id, &sender_output, 256, SOFT_SPOKEN_K as u8);
+
+        seed_ot_senders.push((party_id, all_but_one_sender_seed));
+
+        let seed_i_j = if party_id > my_party_id {
+            let seed_i_j = rng.gen();
+            seed_i_j_list.push((party_id, seed_i_j));
+            Some(seed_i_j)
+        } else {
+            None
+        };
 
         let x_i = find_pair(&x_i_list, party_id)?;
         let d_i = block_in_place(|| polynomial.derivative_at(rank as usize, x_i));
 
         let msg3 = KeygenMsg3 {
-            vsot_msg2,
+            base_ot_msg2,
+            pprf_output,
+            seed_i_j,
             d_i: Opaque::from(d_i),
             session_id: Opaque::from(final_session_id),
             big_f_vec: big_f_vec.clone(),
@@ -479,9 +492,8 @@ where
 
     // tracing::info!("R2 P2P done {}", setup.party_id());
 
-    let mut vsot_receivers = vsot_next_receivers;
-
-    let mut vsot_next_senders = vec![];
+    let mut seed_ot_receivers = vec![];
+    let mut rec_seed_list = vec![];
     let mut r3_msgs = request_messages(&setup, DKG_MSG_R3, &mut relay, true).await?;
     while !r3_msgs.is_empty() {
         let msg = relay.next().await.ok_or(KeygenError::MissingMessage)?;
@@ -494,27 +506,27 @@ where
 
         d_i_list.push((party_id, *msg3.d_i));
 
-        let sender = pop_pair(&mut vsot_senders, party_id)?;
+        let receiver = pop_pair(&mut base_ot_receivers, party_id)?;
 
-        let (sender, vsot_msg3) = block_in_place(|| sender.process(msg3.vsot_msg2))?;
+        let receiver_output = block_in_place(|| receiver.process(msg3.base_ot_msg2));
 
-        vsot_next_senders.push((party_id, sender));
+        let all_but_one_receiver_seed = eval_pprf(
+            &final_session_id,
+            &receiver_output,
+            256,
+            SOFT_SPOKEN_K as u8,
+            msg3.pprf_output,
+        )
+        .map_err(KeygenError::PPRFError)?;
 
-        relay
-            .send(Builder::<Encrypted>::encode(
-                &setup.msg_id(Some(party_id), DKG_MSG_R4),
-                setup.ttl(),
-                &enc_keys,
-                find_pair(&enc_pub_key, party_id)?,
-                &vsot_msg3,
-                nonce_counter.next_nonce(),
-            )?)
-            .await?;
+        seed_ot_receivers.push((party_id, all_but_one_receiver_seed));
+        if let Some(seed_j_i) = msg3.seed_i_j {
+            rec_seed_list.push((party_id, seed_j_i));
+        }
+
     }
 
     // tracing::info!("R3 P2P done {}", setup.party_id());
-
-    let mut vsot_senders = vsot_next_senders;
 
     d_i_list.sort_by_key(|(p, _)| *p);
     big_f_i_vecs.sort_by_key(|(p, _)| *p);
@@ -619,102 +631,6 @@ where
         &public_key,
     )?;
 
-    let mut vsot_next_receivers = vec![];
-    let mut js = request_messages(&setup, DKG_MSG_R4, &mut relay, true).await?;
-    while !js.is_empty() {
-        let msg = relay.next().await.ok_or(KeygenError::MissingMessage)?;
-        let (msg, party_id) =
-            decode_encrypted_message::<VSOTMsg3>(&mut js, msg, &enc_keys, &enc_pub_key)?;
-        let receiver = pop_pair(&mut vsot_receivers, party_id)?;
-
-        let (receiver, vsot_msg4) = block_in_place(|| receiver.process(msg))?;
-
-        vsot_next_receivers.push((party_id, receiver));
-
-        relay
-            .send(Builder::<Encrypted>::encode(
-                &setup.msg_id(Some(party_id), DKG_MSG_R5),
-                setup.ttl(),
-                &enc_keys,
-                find_pair(&enc_pub_key, party_id)?,
-                &vsot_msg4,
-                nonce_counter.next_nonce(),
-            )?)
-            .await?;
-    }
-    let mut vsot_receivers = vsot_next_receivers;
-
-    let mut seed_ot_senders = vec![];
-    let mut seed_i_j_list = vec![];
-
-    let mut js = request_messages(&setup, DKG_MSG_R5, &mut relay, true).await?;
-    while !js.is_empty() {
-        let msg = relay.next().await.ok_or(KeygenError::MissingMessage)?;
-        let (msg, party_id) = decode_encrypted_message(&mut js, msg, &enc_keys, &enc_pub_key)?;
-        let sender = pop_pair(&mut vsot_senders, party_id)?;
-
-        let (sender_output, vsot_msg5) = block_in_place(|| sender.process(msg))?;
-
-        let (all_but_one_sender_seed, pprf_output) =
-            build_pprf(&final_session_id, &sender_output, 256, SOFT_SPOKEN_K as u8);
-
-        seed_ot_senders.push((party_id, all_but_one_sender_seed));
-
-        let seed_i_j = if party_id > my_party_id {
-            let seed_i_j = rng.gen();
-            seed_i_j_list.push((party_id, seed_i_j));
-            Some(seed_i_j)
-        } else {
-            None
-        };
-
-        let msg6 = KeygenMsg6 {
-            session_id: Opaque::from(final_session_id),
-            vsot_msg5,
-            pprf_output,
-            seed_i_j,
-        };
-
-        relay
-            .send(Builder::<Encrypted>::encode(
-                &setup.msg_id(Some(party_id), DKG_MSG_R6),
-                setup.ttl(),
-                &enc_keys,
-                find_pair(&enc_pub_key, party_id)?,
-                &msg6,
-                nonce_counter.next_nonce(),
-            )?)
-            .await?;
-    }
-
-    let mut seed_ot_receivers = vec![];
-    let mut rec_seed_list = vec![];
-
-    let mut js = request_messages(&setup, DKG_MSG_R6, &mut relay, true).await?;
-    while !js.is_empty() {
-        let msg = relay.next().await.ok_or(KeygenError::MissingMessage)?;
-        let (msg, party_id) =
-            decode_encrypted_message::<KeygenMsg6>(&mut js, msg, &enc_keys, &enc_pub_key)?;
-
-        let receiver = pop_pair(&mut vsot_receivers, party_id)?;
-
-        let receiver_output = block_in_place(|| receiver.process(msg.vsot_msg5))?;
-
-        let all_but_one_receiver_seed = eval_pprf(
-            &final_session_id,
-            &receiver_output,
-            256,
-            SOFT_SPOKEN_K as u8,
-            msg.pprf_output,
-        )
-        .map_err(KeygenError::PPRFError)?;
-
-        seed_ot_receivers.push((party_id, all_but_one_receiver_seed));
-        if let Some(seed_j_i) = msg.seed_i_j {
-            rec_seed_list.push((party_id, seed_j_i));
-        }
-    }
-
     // Sorting to ensure that the list is in the same order for all parties
     // As we can get messages in any order
     // TODO: Verify that this is actually necessary
@@ -764,7 +680,7 @@ fn hash_commitment(
     HashBytes::new(hasher.finalize().into())
 }
 
-fn get_vsot_session_id(sender_id: usize, receiver_id: usize, session_id: &SessionId) -> SessionId {
+fn get_base_ot_session_id(sender_id: usize, receiver_id: usize, session_id: &SessionId) -> SessionId {
     SessionId::new(
         Sha256::new()
             .chain_update(DKG_LABEL)
@@ -773,7 +689,7 @@ fn get_vsot_session_id(sender_id: usize, receiver_id: usize, session_id: &Sessio
             .chain_update((sender_id as u64).to_be_bytes())
             .chain_update(b"receiver_id")
             .chain_update((receiver_id as u64).to_be_bytes())
-            .chain_update(b"vsot_session_id")
+            .chain_update(b"base_ot_session_id")
             .finalize()
             .into(),
     )
