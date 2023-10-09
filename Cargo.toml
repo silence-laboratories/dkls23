@@ -35,7 +35,7 @@ members = [
   "crates/msg-relay-svc",
   "crates/msg-relay-client",
   # "wrapper/node",
-  # "wrapper/wasm"
+  "wrapper/wasm"
 ]
 
 [workspace.dependencies]
