@@ -20,6 +20,7 @@ thiserror.workspace = true
 tracing.workspace = true
 futures-util.workspace = true
 tokio = { workspace = true, features = ["rt", "sync", "macros" ] }
+derivation-path.workspace = true
 
 [dev-dependencies]
 hex ="0.4.3"
@@ -52,6 +53,7 @@ tracing-subscriber = "0.3"
 tokio = "1.32"
 futures-util = "0.3.0"
 anyhow = "1"
+derivation-path = "0.2.0"
 sl-mpc-mate  = { git = "https://gitlab.com/com.silencelaboratories/sl-crypto", rev = "msg-relay/v0.4" }
 sl-oblivious = { git = "https://gitlab.com/com.silencelaboratories/sl-crypto", rev = "msg-relay/v0.4" }
 

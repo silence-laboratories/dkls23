@@ -635,6 +635,12 @@ where
     // As we can get messages in any order
     // TODO: Verify that this is actually necessary
 
+    // Generate common root_chain_code from session_id
+    let mut root_chain_code = [0u8; 32];
+    let mut transcript = Transcript::new(b"root_chain_code");
+    transcript.append_message(b"session_id", session_id.as_ref());
+    transcript.challenge_bytes(b"root_chain_code_bytes", &mut root_chain_code);
+
     let share = Keyshare {
         magic: Keyshare::MAGIC, // marker of current version Keyshare
 
@@ -643,6 +649,7 @@ where
         party_id: my_party_id,
         rank_list: remove_ids(setup.all_party_ranks()),
         public_key: Opaque::from(public_key),
+        root_chain_code,
         x_i_list: remove_ids_and_wrap(x_i_list),
         big_s_list: remove_ids_and_wrap(big_s_list),
         s_i: Opaque::from(s_i),

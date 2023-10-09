@@ -11,6 +11,10 @@ use sl_oblivious::{
     zkproofs::DLogProof,
 };
 
+use sl_mpc_mate::bip32::{BIP32Error, derive_child_pubkey, derive_xpub, get_finger_print, KeyFingerPrint, Prefix, XPubKey};
+
+use derivation_path::DerivationPath;
+
 /// Type for the key generation protocol's message 1.
 #[derive(bincode::Encode, bincode::Decode)]
 pub struct KeygenMsg1 {
@@ -118,6 +122,9 @@ pub struct Keyshare {
     /// Public key of the generated key.
     pub public_key: Opaque<ProjectivePoint, GR>,
 
+    /// Root chain code (used to derive child public keys)
+    pub root_chain_code: [u8; 32],
+
     ///
     pub seed_ot_receivers: Vec<ReceiverOTSeed>,
 
@@ -138,4 +145,62 @@ pub struct Keyshare {
 impl Keyshare {
     /// Identified of key share data
     pub const MAGIC: u32 = 1u32;
+}
+
+// Separate impl for BIP32 related functions
+impl Keyshare {
+    /// Get the fingerprint of the root public key
+    pub fn get_finger_print(&self) -> KeyFingerPrint {
+        get_finger_print(&self.public_key)
+    }
+
+    /// Get the additive offset of a key share for a given derivation path
+    pub fn derive_with_offset(
+        &self,
+        chain_path: &DerivationPath,
+    ) -> Result<(Scalar, ProjectivePoint), BIP32Error> {
+        let mut pubkey = self.public_key.clone().0;
+        let mut chain_code = self.root_chain_code;
+        let mut additive_offset = Scalar::ZERO;
+        for child_num in chain_path.into_iter() {
+            let (il_int, child_pubkey, child_chain_code) =
+                derive_child_pubkey(&pubkey, chain_code, child_num)?;
+            pubkey = child_pubkey;
+            chain_code = child_chain_code;
+            additive_offset += il_int;
+        }
+
+        // Perform the mod q operation to get the additive offset
+        Ok((additive_offset, pubkey))
+    }
+
+    /// Derive the child public key for a given derivation path
+    pub fn derive_child_pubkey(
+        &self,
+        chain_path: &DerivationPath,
+    ) -> Result<ProjectivePoint, BIP32Error> {
+        let (_, child_pubkey) = self.derive_with_offset(chain_path)?;
+
+        Ok(child_pubkey)
+    }
+
+    /// Derive the extended public key for a given derivation path and prefix
+    /// # Arguments
+    /// * `prefix` - Prefix for the extended public key (`Prefix` has commonly used prefixes)
+    /// * `chain_path` - Derivation path
+    ///
+    /// # Returns
+    /// * `XPubKey` - Extended public key
+    pub fn derive_xpub(
+        &self,
+        prefix: Prefix,
+        chain_path: DerivationPath,
+    ) -> Result<XPubKey, BIP32Error> {
+        derive_xpub(
+            prefix,
+            &self.public_key,
+            self.root_chain_code,
+            chain_path,
+        )
+    }
 }
