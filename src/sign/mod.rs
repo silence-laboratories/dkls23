@@ -8,6 +8,7 @@ use crate::{
     setup::{sign::SetupBuilder, SETUP_MESSAGE_TAG},
     Seed,
 };
+use derivation_path::DerivationPath;
 
 pub use crate::setup::sign::ValidatedSetup;
 
@@ -22,7 +23,7 @@ pub use dsg::*;
 pub use types::*;
 
 /// Test helper
-pub fn setup_dsg(pk: &AffinePoint, shares: &[Keyshare]) -> Vec<(ValidatedSetup, Seed)> {
+pub fn setup_dsg(pk: &AffinePoint, shares: &[Keyshare], chain_path: &DerivationPath) -> Vec<(ValidatedSetup, Seed)> {
     let mut rng = rand::thread_rng();
 
     let instance = InstanceId::from(rng.gen::<[u8; 32]>());
@@ -41,7 +42,7 @@ pub fn setup_dsg(pk: &AffinePoint, shares: &[Keyshare]) -> Vec<(ValidatedSetup, 
 
     let mut setup = party_sk
         .iter()
-        .fold(SetupBuilder::new(pk), |setup, sk| {
+        .fold(SetupBuilder::new(pk, chain_path), |setup, sk| {
             let vk = sk.verifying_key();
             setup.add_party(vk)
         })

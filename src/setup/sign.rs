@@ -19,6 +19,8 @@ use crate::{
     setup::{HashAlgo, Magic},
 };
 
+use derivation_path::DerivationPath;
+
 /// A key generation setup message.
 ///
 /// struct SetupMessage {
@@ -33,6 +35,7 @@ use crate::{
 #[derive(Clone, Debug)]
 pub struct Setup {
     public_key: AffinePoint,
+    chain_path: DerivationPath,
     parties: Vec<VerifyingKey>,
     hash_algo: HashAlgo,
     message: Vec<u8>,
@@ -45,6 +48,10 @@ impl Encode for Setup {
         (self.parties.len() as u8).encode(encoder)?;
 
         encoder.writer().write(&self.public_key.to_bytes())?;
+        
+        let chain_path_bytes = self.chain_path.to_string();
+        (chain_path_bytes.len() as u8).encode(encoder)?;
+        encoder.writer().write(chain_path_bytes.as_bytes())?;
 
         for pk in &self.parties {
             encoder.writer().write(pk.as_bytes())?;
@@ -80,6 +87,14 @@ impl Decode for Setup {
             return Err(DecodeError::Other("bad keyshare PK"));
         };
 
+        let chain_path_bytes_len = u8::decode(decoder)?;
+        let mut chain_path_bytes: Vec<u8> = Vec::with_capacity(chain_path_bytes_len as usize);
+        for _ in 0..chain_path_bytes_len {
+            chain_path_bytes.push(u8::decode(decoder)?)
+        }
+        let chain_path_str: String = String::from_utf8(chain_path_bytes).expect("Found invalid UTF-8 in chain_path");
+        let chain_path: DerivationPath = chain_path_str.parse().unwrap(); 
+
         let mut parties = Vec::with_capacity(t as usize);
 
         for _ in 0..t {
@@ -109,6 +124,7 @@ impl Decode for Setup {
         Ok(Setup {
             parties,
             public_key,
+            chain_path,
             hash_algo,
             message,
         })
@@ -153,6 +169,12 @@ impl Setup {
     pub fn public_key(&self) -> &AffinePoint {
         &self.public_key
     }
+
+    /// Return the chain path.
+    pub fn chain_path(&self) -> &DerivationPath {
+        &self.chain_path
+    }
+
 }
 
 ///
@@ -198,6 +220,11 @@ impl ValidatedSetup {
     ///
     pub fn keyshare(&self) -> &Keyshare {
         &self.keyshare
+    }
+
+    /// Return the chain path.
+    pub fn chain_path(&self) -> &DerivationPath {
+        &self.setup.chain_path
     }
 
     ///
@@ -284,6 +311,7 @@ impl ValidatedSetup {
 ///
 pub struct SetupBuilder {
     public_key: AffinePoint,
+    chain_path: DerivationPath,
     parties: Vec<VerifyingKey>,
     message: Vec<u8>,
     hash: Option<HashAlgo>,
@@ -291,9 +319,10 @@ pub struct SetupBuilder {
 
 impl SetupBuilder {
     /// Create new builder
-    pub fn new(public_key: &AffinePoint) -> SetupBuilder {
+    pub fn new(public_key: &AffinePoint, chain_path: &DerivationPath) -> SetupBuilder {
         Self {
             public_key: *public_key,
+            chain_path: chain_path.clone(),
             parties: vec![],
             message: vec![],
             hash: None,
@@ -326,6 +355,7 @@ impl SetupBuilder {
 
         let Self {
             public_key,
+            chain_path,
             parties,
             message,
             ..
@@ -343,6 +373,7 @@ impl SetupBuilder {
 
         let setup = Setup {
             public_key,
+            chain_path,
             parties,
             hash_algo,
             message,

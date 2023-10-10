@@ -9,16 +9,19 @@ use sl_mpc_mate::{
     message::*,
     HashBytes,
 };
+use derivation_path::DerivationPath;
 
 use crate::{default_coord, flags, serve::*, utils::*, SignHashFn};
 
 pub async fn setup(opts: flags::SignSetup) -> anyhow::Result<()> {
-    let pk = parse_affine_point(&opts.public_key)?;
+    let pk: k256::AffinePoint = parse_affine_point(&opts.public_key)?;
+    let chain_path_str = &opts.chain_path;
+    let chain_path: DerivationPath = chain_path_str.parse().unwrap();
     let setup_sk = load_signing_key(opts.sign)?;
     let setup_vk = setup_sk.verifying_key();
 
     let builder = opts.party.into_iter().try_fold(
-        setup::sign::SetupBuilder::new(&pk),
+        setup::sign::SetupBuilder::new(&pk, &chain_path),
         |builder, party| {
             let vk = parse_verifying_key(&party)?;
             Ok::<_, anyhow::Error>(builder.add_party(vk))

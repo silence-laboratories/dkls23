@@ -77,6 +77,9 @@ xflags::xflags! {
 
             /// Public key as hex string of distributed key to create a signature
             required --public-key public_key: String
+            
+            /// Chain path as string like "m" for root public key and "m/0/1" for derived child key
+            required --chain-path chain_path: String
 
             /// Ed25519 public key of the participant of key generation
             repeated --party party: String

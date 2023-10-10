@@ -349,7 +349,11 @@ pub async fn run<R: Relay>(
             .expect("betta_i not found")
     };
 
-    let x_i = coeff * *setup.keyshare().s_i + mu_i;
+    let (additive_offset, derived_public_key) = setup.keyshare().derive_with_offset(setup.chain_path()).unwrap();
+    let threshold_inv = Scalar::from(setup.keyshare().threshold as u32).invert().unwrap();
+    let additive_offset = additive_offset * threshold_inv;
+
+    let x_i = coeff * *setup.keyshare().s_i + additive_offset + mu_i;
     let big_x_i = ProjectivePoint::GENERATOR * x_i;
 
     let mut sender_additive_shares = vec![];
@@ -435,7 +439,7 @@ pub async fn run<R: Relay>(
 
     let big_t_0 = ProjectivePoint::GENERATOR * sum_big_t_0;
     let big_t_1 = ProjectivePoint::GENERATOR * sum_big_t_1;
-    let big_x_star_i = setup.keyshare().public_key + (-big_x_i);
+    let big_x_star_i = derived_public_key + (-big_x_i);
     // new var
     let big_r = big_r_star + big_r_i;
 
@@ -512,7 +516,7 @@ pub async fn run<R: Relay>(
     verify_final_signature(
         &setup.hash(),
         &sign,
-        &setup.keyshare().public_key.to_affine().to_bytes(),
+        &derived_public_key.to_affine().to_bytes(),
     )?;
 
     Ok(sign)
@@ -639,8 +643,9 @@ mod tests {
 
     use crate::keygen::gen_keyshares;
     use crate::setup::{sign::*, SETUP_MESSAGE_TAG};
+    use derivation_path::DerivationPath;
 
-    fn setup_dsg(pk: &AffinePoint, shares: &[Keyshare]) -> Vec<(ValidatedSetup, Seed)> {
+    fn setup_dsg(pk: &AffinePoint, shares: &[Keyshare], chain_path: &DerivationPath) -> Vec<(ValidatedSetup, Seed)> {
         let mut rng = rand::thread_rng();
 
         let instance = InstanceId::from(rng.gen::<[u8; 32]>());
@@ -658,7 +663,7 @@ mod tests {
         let party_sk: [SigningKey; T] = array::from_fn(|_| SigningKey::from_bytes(&rng.gen()));
 
         let mut setup = (0..T)
-            .fold(SetupBuilder::new(pk), |setup, p| {
+            .fold(SetupBuilder::new(pk, chain_path), |setup, p| {
                 let vk = party_sk[p].verifying_key();
                 setup.add_party(vk)
             })
@@ -693,9 +698,10 @@ mod tests {
         let shares = gen_keyshares(2, 2, Some(&[0, 0])).await;
 
         let pk = shares[0].public_key.to_affine();
+        let chain_path = "m".parse().unwrap();
 
         let mut parties = JoinSet::new();
-        for (setup, seed) in setup_dsg(&pk, &shares).into_iter() {
+        for (setup, seed) in setup_dsg(&pk, &shares, &chain_path).into_iter() {
             parties.spawn(run(setup, seed, coord.connect()));
         }
 
@@ -717,9 +723,10 @@ mod tests {
         let shares = gen_keyshares(2, 3, Some(&[0, 1, 1])).await;
 
         let pk = shares[0].public_key.to_affine();
+        let chain_path = "m".parse().unwrap();
 
         let mut parties = JoinSet::new();
-        for (setup, seed) in setup_dsg(&pk, &shares).into_iter() {
+        for (setup, seed) in setup_dsg(&pk, &shares, &chain_path).into_iter() {
             parties.spawn(run(setup, seed, coord.connect()));
         }
 

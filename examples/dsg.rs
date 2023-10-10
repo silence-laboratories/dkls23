@@ -7,6 +7,7 @@ use dkls23::{
     sign,
 };
 use sl_mpc_mate::coord::SimpleMessageRelay;
+use derivation_path::DerivationPath;
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
@@ -22,10 +23,12 @@ async fn main() {
     // let subset: Vec<_> = keyshares.into_iter().choose_multiple(&mut rng, T);
     let subset = &keyshares[0..t as usize];
 
+    let chain_path = "m/0/1/42".parse().unwrap();
+
     let start = std::time::Instant::now();
 
     for _ in 0..K {
-        dsg(&subset).await;
+        dsg(&subset, &chain_path).await;
     }
 
     let d = start.elapsed();
@@ -33,13 +36,13 @@ async fn main() {
     println!("Time taken: DSG {}x{} {:?}/{} {:?}", t, n, d, K, one);
 }
 
-async fn dsg(shares: &[Keyshare]) {
+async fn dsg(shares: &[Keyshare], chain_path: &DerivationPath) {
     let coord = SimpleMessageRelay::new();
 
     let pk = shares[0].public_key.to_affine();
 
     let mut parties = JoinSet::new();
-    for (setup, seed) in sign::setup_dsg(&pk, shares).into_iter() {
+    for (setup, seed) in sign::setup_dsg(&pk, shares, chain_path).into_iter() {
         parties.spawn(sign::run(setup, seed, coord.connect()));
     }
 

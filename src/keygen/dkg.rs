@@ -638,7 +638,7 @@ where
     // Generate common root_chain_code from session_id
     let mut root_chain_code = [0u8; 32];
     let mut transcript = Transcript::new(b"root_chain_code");
-    transcript.append_message(b"session_id", session_id.as_ref());
+    transcript.append_message(b"session_id", &final_session_id);
     transcript.challenge_bytes(b"root_chain_code_bytes", &mut root_chain_code);
 
     let share = Keyshare {
