@@ -550,7 +550,7 @@ pub fn create_partial_signature(
     partial_signature
 }
 
-/// Combine list of t partial signatures into a final signature
+/// Locally combine list of t partial signatures into a final signature
 pub fn combine_partial_signature(
     partial_signatures: Vec<PartialSignature>,
     t: usize
