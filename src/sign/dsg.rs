@@ -197,12 +197,56 @@ fn decode_encrypted_message<T: bincode::Decode>(
 //     Ok((msg, party_id))
 // }
 
-///
-pub async fn run<R: Relay>(
-    setup: ValidatedSetup,
+/// Result after pre-signature of party_i
+#[derive(Clone, bincode::Encode, bincode::Decode)]
+pub struct PreSignResult {
+    /// final_session_id
+    pub final_session_id: Opaque<SessionId>,
+
+    /// public_key
+    pub public_key: Opaque<ProjectivePoint, GR>,
+
+    /// s_0 Scalar
+    pub s_0: Opaque<Scalar, PF>,
+
+    /// s_1 Scalar
+    pub s_1: Opaque<Scalar, PF>,
+
+    /// R point
+    pub r: Opaque<ProjectivePoint, GR>,
+
+    /// phi_i Scalar
+    pub phi_i: Opaque<Scalar, PF>
+}
+
+/// Partial signature of party_i
+#[derive(Clone, bincode::Encode, bincode::Decode)]
+pub struct PartialSignature {
+    /// final_session_id
+    pub final_session_id: Opaque<SessionId>,
+    
+    /// public_key
+    pub public_key: Opaque<ProjectivePoint, GR>,
+
+    /// 32 bytes message_hash
+    pub message_hash: Opaque<HashBytes>,
+
+    /// s_0 Scalar
+    pub s_0: Opaque<Scalar, PF>,
+
+    /// s_1 Scalar
+    pub s_1: Opaque<Scalar, PF>,
+
+    /// R point
+    pub r: Opaque<ProjectivePoint, GR>
+}
+
+/// Method to create a pre-signature without any message information for the signature
+pub async fn pre_signature<R: Relay>(
+    setup: &ValidatedSetup,
     seed: Seed,
-    mut relay: R,
-) -> Result<Signature, SignError> {
+    relay: &mut R,
+) -> Result<PreSignResult, SignError> {
     let mut rng = ChaCha20Rng::from_seed(seed);
     let mut nonce_counter = NonceCounter::new();
 
@@ -248,7 +292,7 @@ pub async fn run<R: Relay>(
     // vector of pairs (party_idx, party_id)
     let mut party_idx_to_id_map = vec![(my_party_idx, my_party_id)];
 
-    let mut js = recv_messages(&setup, DSG_MSG_R1, &mut relay, false).await?;
+    let mut js = recv_messages(&setup, DSG_MSG_R1, relay, false).await?;
     while !js.is_empty() {
         let msg = relay.next().await.ok_or(SignError::MissingMessage)?;
         let (msg, party_idx) = decode_signed_message::<SignMsg1>(&mut js, msg, &setup)?;
@@ -358,7 +402,7 @@ pub async fn run<R: Relay>(
 
     let mut sender_additive_shares = vec![];
 
-    let mut js = recv_messages(&setup, DSG_MSG_R2, &mut relay, true).await?;
+    let mut js = recv_messages(&setup, DSG_MSG_R2, relay, true).await?;
     while !js.is_empty() {
         let msg = relay.next().await.ok_or(SignError::MissingMessage)?;
         let (msg1, party_idx) =
@@ -405,7 +449,7 @@ pub async fn run<R: Relay>(
 
     let mut receiver_additive_shares = vec![];
 
-    let mut js = recv_messages(&setup, DSG_MSG_R3, &mut relay, true).await?;
+    let mut js = recv_messages(&setup, DSG_MSG_R3, relay, true).await?;
     while !js.is_empty() {
         let msg = relay.next().await.ok_or(SignError::MissingMessage)?;
         let (msg3, party_idx) =
@@ -460,8 +504,6 @@ pub async fn run<R: Relay>(
         ));
     }
 
-    let msg_hash = setup.hash();
-
     let mut sum0 = Scalar::ZERO;
     let mut sum1 = Scalar::ZERO;
 
@@ -475,12 +517,94 @@ pub async fn run<R: Relay>(
     let r_point = big_r.to_affine();
     let r_x = Scalar::from_repr(r_point.x()).unwrap();
     //        let recid = r_point.y_is_odd().unwrap_u8();
-    let mut s_0 = r_x * (x_i * phi_i + sum0);
+    let s_0 = r_x * (x_i * phi_i + sum0);
     let s_1 = k_i * phi_i + sum1;
 
-    let m = Scalar::reduce(U256::from_be_slice(&msg_hash));
+    let pre_sign_result = PreSignResult {
+        final_session_id: Opaque::from(final_session_id),
+        public_key: Opaque::from(derived_public_key),
+        s_0: Opaque::from(s_0),
+        s_1: Opaque::from(s_1),
+        phi_i: Opaque::from(phi_i),
+        r: Opaque::from(big_r)
+    };
 
-    s_0 = m * phi_i + s_0;
+    Ok(pre_sign_result)
+}
+
+/// Locally create a partial signature from pre-signature and msg_hash
+pub fn create_partial_signature(
+    pre_sign_result: &PreSignResult,
+    msg_hash: &HashBytes
+) -> PartialSignature {
+    let m = Scalar::reduce(U256::from_be_slice(msg_hash));
+    let s_0 = m * pre_sign_result.phi_i.0 + pre_sign_result.s_0.0;
+    let partial_signature = PartialSignature {
+        final_session_id: pre_sign_result.final_session_id,
+        public_key: pre_sign_result.public_key,
+        message_hash: Opaque::from(*msg_hash),
+        s_0: Opaque::from(s_0),
+        s_1: pre_sign_result.s_1,
+        r: pre_sign_result.r
+    };
+    partial_signature
+}
+
+/// Combine list of t partial signatures into a final signature
+pub fn combine_partial_signature(
+    partial_signatures: Vec<PartialSignature>,
+    t: usize
+) -> Result<Signature, SignError> {
+    if partial_signatures.len() != t {
+        return Err(SignError::FailedCheck("Invalid number of partial signatures"));
+    }
+
+    let final_session_id = partial_signatures[0].final_session_id;
+    let public_key = partial_signatures[0].public_key;
+    let message_hash = partial_signatures[0].message_hash;
+    let r = partial_signatures[0].r;
+
+    let mut sum_s_0 = Scalar::ZERO;
+    let mut sum_s_1 = Scalar::ZERO;
+    for partial_sign in partial_signatures.iter() {
+        let cond = (partial_sign.final_session_id != final_session_id) || (partial_sign.public_key != public_key)
+            || (partial_sign.r != r) || (partial_sign.message_hash != message_hash);
+        if cond {
+            return Err(SignError::FailedCheck("Invalid list of partial signatures"));
+        }
+        sum_s_0 += partial_sign.s_0.0;
+        sum_s_1 += partial_sign.s_1.0;
+    }
+
+    let r = r.0.to_affine().x();
+    let sum_s_1_inv = sum_s_1.invert().unwrap();
+    let sig = sum_s_0 * sum_s_1_inv;
+
+    let sign = parse_raw_sign(&r, &sig.to_bytes())?;
+
+    verify_final_signature(
+        &message_hash.0,
+        &sign,
+        &public_key.0.to_bytes(),
+    )?;
+
+    Ok(sign)
+
+}
+
+///
+pub async fn run<R: Relay>(
+    setup: ValidatedSetup,
+    seed: Seed,
+    mut relay: R,
+) -> Result<Signature, SignError> {
+    let pre_signature_result = pre_signature(&setup, seed, &mut relay).await?;
+    let final_session_id = pre_signature_result.final_session_id;
+    let public_key = pre_signature_result.public_key;
+    let r: Opaque<ProjectivePoint, GR> = pre_signature_result.r;
+
+    let msg_hash = &setup.hash();
+    let partial_signature = create_partial_signature(&pre_signature_result, &msg_hash);
 
     relay
         .send(Builder::<Signed>::encode(
@@ -488,38 +612,34 @@ pub async fn run<R: Relay>(
             setup.ttl(),
             setup.signing_key(),
             &SignMsg4 {
-                session_id: Opaque::from(final_session_id),
-                s_0: Opaque::from(s_0),
-                s_1: Opaque::from(s_1),
+                session_id: Opaque::from(partial_signature.final_session_id),
+                s_0: Opaque::from(partial_signature.s_0),
+                s_1: Opaque::from(partial_signature.s_1),
             },
         )?)
         .await?;
 
-    let mut sum_s_0 = s_0;
-    let mut sum_s_1 = s_1;
+    let mut partial_signatures: Vec<PartialSignature> = Vec::new();
+    partial_signatures.push(partial_signature);
 
     let mut js = recv_messages(&setup, DSG_MSG_R4, &mut relay, false).await?;
     while !js.is_empty() {
         let msg = relay.next().await.ok_or(SignError::MissingMessage)?;
         let (msg, _party_idx) = decode_signed_message::<SignMsg4>(&mut js, msg, &setup)?;
-
-        sum_s_0 += &*msg.s_0;
-        sum_s_1 += &*msg.s_1;
+        let party_j_partial_sign = PartialSignature {
+            final_session_id,
+            public_key,
+            message_hash: Opaque::from(msg_hash.clone()),
+            s_0: Opaque::from(msg.s_0),
+            s_1: Opaque::from(msg.s_1),
+            r,
+        };
+        partial_signatures.push(party_j_partial_sign);
     }
 
-    let r = big_r.to_affine().x();
-    let sum_s_1_inv = sum_s_1.invert().unwrap();
-    let sig = sum_s_0 * sum_s_1_inv;
+    let t = setup.keyshare().threshold;
+    combine_partial_signature(partial_signatures, t as usize)
 
-    let sign = parse_raw_sign(&r, &sig.to_bytes())?;
-
-    verify_final_signature(
-        &setup.hash(),
-        &sign,
-        &derived_public_key.to_affine().to_bytes(),
-    )?;
-
-    Ok(sign)
 }
 
 fn hash_commitment_r_i(
