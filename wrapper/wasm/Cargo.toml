@@ -2,10 +2,10 @@
 name = "dkls-wasm"
 version = "0.1.0"
 authors = ["Artem Mironov <artem.mironov@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["cdylib"]
 
 [features]
 default = ["console_error_panic_hook"]
@@ -14,11 +14,15 @@ default = ["console_error_panic_hook"]
 getrandom = { version = "0.2", features = ["js"] }
 wasm-bindgen = "0.2.87"
 wasm-bindgen-futures = "0.4.37"
+serde-wasm-bindgen = "0.6.0"
 js-sys = "0.3"
-tokio = { version = "1", features = ["rt", "sync", "macros" ] }
 dkls23 = { path = "../.." }
 sl-mpc-mate = { workspace = true }
+k256 = { workspace = true }
+rand = { workspace = true }
 hex = "0.4"
+serde = "1.0"
+serde_bytes = "0.11"
 
 # The `console_error_panic_hook` crate provides better debugging of panics by
 # logging them with `console.error`. This is great for development, but requires
@@ -28,8 +32,12 @@ console_error_panic_hook = { version = "0.1.7", optional = true }
 
 
 [dependencies.web-sys]
-version = "0.3.22"
+version = "0.3"
 features = [
+  "Crypto",
+  "CryptoKey",
+  "CryptoKeyPair",
+  "SubtleCrypto",
   "BinaryType",
   "Blob",
   "ErrorEvent",

@@ -1,8 +1,8 @@
-import { assertEquals } from "https://deno.land/std@0.202.0/assert/mod.ts";
+import { assertEquals } from "https://deno.land/std@0.203.0/assert/mod.ts";
 
 import { MsgRelayClient, randomMsgId } from './msg-relay.js';
 
-const { test } = Deno;
+import { test, msg_relay_connect } from '../dkls_test.js';
 
 const ENDPOINT = 'ws://localhost:8080/v1/msg-relay';
 
@@ -34,7 +34,13 @@ const msgEq = (m1: Uint8Array, m2: Uint8Array): Boolean => {
     return m1.length == m2.length && m1.every((b, idx) => m2[b] === idx);
 }
 
-test('connect', async (t) => {
+test('connect MsgRelayClient', async () => {
+    let client = await msg_relay_connect(ENDPOINT);
+
+    await client.close();
+});
+
+test('connect', async () => {
     let relay = await MsgRelayClient.connect(ENDPOINT);
     let msg = genMsg(100, 10);
 
@@ -45,7 +51,7 @@ test('connect', async (t) => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 });
 
-test('send/recv', async (t) => {
+test('send/recv', async () => {
     let r1 = await MsgRelayClient.connect(ENDPOINT);
     let msg = genMsg(100, 10);
 

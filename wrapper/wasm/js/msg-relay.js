@@ -63,7 +63,7 @@ export class MsgRelayClient {
 
     next() {
         if (this.inBuf.length > 0) {
-            return Promise.resolved(this.inBuf.pop());
+            return Promise.resolve(this.inBuf.pop());
         } else {
             return new Promise((resolve) => {
                 this.waiter = resolve;
@@ -79,15 +79,12 @@ export class MsgRelayClient {
             ws.binaryType = "arraybuffer";
 
             ws.onmessage = (evt) => {
-                // console.log('on-message');
-
                 getArrayBuffer(evt).then((data) => {
                     if (!data) {
                         return;
                     }
 
                     let msg = new Uint8Array(data);
-                    relay.inBuf.push(msg);
 
                     let waiter = relay.waiter;
 
@@ -95,6 +92,8 @@ export class MsgRelayClient {
 
                     if (waiter) {
                         waiter(msg);
+                    } else {
+                        relay.inBuf.push(msg);
                     }
                 });
             }
