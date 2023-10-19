@@ -86,9 +86,14 @@ export const configs = (): Array<ClusterDef> => {
     ];
 };
 
+export const wsUrl = (path) => {
+    if (path.startsWith('ws://') || path.startsWith('wss://')) {
+        return path;
+    }
 
-// export const availableClusters = async () => {
-//     let c = await configs();
+    // https: => wss:
+    // http:  => ws:
+    const proto = window.location.protocol.replace('http', 'ws');
 
-//     return c.map((cc) => cc.name);
-// }
+    return proto + window.location.host + path;
+}

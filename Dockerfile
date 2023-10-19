@@ -29,7 +29,7 @@ COPY --from=builder /src/wrapper/wasm/pkg ./wrapper/wasm/pkg
 RUN set -ex; cd wrapper/wasm/demo; \
     npm install; npm run build
 
-FROM node:18-bookworm
+FROM node:18-bookworm-slim
 
 RUN apt-get update -y && apt-get install -y openssl caddy curl
 

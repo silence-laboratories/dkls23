@@ -3,8 +3,6 @@ import init, {
     dkgSetupMessage,
     dsgSetupMessage,
     verifyingKey,
-    dkg,
-    dsg
 } from 'dkls-wasm';
 
 const start = async (endpoint: string, instance: Uint8Array): Promise<any> => {
@@ -38,21 +36,24 @@ export async function startDsg(endpoint: string, instance: Uint8Array): Promise<
     return resp;
 }
 
-export function createKeygenSetup(cluster, threshold) {
+export function createKeygenSetupOpts(cluster, threshold, ttl = 10) {
     let instance = genInstanceId();
-    let opts = {
+    return {
         instance,
         signing_key: cluster.setup.secretKey,
         threshold,
-        ttl: 10,
+        ttl,
         parties: cluster.nodes.map((n) => {
             return { rank: 0, public_key: n.publicKey }
         })
     };
+}
 
+export function createKeygenSetup(cluster, threshold) {
+    let opts = createKeygenSetupOpts(cluster, threshold, 10);
     let setup = dkgSetupMessage(opts);
 
-    return { setup, instance };
+    return { setup, instance: opts.instance };
 }
 
 export function createSignSetup(cluster, publicKey: Uin8Array, message: Uint8Array, threshold: number) {

@@ -3,13 +3,13 @@ use tokio::task;
 use dkls23::setup::{self, *};
 use dkls23::{keygen::Keyshare, sign};
 
+use derivation_path::DerivationPath;
 use msg_relay_client::MsgRelayClient;
 use sl_mpc_mate::{
     coord::{stats::*, *},
     message::*,
     HashBytes,
 };
-use derivation_path::DerivationPath;
 
 use crate::{default_coord, flags, serve::*, utils::*, SignHashFn};
 
@@ -21,7 +21,8 @@ pub async fn setup(opts: flags::SignSetup) -> anyhow::Result<()> {
     let setup_vk = setup_sk.verifying_key();
 
     let builder = opts.party.into_iter().try_fold(
-        setup::sign::SetupBuilder::new(&pk, &chain_path),
+        setup::sign::SetupBuilder::new(&pk)
+            .chain_path(Some(&chain_path)),
         |builder, party| {
             let vk = parse_verifying_key(&party)?;
             Ok::<_, anyhow::Error>(builder.add_party(vk))

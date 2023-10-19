@@ -1,5 +1,5 @@
 import { readable } from 'svelte/store';
-import init, { genInstanceId, dkgSetupMessage, verifyingKey, dkg, dsg  } from 'dkls-wasm';
+import init, { genInstanceId, dkgSetupMessage, verifyingKey } from 'dkls-wasm';
 import wasmUrl from 'dkls-wasm/dkls_wasm_bg.wasm?url';
 
 export const loaded = init(wasmUrl);
@@ -13,4 +13,4 @@ export const coreLoaded = readable(false, (set) => {
 });
 
 
-export {  genInstanceId, dkgSetupMessage, verifyingKey, dkg, dsg }
+export {  genInstanceId, dkgSetupMessage, verifyingKey }

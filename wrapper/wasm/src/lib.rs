@@ -9,18 +9,15 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 
-use serde::{Deserialize, Serialize};
-
-use dkls23::{keygen, setup, setup::SETUP_MESSAGE_TAG, sign};
-use k256::{
-    elliptic_curve::{generic_array::GenericArray, group::GroupEncoding},
-    AffinePoint,
-};
+use dkls23::{keygen, setup::SETUP_MESSAGE_TAG, sign};
 use sl_mpc_mate::{bincode, coord::*, message::*};
 
+mod keyshare;
+mod setup;
 mod utils;
 
 use hex::FromHex;
+use keyshare::Keyshare;
 use utils::set_panic_hook;
 
 #[wasm_bindgen]
@@ -151,13 +148,53 @@ fn parse_instance_id(s: &str) -> Result<InstanceId, JsValue> {
 }
 
 #[wasm_bindgen]
-pub async fn dkg(
+pub async fn init_dkg(
+    opts: JsValue,
+    signing_key: &str,
+    endpoint: &str,
+    seed: &str,
+) -> Result<Keyshare, JsValue> {
+    set_panic_hook();
+
+    let (mut setup_msg, instance, _id, setup_vk) = setup::dkg_setup_inner(opts)?;
+
+    let signing_key = SigningKey::from_bytes(&parse_instance_bytes(signing_key)?);
+    let seed = parse_instance_bytes(seed)?;
+
+    let ws = msg_relay_connect(endpoint).await?;
+    let mut msg_relay = MsgRelay::new(ws);
+
+    msg_relay
+        .send(setup_msg.clone())
+        .await
+        .expect_throw("send setup message");
+
+    // let msg_relay = BufferedMsgRelay::new(msg_relay);
+
+    let setup = keygen::ValidatedSetup::decode(
+        &mut setup_msg,
+        &instance,
+        &setup_vk,
+        signing_key,
+        |_, _, _| true,
+    )
+    .expect_throw("parse setup msg");
+
+    let keyshare = keygen::run(setup, seed, msg_relay)
+        .await
+        .expect_throw("DKG failed");
+
+    Ok(Keyshare::new(keyshare))
+}
+
+#[wasm_bindgen]
+pub async fn join_dkg(
     instance: &str,
     setup_vk: &str,
     signing_key: &str,
     endpoint: &str,
     seed: &str,
-) -> Result<Uint8Array, JsValue> {
+) -> Result<Keyshare, JsValue> {
     set_panic_hook();
 
     let instance = parse_instance_id(instance)?;
@@ -190,9 +227,7 @@ pub async fn dkg(
         .await
         .expect_throw("DKG failed");
 
-    let keyshare = bincode::encode_to_vec(keyshare, bincode::config::standard()).unwrap_throw();
-
-    Ok(Uint8Array::from(keyshare.as_ref()))
+    Ok(Keyshare::new(keyshare))
 }
 
 #[wasm_bindgen]
@@ -248,29 +283,6 @@ pub fn verying_key(sk: Vec<u8>) -> Uint8Array {
     Uint8Array::from(sk.verifying_key().as_bytes().as_slice())
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct PartyDefs {
-    pub rank: Option<u8>,
-
-    #[serde(with = "serde_bytes")]
-    pub public_key: Vec<u8>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct KeygenSetupOpts {
-    #[serde(with = "serde_bytes")]
-    instance: Vec<u8>,
-
-    #[serde(with = "serde_bytes")]
-    signing_key: Vec<u8>,
-
-    parties: Vec<PartyDefs>,
-
-    threshold: u8,
-
-    ttl: u32,
-}
-
 #[wasm_bindgen(js_name = createMsgId)]
 pub fn create_msg_id(
     instance: &str,
@@ -295,106 +307,4 @@ pub fn create_msg_id(
     let msg_id = MsgId::new(&instance, &sender_pk, receiver_pk.as_ref(), tag);
 
     Ok(Uint8Array::from(msg_id.borrow()))
-}
-
-#[wasm_bindgen(js_name = dkgSetupMessage)]
-pub fn dkg_setup_msg(opts: JsValue) -> Result<Uint8Array, JsValue> {
-    let opts: KeygenSetupOpts = serde_wasm_bindgen::from_value(opts)?;
-
-    let instance: [u8; 32] = opts
-        .instance
-        .try_into()
-        .expect_throw("bad opts.instance size");
-    let instance = InstanceId::from(instance);
-
-    let sk = SigningKey::from_bytes(&opts.signing_key.try_into().expect_throw("SK size"));
-
-    let msg_id = MsgId::new(
-        &instance,
-        sk.verifying_key().as_bytes(),
-        None,
-        setup::SETUP_MESSAGE_TAG,
-    );
-
-    let mut builder = setup::keygen::SetupBuilder::new();
-
-    for party in opts.parties {
-        let rank = party.rank.unwrap_or(0);
-        let vk = party.public_key;
-        let vk = VerifyingKey::from_bytes(&vk.try_into().expect_throw("party PK size"))
-            .expect_throw("party PK");
-        builder = builder.add_party(rank, &vk);
-    }
-
-    let msg = builder
-        .build(&msg_id, opts.ttl, opts.threshold, &sk)
-        .ok_or_else(|| JsValue::from_str("cant build DKG setup message"))?;
-
-    Ok(Uint8Array::from(msg.as_ref()))
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct PartyVerifyingKey {
-    #[serde(with = "serde_bytes")]
-    pub public_key: Vec<u8>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct SignSetupOpts {
-    #[serde(with = "serde_bytes")]
-    instance: Vec<u8>,
-
-    #[serde(with = "serde_bytes")]
-    signing_key: Vec<u8>,
-
-    #[serde(with = "serde_bytes")]
-    public_key: Vec<u8>,
-
-    parties: Vec<PartyVerifyingKey>,
-
-    #[serde(with = "serde_bytes")]
-    message: Vec<u8>,
-
-    ttl: u32,
-}
-
-#[wasm_bindgen(js_name = dsgSetupMessage)]
-pub fn dsg_setup_msg(opts: JsValue) -> Result<Uint8Array, JsValue> {
-    let opts: SignSetupOpts = serde_wasm_bindgen::from_value(opts)?;
-
-    let instance: [u8; 32] = opts
-        .instance
-        .try_into()
-        .expect_throw("bad opts.instance size");
-    let instance = InstanceId::from(instance);
-
-    let sk = SigningKey::from_bytes(&opts.signing_key.try_into().expect_throw("SK size"));
-
-    let msg_id = MsgId::new(
-        &instance,
-        sk.verifying_key().as_bytes(),
-        None,
-        setup::SETUP_MESSAGE_TAG,
-    );
-
-    let public_key = GenericArray::from_slice(&opts.public_key);
-    let public_key = AffinePoint::from_bytes(public_key);
-
-    if public_key.is_none().into() {
-        return Err(JsValue::from_str("Invalid puiblic key"));
-    }
-
-    let mut builder = setup::sign::SetupBuilder::new(&public_key.unwrap());
-
-    for party in opts.parties {
-        let vk = party.public_key.try_into().expect_throw("party PK size");
-        builder = builder.add_party(VerifyingKey::from_bytes(&vk).expect_throw("party PK"));
-    }
-
-    let msg = builder
-        .with_sha256(opts.message)
-        .build(&msg_id, opts.ttl, &sk)
-        .ok_or_else(|| JsValue::from_str("cant build DSG setup message"))?;
-
-    Ok(Uint8Array::from(msg.as_ref()))
 }
