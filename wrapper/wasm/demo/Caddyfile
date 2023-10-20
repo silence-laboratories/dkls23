@@ -1,0 +1,25 @@
+:8080 {
+        handle_path /party-0/* {
+                reverse_proxy dkls-party-0.process.sl-demo.internal:8080
+        }
+
+        handle_path /party-1/* {
+                reverse_proxy dkls-party-1.process.sl-demo.internal:8080
+        }
+
+        handle_path /party-2/* {
+                reverse_proxy dkls-party-2.process.sl-demo.internal:8080
+        }
+
+        handle /v1/msg-relay {
+                reverse_proxy msg-relay.process.sl-demo.internal:8080
+        }
+
+        handle /check {
+                respond "ok"
+        }
+
+        handle /* {
+                reverse_proxy web.process.sl-demo.internal:8080
+        }
+}

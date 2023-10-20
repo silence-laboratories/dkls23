@@ -11,7 +11,17 @@ use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use rayon::prelude::*;
 use sha2::Sha256;
-use tokio::task::{block_in_place, JoinError, JoinHandle, JoinSet};
+
+#[cfg(not(target_arch = "wasm32"))]
+use tokio::task::{block_in_place, JoinHandle};
+
+#[cfg(target_arch = "wasm32")]
+fn block_in_place<F, R>(f: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    f()
+}
 
 use sl_oblivious::{
     soft_spoken::{build_pprf, eval_pprf, PPRFOutput, SenderOTSeed},
@@ -154,6 +164,7 @@ where
     run_inner(setup, seed, |_| {}, relay).await
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 /// A version of DKG that return a public as soon as possbile and
 /// continues execution of the rest protocol in background.
 ///
@@ -435,7 +446,7 @@ where
     }
 
     let public_key = *big_f_vec.get(0).unwrap(); // FIXME dup data
-    recv_pk(public_key.clone());
+    recv_pk(public_key);
 
     // start receiving P2P messages
     let mut r2_p2p = request_messages(&setup, DKG_MSG_R2, &mut relay, true).await?;
@@ -722,16 +733,13 @@ mod tests {
     use super::*;
     use std::array;
 
+    use tokio::task::JoinSet;
+
     use sl_mpc_mate::coord::SimpleMessageRelay;
 
     use crate::setup::{keygen::*, SETUP_MESSAGE_TAG};
 
     use crate::keygen::utils::setup_keygen;
-
-    #[test]
-    fn r0() {
-        assert!(true);
-    }
 
     // (flavor = "multi_thread")
     #[tokio::test(flavor = "multi_thread")]

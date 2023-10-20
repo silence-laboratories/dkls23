@@ -14,7 +14,6 @@ use k256::{
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 
-
 use sl_mpc_mate::{coord::*, math::birkhoff_coeffs, message::*, HashBytes, SessionId};
 
 use sl_oblivious::soft_spoken_mod::Round1Output;
@@ -216,7 +215,7 @@ pub struct PreSignResult {
     pub r: Opaque<ProjectivePoint, GR>,
 
     /// phi_i Scalar
-    pub phi_i: Opaque<Scalar, PF>
+    pub phi_i: Opaque<Scalar, PF>,
 }
 
 /// Partial signature of party_i
@@ -224,7 +223,7 @@ pub struct PreSignResult {
 pub struct PartialSignature {
     /// final_session_id
     pub final_session_id: Opaque<SessionId>,
-    
+
     /// public_key
     pub public_key: Opaque<ProjectivePoint, GR>,
 
@@ -238,7 +237,7 @@ pub struct PartialSignature {
     pub s_1: Opaque<Scalar, PF>,
 
     /// R point
-    pub r: Opaque<ProjectivePoint, GR>
+    pub r: Opaque<ProjectivePoint, GR>,
 }
 
 /// Method to create a pre-signature without any message information for the signature
@@ -393,8 +392,13 @@ pub async fn pre_signature<R: Relay>(
             .expect("betta_i not found")
     };
 
-    let (additive_offset, derived_public_key) = setup.keyshare().derive_with_offset(setup.chain_path()).unwrap();
-    let threshold_inv = Scalar::from(setup.keyshare().threshold as u32).invert().unwrap();
+    let (additive_offset, derived_public_key) = setup
+        .keyshare()
+        .derive_with_offset(setup.chain_path())
+        .unwrap();
+    let threshold_inv = Scalar::from(setup.keyshare().threshold as u32)
+        .invert()
+        .unwrap();
     let additive_offset = additive_offset * threshold_inv;
 
     let x_i = coeff * *setup.keyshare().s_i + additive_offset + mu_i;
@@ -526,7 +530,7 @@ pub async fn pre_signature<R: Relay>(
         s_0: Opaque::from(s_0),
         s_1: Opaque::from(s_1),
         phi_i: Opaque::from(phi_i),
-        r: Opaque::from(big_r)
+        r: Opaque::from(big_r),
     };
 
     Ok(pre_sign_result)
@@ -535,7 +539,7 @@ pub async fn pre_signature<R: Relay>(
 /// Locally create a partial signature from pre-signature and msg_hash
 pub fn create_partial_signature(
     pre_sign_result: &PreSignResult,
-    msg_hash: &HashBytes
+    msg_hash: &HashBytes,
 ) -> PartialSignature {
     let m = Scalar::reduce(U256::from_be_slice(msg_hash));
     let s_0 = m * pre_sign_result.phi_i.0 + pre_sign_result.s_0.0;
@@ -545,7 +549,7 @@ pub fn create_partial_signature(
         message_hash: Opaque::from(*msg_hash),
         s_0: Opaque::from(s_0),
         s_1: pre_sign_result.s_1,
-        r: pre_sign_result.r
+        r: pre_sign_result.r,
     };
     partial_signature
 }
@@ -553,10 +557,12 @@ pub fn create_partial_signature(
 /// Locally combine list of t partial signatures into a final signature
 pub fn combine_partial_signature(
     partial_signatures: Vec<PartialSignature>,
-    t: usize
+    t: usize,
 ) -> Result<Signature, SignError> {
     if partial_signatures.len() != t {
-        return Err(SignError::FailedCheck("Invalid number of partial signatures"));
+        return Err(SignError::FailedCheck(
+            "Invalid number of partial signatures",
+        ));
     }
 
     let final_session_id = partial_signatures[0].final_session_id;
@@ -567,8 +573,10 @@ pub fn combine_partial_signature(
     let mut sum_s_0 = Scalar::ZERO;
     let mut sum_s_1 = Scalar::ZERO;
     for partial_sign in partial_signatures.iter() {
-        let cond = (partial_sign.final_session_id != final_session_id) || (partial_sign.public_key != public_key)
-            || (partial_sign.r != r) || (partial_sign.message_hash != message_hash);
+        let cond = (partial_sign.final_session_id != final_session_id)
+            || (partial_sign.public_key != public_key)
+            || (partial_sign.r != r)
+            || (partial_sign.message_hash != message_hash);
         if cond {
             return Err(SignError::FailedCheck("Invalid list of partial signatures"));
         }
@@ -582,14 +590,9 @@ pub fn combine_partial_signature(
 
     let sign = parse_raw_sign(&r, &sig.to_bytes())?;
 
-    verify_final_signature(
-        &message_hash.0,
-        &sign,
-        &public_key.0.to_bytes(),
-    )?;
+    verify_final_signature(&message_hash.0, &sign, &public_key.0.to_bytes())?;
 
     Ok(sign)
-
 }
 
 ///
@@ -639,7 +642,6 @@ pub async fn run<R: Relay>(
 
     let t = setup.keyshare().threshold;
     combine_partial_signature(partial_signatures, t as usize)
-
 }
 
 fn hash_commitment_r_i(
@@ -765,7 +767,11 @@ mod tests {
     use crate::setup::{sign::*, SETUP_MESSAGE_TAG};
     use derivation_path::DerivationPath;
 
-    fn setup_dsg(pk: &AffinePoint, shares: &[Keyshare], chain_path: &DerivationPath) -> Vec<(ValidatedSetup, Seed)> {
+    fn setup_dsg(
+        pk: &AffinePoint,
+        shares: &[Keyshare],
+        chain_path: &DerivationPath,
+    ) -> Vec<(ValidatedSetup, Seed)> {
         let mut rng = rand::thread_rng();
 
         let instance = InstanceId::from(rng.gen::<[u8; 32]>());
@@ -783,10 +789,13 @@ mod tests {
         let party_sk: [SigningKey; T] = array::from_fn(|_| SigningKey::from_bytes(&rng.gen()));
 
         let mut setup = (0..T)
-            .fold(SetupBuilder::new(pk, chain_path), |setup, p| {
-                let vk = party_sk[p].verifying_key();
-                setup.add_party(vk)
-            })
+            .fold(
+                SetupBuilder::new(pk).chain_path(Some(chain_path)),
+                |setup, p| {
+                    let vk = party_sk[p].verifying_key();
+                    setup.add_party(vk)
+                },
+            )
             .with_hash(HashBytes::new([1; 32]))
             .build(&setup_msg_id, 100, &setup_sk)
             .unwrap();

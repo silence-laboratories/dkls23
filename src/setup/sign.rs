@@ -1,12 +1,11 @@
-#![allow(dead_code, unused_imports)]
-use std::fmt::Formatter;
 use std::time::Duration;
+use std::{fmt::Formatter, str::FromStr};
 
 use k256::{elliptic_curve::group::GroupEncoding, AffinePoint};
 use sha2::{Digest, Sha256};
 
 use bincode::{
-    de::{read::Reader, Decoder},
+    de::Decoder,
     enc::{write::Writer, Encoder},
     error::{DecodeError, EncodeError},
     Decode, Encode,
@@ -30,6 +29,7 @@ use derivation_path::DerivationPath;
 ///     pkey        opaque<32*t>;
 ///     hash_also   u32;
 ///     message     Vec<u8>;
+///     chain_path  String;
 /// }
 ///
 #[derive(Clone, Debug)]
@@ -48,10 +48,6 @@ impl Encode for Setup {
         (self.parties.len() as u8).encode(encoder)?;
 
         encoder.writer().write(&self.public_key.to_bytes())?;
-        
-        let chain_path_bytes = self.chain_path.to_string();
-        (chain_path_bytes.len() as u8).encode(encoder)?;
-        encoder.writer().write(chain_path_bytes.as_bytes())?;
 
         for pk in &self.parties {
             encoder.writer().write(pk.as_bytes())?;
@@ -60,6 +56,8 @@ impl Encode for Setup {
         (self.hash_algo as u32).encode(encoder)?;
 
         self.message.encode(encoder)?;
+
+        self.chain_path.to_string().encode(encoder)?;
 
         Ok(())
     }
@@ -87,20 +85,9 @@ impl Decode for Setup {
             return Err(DecodeError::Other("bad keyshare PK"));
         };
 
-        let chain_path_bytes_len = u8::decode(decoder)?;
-        let mut chain_path_bytes: Vec<u8> = Vec::with_capacity(chain_path_bytes_len as usize);
-        for _ in 0..chain_path_bytes_len {
-            chain_path_bytes.push(u8::decode(decoder)?)
-        }
-        let chain_path_str: String = String::from_utf8(chain_path_bytes).expect("Found invalid UTF-8 in chain_path");
-        let chain_path: DerivationPath = chain_path_str.parse().unwrap(); 
-
         let mut parties = Vec::with_capacity(t as usize);
 
         for _ in 0..t {
-            // let mut pk = [0u8; PUBLIC_KEY_LENGTH];
-            // decoder.reader().read(&mut pk)?;
-
             let pk = <[u8; PUBLIC_KEY_LENGTH]>::decode(decoder)?;
             let pk =
                 VerifyingKey::from_bytes(&pk).map_err(|_| DecodeError::Other("bad party PK"))?;
@@ -112,7 +99,7 @@ impl Decode for Setup {
             0 => HashAlgo::HashU32,
             1 => HashAlgo::Sha256,
             2 => HashAlgo::Sha256D,
-            _ => return Err(DecodeError::Other("bad HashAlso")),
+            _ => return Err(DecodeError::Other("bad HashAlgo")),
         };
 
         let message = <Vec<u8>>::decode(decoder)?;
@@ -120,6 +107,9 @@ impl Decode for Setup {
         if hash_algo == HashAlgo::HashU32 && message.len() != 32 {
             return Err(DecodeError::Other("bad message length"));
         }
+
+        let chain_path = DerivationPath::from_str(&String::decode(decoder)?)
+            .map_err(|_| DecodeError::Other("bad chain path"))?;
 
         Ok(Setup {
             parties,
@@ -174,7 +164,6 @@ impl Setup {
     pub fn chain_path(&self) -> &DerivationPath {
         &self.chain_path
     }
-
 }
 
 ///
@@ -311,7 +300,7 @@ impl ValidatedSetup {
 ///
 pub struct SetupBuilder {
     public_key: AffinePoint,
-    chain_path: DerivationPath,
+    chain_path: Option<DerivationPath>,
     parties: Vec<VerifyingKey>,
     message: Vec<u8>,
     hash: Option<HashAlgo>,
@@ -319,14 +308,20 @@ pub struct SetupBuilder {
 
 impl SetupBuilder {
     /// Create new builder
-    pub fn new(public_key: &AffinePoint, chain_path: &DerivationPath) -> SetupBuilder {
+    pub fn new(public_key: &AffinePoint) -> SetupBuilder {
         Self {
             public_key: *public_key,
-            chain_path: chain_path.clone(),
+            chain_path: None,
             parties: vec![],
             message: vec![],
             hash: None,
         }
+    }
+
+    /// Set derivation path
+    pub fn chain_path(mut self, chain_path: Option<&DerivationPath>) -> Self {
+        self.chain_path = chain_path.cloned();
+        self
     }
 
     /// Add party witj given rank and public key
@@ -373,7 +368,7 @@ impl SetupBuilder {
 
         let setup = Setup {
             public_key,
-            chain_path,
+            chain_path: chain_path.unwrap_or_else(|| DerivationPath::from_str("m").unwrap()),
             parties,
             hash_algo,
             message,
@@ -384,5 +379,55 @@ impl SetupBuilder {
         msg.encode(&setup).ok()?;
 
         msg.sign(key).ok()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::setup::SETUP_MESSAGE_TAG;
+    use k256::{AffinePoint, Scalar};
+    use sl_mpc_mate::ByteArray;
+    use std::array;
+
+    #[test]
+    fn signgen() {
+        let mut rng = rand::thread_rng();
+
+        let inst = InstanceId::from([0; 32]);
+        let setup_signing_key = SigningKey::from_bytes(&rand::random());
+
+        let sk: [_; 3] = array::from_fn(|_| SigningKey::from_bytes(&rand::random()));
+
+        let id = MsgId::broadcast(
+            &inst,
+            setup_signing_key.verifying_key().as_bytes(),
+            SETUP_MESSAGE_TAG,
+        );
+
+        let pk = AffinePoint::GENERATOR * Scalar::generate_biased(&mut rng);
+
+        let mut message_buffer = SetupBuilder::new(&pk.to_affine())
+            .add_party(sk[0].verifying_key())
+            .add_party(sk[1].verifying_key())
+            .with_hash(ByteArray::random(&mut rng))
+            .build(&id, 100, &setup_signing_key)
+            .unwrap();
+
+        let hdr = MsgHdr::from(&mut message_buffer).unwrap();
+
+        assert_eq!(id, hdr.id);
+
+        let setup_msg = Message::from_buffer(&mut message_buffer).unwrap();
+
+        let reader = setup_msg
+            .verify(&setup_signing_key.verifying_key())
+            .unwrap();
+
+        let setup: Setup = MessageReader::decode(reader).unwrap();
+
+        assert_eq!(setup.threshold(), 2);
+        assert_eq!(setup.party_verifying_key(0), Some(&sk[0].verifying_key()));
+        assert_eq!(setup.party_verifying_key(1), Some(&sk[1].verifying_key()));
     }
 }

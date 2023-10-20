@@ -85,6 +85,10 @@ async fn run_peer<F: FnMut(Vec<u8>) + Send + 'static>(
     }
 }
 
+async fn health_check() -> &'static str {
+    "ok"
+}
+
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> anyhow::Result<()> {
     let flags = MsgRelaySvc::from_env_or_exit();
@@ -108,6 +112,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let app = Router::new()
+        .route("/", get(health_check))
         .route("/v1/msg-relay", get(msg_relay::handler))
         .route("/v1/msg-stats", get(msg_relay::stats))
         .layer(CorsLayer::permissive())

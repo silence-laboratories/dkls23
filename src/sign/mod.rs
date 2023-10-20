@@ -23,7 +23,11 @@ pub use dsg::*;
 pub use types::*;
 
 /// Test helper
-pub fn setup_dsg(pk: &AffinePoint, shares: &[Keyshare], chain_path: &DerivationPath) -> Vec<(ValidatedSetup, Seed)> {
+pub fn setup_dsg(
+    pk: &AffinePoint,
+    shares: &[Keyshare],
+    chain_path: &DerivationPath,
+) -> Vec<(ValidatedSetup, Seed)> {
     let mut rng = rand::thread_rng();
 
     let instance = InstanceId::from(rng.gen::<[u8; 32]>());
@@ -42,10 +46,13 @@ pub fn setup_dsg(pk: &AffinePoint, shares: &[Keyshare], chain_path: &DerivationP
 
     let mut setup = party_sk
         .iter()
-        .fold(SetupBuilder::new(pk, chain_path), |setup, sk| {
-            let vk = sk.verifying_key();
-            setup.add_party(vk)
-        })
+        .fold(
+            SetupBuilder::new(pk).chain_path(Some(chain_path)),
+            |setup, sk| {
+                let vk = sk.verifying_key();
+                setup.add_party(vk)
+            },
+        )
         .with_hash(HashBytes::new([1; 32]))
         .build(&setup_msg_id, 100, &setup_sk)
         .unwrap();
