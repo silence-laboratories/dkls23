@@ -6,7 +6,7 @@ services:
     command: |
       /usr/local/bin/msg-relay-svc
         --listen 0.0.0.0:8080
-    environment:
+    environment: &relay-env
       RUST_LOG: info
     expose:
       - 8080
@@ -22,8 +22,7 @@ services:
         --peer ws://setup-coord:8080/v1/msg-relay
         --peer ws://p-2-coord:8080/v1/msg-relay
         --peer ws://p-3-coord:8080/v1/msg-relay
-    environment:
-      RUST_LOG: info
+    environment: *relay-env
     expose:
       - 8080
 
@@ -35,8 +34,7 @@ services:
         --peer ws://setup-coord:8080/v1/msg-relay
         --peer ws://p-1-coord:8080/v1/msg-relay
         --peer ws://p-3-coord:8080/v1/msg-relay
-    environment:
-      RUST_LOG: info
+    environment: *relay-env
     expose:
       - 8080
 
@@ -48,8 +46,7 @@ services:
         --peer ws://setup-coord:8080/v1/msg-relay
         --peer ws://p-1-coord:8080/v1/msg-relay
         --peer ws://p-2-coord:8080/v1/msg-relay
-    environment:
-      RUST_LOG: info
+    environment: *relay-env
     expose:
       - 8080
 
@@ -118,13 +115,13 @@ networks:
 
 secrets:
   setup-vk:
-    file: ./data/setup_vk
+    file: ./testdata/setup_vk
 
   party-1-sk:
-    file: ./data/party_0_sk
+    file: ./testdata/party_0_sk
 
   party-2-sk:
-    file: ./data/party_1_sk
+    file: ./testdata/party_1_sk
 
   party-3-sk:
-    file: ./data/party_2_sk
+    file: ./testdata/party_2_sk
