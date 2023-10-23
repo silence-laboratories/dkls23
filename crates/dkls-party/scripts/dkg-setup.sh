@@ -1,14 +1,16 @@
 #!/bin/sh
 
 #
-# Usage ./dkg.sh 5 3
+# Usage ./dkg-setup.sh 5 3
 #
 # Generate key: threshold 3, partcipants 5
 #
 
 set -eu
 
-: ${DEST:="."}
+_b=$(dirname $0)
+
+: ${DEST:="${_b}/../../../testdata"}
 
 COORD=${3:-"ws://localhost:8080/v1/msg-relay"}
 
@@ -17,6 +19,11 @@ T=${2:-2}
 
 cmd="cargo run -p dkls-party -q --release -- "
 
+#
+# Calculate public keys of each party.
+# It will make sure that crates/dkls-party is up to
+# update and build the release profile if necessary.
+#
 all_party_sk=""
 all_party_pk=""
 for p in $(jot ${N} 0); do
@@ -26,6 +33,7 @@ for p in $(jot ${N} 0); do
     all_party_sk="${all_party_sk} --party ${DEST}/party_${p}_sk"
 done
 
+# Generate random instance id
 instance=$(openssl rand -hex 32)
 
 nodes=""
@@ -33,11 +41,12 @@ for p in $(jot ${N} 8081); do
     nodes="${nodes} --node http://localhost:${p}/"
 done
 
+#
 # Now we are ready to generate and publish a setup message for
 # distributed key generation. The setup message contains parameters
 # N, T and PK of all parties that will participate in key generation.
 # The message will be signed by given secret key a published to a
-# given message relay (coordinator)
+# given message relay (coordinator).
 #
 $cmd keygen-setup \
      --instance ${instance} \

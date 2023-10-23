@@ -1,15 +1,15 @@
 #!/bin/sh
 
 #
-# Usage: ./dsg.sh "test message" pid ...
+# Usage: ./dsg-setup.sh public-key "test message" pid ...
 #
 set -eu
 
-: ${DEST:="."}
-: ${COORD:="ws://localhost:8080/v1/msg-relay"}
-: ${COORD2:=${COORD}}
+_b=$(dirname $0)
 
-T=${1}; shift
+: ${DEST:="${_b}/../../../testdata"}
+: ${COORD:="ws://localhost:8080/v1/msg-relay"}
+
 public_key=${1}; shift
 message=${1}; shift
 
@@ -17,16 +17,14 @@ pids="$@"
 
 cmd="cargo run -p dkls-party --release -q --"
 
-date
-
 instance=$(openssl rand -hex 32)
 
+T=0
 pks=""
-sks=""
 for p in ${pids}; do
     _pk=$( $cmd load-party-keys ${DEST}/party_${p}_sk --public )
     pks="${pks} --party ${_pk}"
-    sks="${sks} --party ${DEST}/party_${p}_sk:${DEST}/keyshare.${p}"
+    T=$(( ${T} + 1))
 done
 
 nodes=""
@@ -40,6 +38,7 @@ $cmd sign-setup \
      --ttl 10 \
      --sign ${DEST}/setup_sk \
      --public-key ${public_key} \
+     --chain-path "m" \
      --message "${message}" --hash-fn SHA256 \
      --coordinator ${COORD} \
      ${pks} \

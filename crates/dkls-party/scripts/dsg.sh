@@ -36,6 +36,7 @@ $cmd sign-setup \
      --ttl 10 \
      --sign ${DEST}/setup_sk \
      --public-key ${public_key} \
+     --chain-path "m" \
      --message "${message}" --hash-fn SHA256 \
      --coordinator ${COORD} \
      ${pks}
