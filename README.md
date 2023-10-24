@@ -12,6 +12,10 @@ TSS consists of three stages:
 
 These functions involve cryptographic computing at the participating nodes of the MPC quorum and exchanges of rounds of messages which ultimately lead to the generation of a valid signature at the requested node. These computing nodes can be any device with sufficient computational and memory capability, including but not limited to smartphones, server nodes, and edge devices. The basic philosophy behind Silent Shard remains that no single device holding the private key can be used to generate signatures and move digital assets. The private key is shared among multiple computing nodes so that no party has any information about the key. Then, in order to generate a signature, the threshold number of devices run a secure two-party computation protocol that generates the signature without revealing anything about the parties' key shares to each other. These devices may or may not be associated with the same person or organization and can be any form factor. Thus, one could use this to create a wallet, sharing the private key between one's mobile and one's laptop, between one's mobile and a VM in the cloud, and so on.
 
+# Protocol
+
+Please note that the latest library of Silent Shard is based on DKLs23 TSS protocol.
+
 # DKLs23
 
 - Threshold ECDSA in Three Rounds: Now matches Schnorr.
