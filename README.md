@@ -30,6 +30,19 @@ from [`sl-crypto`](https://gitlab.com/com.silencelaboratories/sl-crypto), and bu
 
 This stack is dockerised! We recommend reading this whole document for proper understanding, but if you just want to see how it runs you can skip to [this section](#run-an-example-of-the-full-system)
 
+# BIP32: Non-Hardened Derivation
+To sign a message using the key derived from the master key_share using the chain path such as m/0/1/42 you can do as follows:
+
+Сreate chain_path variable
+```rust
+let chain_path: DerivationPath = "m/0/1/42".parse().unwrap();
+```
+and use it to create a ```ValidatedSetup``` structure and create a signature.
+For more information see the example ```./examples/dsg.rs```
+```
+cargo run --example dsg --release
+```
+
 # Crates
 
 The DKLs23 codebase has several components. All are necessary to ensure smooth operation, and the relationship between them is important to understand.
@@ -39,9 +52,16 @@ The DKLs23 codebase has several components. All are necessary to ensure smooth o
 This is the core crate, and handles the cryptographic heavy lifting. The main functions are:
 
 ```rust
+// Distributed Key Generation
 dkls23::keygen::dkg::run()
 
+// Distributed Signature Generation
 dkls23::sign::dsg::run()
+
+// and methods for creating partial signatures and then combining them into a final signature:
+dkls23::sign::dsg::pre_signature()  
+dkls23::sign::dsg::create_partial_signature()
+dkls23::sign::dsg::combine_partial_signature()
 ```
 
 Please refer to the cargo-generated documentation for information on their usage.
