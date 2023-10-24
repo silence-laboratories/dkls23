@@ -30,7 +30,7 @@ impl Eq for Expire {}
 
 impl PartialOrd for Expire {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.0.partial_cmp(&other.0).map(Ordering::reverse)
+        Some(self.cmp(other))
     }
 }
 

@@ -28,7 +28,7 @@ async fn main() {
     let start = std::time::Instant::now();
 
     for _ in 0..K {
-        dsg(&subset, &chain_path).await;
+        dsg(subset, &chain_path).await;
     }
 
     let d = start.elapsed();
