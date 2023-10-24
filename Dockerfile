@@ -35,7 +35,7 @@ RUN apt-get update -y && apt-get install -y openssl caddy curl
 
 WORKDIR /app
 
-COPY ./data ./data
+COPY ./testdata ./data
 RUN    mkdir -p ./data/node-0 \
     && mkdir -p ./data/node-1 \
     && mkdir -p ./data/node-2
