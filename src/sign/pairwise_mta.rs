@@ -3,7 +3,7 @@ use k256::{
         bigint::Encoding,
         generic_array::GenericArray,
         ops::Reduce,
-        subtle::{Choice, ConditionallySelectable},
+        subtle::{Choice, ConditionallySelectable}
     },
     schnorr::CryptoRngCore,
     Scalar, U256,
@@ -171,11 +171,9 @@ impl PairwiseMtaRec<MtaRecR1> {
 
         h.update(self.state.temp_digest.as_ref());
 
-        for j in 0..ETA {
-            let scalars = &round2_output.cot_round_2_output.tau[j];
-            for k in 0..2 {
+        for (j, scalars) in round2_output.cot_round_2_output.tau.iter().enumerate() {
+            for (k, b) in scalars.iter().enumerate() {
                 h.update(format!("row_{}_{}_of_tau", j, k).as_bytes());
-                let b = &scalars[k];
                 h.update(&b.to_bytes());
             }
         }
@@ -208,14 +206,14 @@ impl PairwiseMtaRec<MtaRecR1> {
 
             r_hash.update(value_to_hash.to_bytes().as_ref());
 
-            for i in 0..2 {
-                output_additive_shares[i] +=
-                    self.state.gadget_vector[j] * cot_additive_shares[j][i];
+            for (i, share) in output_additive_shares.iter_mut().enumerate() {
+                *share += self.state.gadget_vector[j] * cot_additive_shares[j][i];
             }
         }
 
         let r_hash_digest: [u8; 32] = r_hash.finalize().into();
 
+        // FIXME use constant time EQ?
         if round2_output.r != r_hash_digest {
             Err("Consistency check failed")
         } else {
@@ -297,12 +295,11 @@ impl PairwiseMtaSender<MtaSendR0> {
         let mut chi = [Scalar::ZERO; 2];
 
         hasher.reset();
-        hasher.update(temp_digest.as_ref());
-        for j in 0..ETA {
-            for k in 0..2 {
+        hasher.update(&temp_digest);
+        for (j, scalars) in round2_output.tau.iter().enumerate() {
+            for (k, b) in scalars.iter().enumerate() {
                 hasher.update(format!("row_{}_{}_of_tau", j, k).as_bytes());
-                let b = round2_output.tau[j][k];
-                hasher.update(b.to_bytes().as_ref());
+                hasher.update(&b.to_bytes());
             }
         }
 

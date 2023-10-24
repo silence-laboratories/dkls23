@@ -414,7 +414,7 @@ mod tests {
             .build(&id, 100, &setup_signing_key)
             .unwrap();
 
-        let hdr = MsgHdr::from(&mut message_buffer).unwrap();
+        let hdr = MsgHdr::from(&message_buffer).unwrap();
 
         assert_eq!(id, hdr.id);
 

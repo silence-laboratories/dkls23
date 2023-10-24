@@ -247,7 +247,7 @@ mod test {
 
         let msg_0_id = MsgId::new(
             &instance,
-            &sk.verifying_key().as_bytes(),
+            sk.verifying_key().as_bytes(),
             None,
             MessageTag::tag(0),
         );
@@ -265,7 +265,7 @@ mod test {
 
         let msg_1_id = MsgId::new(
             &instance,
-            &sk.verifying_key().as_bytes(),
+            sk.verifying_key().as_bytes(),
             None,
             MessageTag::tag(1),
         );

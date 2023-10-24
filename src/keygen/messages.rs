@@ -159,7 +159,7 @@ impl Keyshare {
         &self,
         chain_path: &DerivationPath,
     ) -> Result<(Scalar, ProjectivePoint), BIP32Error> {
-        let mut pubkey = self.public_key.clone().0;
+        let mut pubkey = self.public_key.0;
         let mut chain_code = self.root_chain_code;
         let mut additive_offset = Scalar::ZERO;
         for child_num in chain_path.into_iter() {

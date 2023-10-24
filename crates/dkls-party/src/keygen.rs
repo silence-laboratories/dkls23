@@ -161,7 +161,7 @@ pub async fn run_keygen(opts: flags::KeyGen) -> anyhow::Result<()> {
         let pid = keyshare.party_id;
 
         let share = bincode::encode_to_vec(
-            &keyshare,
+            keyshare,
             bincode::config::standard(),
         )?;
 
