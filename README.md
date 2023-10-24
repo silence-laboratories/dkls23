@@ -199,3 +199,44 @@ The library uses two thread pools. One is controlled by variable
 `RAYON_NUM_THREADS` and another one by `TOKIO_WORKER_THREADS`. Sum of
 these numbers should match a number of CPU cores available for an
 instance of a service.
+
+## SL-Demo web site
+
+### Wasm bindings.
+
+SL-Demo uses Wasm bindings. To building them local use the following
+commands:
+
+```shell
+rustup target add wasm32-unknown-unknown
+cargo install wasm-opt
+cargo install wasm-pack
+wasm-pack build -t web wrapper/wasm
+```
+
+The last command runs the build and put NPM package at wrapper/wasm/pkg.
+
+### Building sl-demo
+
+```shell
+cd wrapper/wasm/demo
+npm install
+```
+
+Edit wrapper/wasm/demo/vite.config.ts
+
+```js
+import { proxy } from './proxy';
+// import { proxy } from './proxy-local';
+```
+
+Comment first line and uncomment second one.
+
+Assuming that MPC network is started by docker-compose,
+now we could run local dev server.
+
+```shell
+npm run dev
+```
+
+Open http://localhost:5173/ and follow instructions.
