@@ -30,18 +30,7 @@ from [`sl-crypto`](https://gitlab.com/com.silencelaboratories/sl-crypto), and bu
 
 This stack is dockerised! We recommend reading this whole document for proper understanding, but if you just want to see how it runs you can skip to [this section](#run-an-example-of-the-full-system)
 
-# BIP32: Non-Hardened Derivation
-To sign a message using the key derived from the master key_share using the chain path such as m/0/1/42 you can do as follows:
 
-Сreate chain_path variable
-```rust
-let chain_path: DerivationPath = "m/0/1/42".parse().unwrap();
-```
-and use it to create a ```ValidatedSetup``` structure and create a signature.
-For more information see the example ```./examples/dsg.rs```
-```
-cargo run --example dsg --release
-```
 
 # Crates
 
@@ -244,6 +233,19 @@ The library uses two thread pools. One is controlled by variable
 `RAYON_NUM_THREADS` and another one by `TOKIO_WORKER_THREADS`. Sum of
 these numbers should match a number of CPU cores available for an
 instance of a service.
+
+# BIP32: Non-Hardened Derivation
+To sign a message using the key derived from the master key_share using the chain path such as m/0/1/42 you can do as follows:
+
+Сreate chain_path variable
+```rust
+let chain_path: DerivationPath = "m/0/1/42".parse().unwrap();
+```
+and use it to create a ```ValidatedSetup``` structure and create a signature.
+For more information see the example ```./examples/dsg.rs```
+```
+cargo run --example dsg --release
+```
 
 ## SL-Demo web site
 
