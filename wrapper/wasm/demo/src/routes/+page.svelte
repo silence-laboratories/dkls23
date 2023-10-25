@@ -67,11 +67,14 @@
 
      console.log('DKG setup gen', setupGen - startTime);
 
-     let ws = await msg_relay_connect(wsUrl(cluster.setup.relay));
+     let abort = new AbortController();
+
+     let ws = await msg_relay_connect(wsUrl(cluster.setup.relay), abort.signal);
 
      let relayConnTime = Date.now();
 
      ws.send(setup);
+     ws.close();
 
      let genStart = Date.now();
 
@@ -114,8 +117,9 @@
 
      console.log('DKG setup gen', setupGen - startTime, setup);
 
+     let abort = new AbortController();
 
-     let ws = await msg_relay_connect(wsUrl(cluster.setup.relay));
+     let ws = await msg_relay_connect(wsUrl(cluster.setup.relay), abort.signal);
 
      let relayConnTime = Date.now();
 

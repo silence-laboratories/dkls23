@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use tokio::signal::unix::{signal, SignalKind};
 use tokio::task::JoinSet;
 
 use axum::{
@@ -90,15 +91,28 @@ impl Inner {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+pub struct SetupMsg {
+    #[serde(with = "b64")]
+    msg: Vec<u8>,
+
+    #[serde(with = "b64")]
+    vk: Vec<u8>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 pub struct KeygenParams {
     #[serde(with = "b64")]
     instance: Vec<u8>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    setup: Option<SetupMsg>,
 }
 
 impl KeygenParams {
     pub fn new(inst: &[u8; 32]) -> Self {
         Self {
             instance: inst.to_vec(),
+            setup: None,
         }
     }
 }
@@ -118,12 +132,16 @@ pub struct KeygenResponse {
 pub struct SignParams {
     #[serde(with = "b64")]
     instance: Vec<u8>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    setup: Option<SetupMsg>,
 }
 
 impl SignParams {
     pub fn new(inst: &[u8; 32]) -> Self {
         Self {
             instance: inst.to_vec(),
+            setup: None,
         }
     }
 }
@@ -137,6 +155,8 @@ pub struct SignResponse {
     pub total_recv: u32,
     pub total_wait: u32,
     pub total_time: u32, // execution time in milliseconds
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub times: Option<Vec<(u32, Duration)>>,
 }
 
@@ -188,11 +208,26 @@ async fn handle_keygen(
 
     tracing::debug!("setup validated");
 
+    let deadline = tokio::time::sleep(setup.ttl());
+    tokio::pin!(deadline);
+
     let seed = rand::random();
 
-    let share = keygen::run(setup, seed, msg_relay)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    tracing::debug!("seed {:?}", seed);
+
+    let share = tokio::select! {
+        _ = &mut deadline => {
+            tracing::error!("DKG timeout");
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+
+        share = keygen::run(setup, seed, msg_relay) => {
+            share.map_err(|err| {
+                tracing::error!("DKG error {:?}", err);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?
+        }
+    };
 
     let total_time = start.elapsed().as_millis() as u32;
 
@@ -246,6 +281,8 @@ async fn handle_sign(
         .map_err(|_| StatusCode::BAD_REQUEST)?;
     let instance = InstanceId::from(instance);
 
+    tracing::debug!("instance ok");
+
     let msg_relay = state.mux.connect(100);
 
     let msg_id = MsgId::new(
@@ -264,6 +301,8 @@ async fn handle_sign(
         .recv(&msg_id, 10)
         .await
         .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    tracing::debug!("recv setup msf ok");
 
     let setup = setup::sign::ValidatedSetup::decode(
         &mut setup,
@@ -287,11 +326,23 @@ async fn handle_sign(
     )
     .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
 
+    let deadline = tokio::time::sleep(setup.ttl());
+    tokio::pin!(deadline);
+
+    tracing::debug!("validate setup msg ok");
+
     let seed = rand::random();
 
-    let sign = sign::run(setup, seed, msg_relay)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let sign = tokio::select! {
+        _ = &mut deadline => {
+            tracing::error!("DSG timeout");
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+
+        sign = sign::run(setup, seed, msg_relay) => {
+            sign.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        }
+    };
 
     let total_time = start.elapsed().as_millis() as u32;
 
@@ -380,9 +431,30 @@ pub async fn run(opts: flags::Serve) -> anyhow::Result<()> {
         }
     }
 
-    while servers.join_next().await.is_some() {}
+    let mut sigint = signal(SignalKind::interrupt())?;
+    let mut sigterm = signal(SignalKind::terminate())?;
 
-    Ok(())
+    loop {
+        tokio::select! {
+            _ = sigint.recv() => {
+                tracing::info!("got SIGINT, exiting");
+                break;
+            }
+
+            _ = sigterm.recv() => {
+                tracing::info!("got SIGTERM, exiting");
+                break;
+            }
+
+            listener = servers.join_next() => {
+                if listener.is_none() {
+                    break;
+                }
+            }
+        };
+    }
+
+    return Ok(());
 }
 
 async fn health_check() -> &'static str {

@@ -4,6 +4,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use js_sys::{Promise, Uint8Array};
+use web_sys::AbortSignal;
 
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
@@ -12,10 +13,12 @@ use wasm_bindgen_futures::JsFuture;
 use dkls23::{keygen, setup::SETUP_MESSAGE_TAG, sign};
 use sl_mpc_mate::{bincode, coord::*, message::*};
 
+mod abort;
 mod keyshare;
 mod setup;
 mod utils;
 
+use abort::AbortGuard;
 use hex::FromHex;
 use keyshare::Keyshare;
 use utils::set_panic_hook;
@@ -31,7 +34,7 @@ extern "C" {
     pub type MsgRelayClient;
 
     #[wasm_bindgen(js_namespace = MsgRelayClient)]
-    pub fn connect(endpoint: &str) -> Promise;
+    pub fn connect(endpoint: &str, singal: AbortSignal) -> Promise;
 
     #[wasm_bindgen(method, js_class = "MsgRelayClient")]
     pub fn send(this: &MsgRelayClient, msg: Uint8Array);
@@ -41,11 +44,17 @@ extern "C" {
 
     #[wasm_bindgen(method, js_class = "MsgRelayClient")]
     pub fn close(this: &MsgRelayClient) -> Promise;
+
+    #[wasm_bindgen(method, js_class = "MsgRelayClient")]
+    pub fn wsClose(this: &MsgRelayClient);
 }
 
 #[wasm_bindgen]
-pub async fn msg_relay_connect(endpoint: &str) -> Result<MsgRelayClient, JsValue> {
-    let client = JsFuture::from(MsgRelayClient::connect(endpoint)).await?;
+pub async fn msg_relay_connect(
+    endpoint: &str,
+    singal: AbortSignal,
+) -> Result<MsgRelayClient, JsValue> {
+    let client = JsFuture::from(MsgRelayClient::connect(endpoint, singal)).await?;
     let client: MsgRelayClient = client.dyn_into()?;
 
     Ok(client)
@@ -64,6 +73,12 @@ impl MsgRelay {
             closef: None,
             next: None,
         }
+    }
+}
+
+impl Drop for MsgRelay {
+    fn drop(&mut self) {
+        self.ws.wsClose();
     }
 }
 
@@ -158,18 +173,18 @@ pub async fn init_dkg(
 
     let (mut setup_msg, instance, _id, setup_vk) = setup::dkg_setup_inner(opts)?;
 
+    let mut abort = AbortGuard::new();
+
     let signing_key = SigningKey::from_bytes(&parse_instance_bytes(signing_key)?);
     let seed = parse_instance_bytes(seed)?;
 
-    let ws = msg_relay_connect(endpoint).await?;
+    let ws = msg_relay_connect(endpoint, abort.signal()).await?;
     let mut msg_relay = MsgRelay::new(ws);
 
     msg_relay
         .send(setup_msg.clone())
         .await
         .expect_throw("send setup message");
-
-    // let msg_relay = BufferedMsgRelay::new(msg_relay);
 
     let setup = keygen::ValidatedSetup::decode(
         &mut setup_msg,
@@ -179,6 +194,8 @@ pub async fn init_dkg(
         |_, _, _| true,
     )
     .expect_throw("parse setup msg");
+
+    abort.deadline(setup.ttl().as_millis() as u32);
 
     let keyshare = keygen::run(setup, seed, msg_relay)
         .await
@@ -197,13 +214,15 @@ pub async fn join_dkg(
 ) -> Result<Keyshare, JsValue> {
     set_panic_hook();
 
+    let mut abort = AbortGuard::new();
+
     let instance = parse_instance_id(instance)?;
     let setup_vk =
         VerifyingKey::from_bytes(&parse_instance_bytes(setup_vk)?).expect_throw("parse setup VK");
     let signing_key = SigningKey::from_bytes(&parse_instance_bytes(signing_key)?);
     let seed = parse_instance_bytes(seed)?;
 
-    let ws = msg_relay_connect(endpoint).await?;
+    let ws = msg_relay_connect(endpoint, abort.signal()).await?;
     let msg_relay = MsgRelay::new(ws);
     let mut msg_relay = BufferedMsgRelay::new(msg_relay);
 
@@ -223,6 +242,8 @@ pub async fn join_dkg(
     )
     .expect_throw("parse setup msg");
 
+    abort.deadline(setup.ttl().as_millis() as u32);
+
     let keyshare = keygen::run(setup, seed, msg_relay)
         .await
         .expect_throw("DKG failed");
@@ -241,6 +262,8 @@ pub async fn dsg(
 ) -> Result<Uint8Array, JsValue> {
     set_panic_hook();
 
+    let mut abort = AbortGuard::new();
+
     let (share, _) =
         bincode::decode_from_slice(&keyshare.to_vec(), bincode::config::standard()).unwrap_throw();
 
@@ -249,7 +272,7 @@ pub async fn dsg(
     let signing_key = SigningKey::from_bytes(&parse_instance_bytes(signing_key)?);
     let seed = parse_instance_bytes(seed)?;
 
-    let ws = msg_relay_connect(endpoint).await?;
+    let ws = msg_relay_connect(endpoint, abort.signal()).await?;
     let msg_relay = MsgRelay::new(ws);
     let mut msg_relay = BufferedMsgRelay::new(msg_relay);
 
@@ -262,6 +285,8 @@ pub async fn dsg(
             Some(share)
         })
         .unwrap_throw();
+
+    abort.deadline(setup.ttl().as_millis() as u32);
 
     let sign = sign::run(setup, seed, msg_relay).await.unwrap_throw();
 

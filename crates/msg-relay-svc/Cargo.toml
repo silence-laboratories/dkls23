@@ -9,7 +9,7 @@ futures-util = { version = "0.3.28" }
 tokio-tungstenite = { version = "0.20" }
 
 anyhow = { workspace = true }
-tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros"] }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "signal"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 

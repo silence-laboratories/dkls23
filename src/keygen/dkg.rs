@@ -112,8 +112,10 @@ async fn request_messages<R: Relay>(
 
         tags.push((msg_id, p));
 
-        relay.send(msg).await?;
+        relay.feed(msg).await?;
     }
+
+    relay.flush().await?;
 
     Ok(tags)
 }
@@ -157,7 +159,7 @@ fn decode_encrypted_message<T: bincode::Decode>(
     Ok((msg, party_id))
 }
 
-///
+/// Execute DKG protocol.
 pub async fn run<R>(setup: ValidatedSetup, seed: Seed, relay: R) -> Result<Keyshare, KeygenError>
 where
     R: Relay,
@@ -168,7 +170,7 @@ where
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-/// A version of DKG that return a public as soon as possbile and
+/// A version of DKG that return a public key as soon as possbile and
 /// continues execution of the rest protocol in background.
 ///
 /// It returns a piblic key and a handle to a tokio task that executes
@@ -224,6 +226,7 @@ where
 
     let t = setup.threshold();
     let my_party_id = setup.party_id();
+
     let session_id = SessionId::new(rng.gen());
     let r_i = rng.gen();
 

@@ -62,7 +62,7 @@ fn pop_tag<T>(msg_map: &mut Vec<(MsgId, T)>, id: &MsgId) -> Option<T> {
     None
 }
 
-async fn recv_messages<R: Relay>(
+async fn request_messages<R: Relay>(
     setup: &ValidatedSetup,
     tag: MessageTag,
     relay: &mut R,
@@ -79,8 +79,10 @@ async fn recv_messages<R: Relay>(
 
         tags.push((msg_id, p));
 
-        relay.send(msg).await?;
+        relay.feed(msg).await?;
     }
+
+    relay.flush().await?;
 
     Ok(tags)
 }
@@ -119,82 +121,6 @@ fn decode_encrypted_message<T: bincode::Decode>(
 
     Ok((msg, party_id))
 }
-
-// fn recv_p2p_messages(
-//     setup: &ValidatedSetup,
-//     tag: MessageTag,
-//     relay: &impl Relay,
-// ) -> JoinSet<Result<(Vec<u8>, usize), SignError>> {
-//     let mut js = JoinSet::new();
-//     let me = Some(setup.party_idx());
-//     setup.other_parties_iter().for_each(|(p, vk)| {
-//         // P2P message from party VK (p) to me
-//         let msg_id = setup.msg_id_from(vk, me, tag);
-//         let relay = relay.clone_relay();
-
-//         js.spawn(async move {
-//             let msg = relay
-//                 .recv(msg_id, 10)
-//                 .await
-//                 .ok_or(SignError::InvalidMessage)?;
-//             Ok::<_, SignError>((msg, p))
-//         });
-//     });
-
-//     js
-// }
-
-// fn recv_broadcast_messages(
-//     setup: &ValidatedSetup,
-//     tag: MessageTag,
-//     relay: &impl Relay,
-// ) -> JoinSet<Result<(Vec<u8>, usize), SignError>> {
-//     let mut js = JoinSet::new();
-//     setup.other_parties_iter().for_each(|(party_idx, vk)| {
-//         // broadcast message from party `p'
-//         let msg_id = setup.msg_id_from(vk, None, tag);
-//         let relay = relay.clone_relay();
-
-//         js.spawn(async move {
-//             let msg = relay
-//                 .recv(msg_id, 10)
-//                 .await
-//                 .ok_or(SignError::InvalidMessage)?;
-//             Ok::<_, SignError>((msg, party_idx))
-//         });
-//     });
-
-//     js
-// }
-
-// fn decode_signed_message<T: bincode::Decode>(
-//     msg: Result<Result<(Vec<u8>, usize), SignError>, JoinError>,
-//     setup: &ValidatedSetup,
-// ) -> Result<(T, usize), SignError> {
-//     let (mut msg, party_idx) = msg.map_err(|_| SignError::InvalidMessage)??; // it's ugly, I know
-
-//     let msg = Message::from_buffer(&mut msg)?;
-//     let msg = msg.verify_and_decode(setup.party_verifying_key(party_idx).unwrap())?;
-
-//     Ok((msg, party_idx))
-// }
-
-// fn decode_encrypted_message<T: bincode::Decode>(
-//     msg: Result<Result<(Vec<u8>, usize), SignError>, JoinError>,
-//     secret: &ReusableSecret,
-//     enc_pub_keys: &[(usize, PublicKey)],
-// ) -> Result<(T, usize), SignError> {
-//     let (mut msg, party_id) = msg.map_err(|_| SignError::InvalidMessage)??; // it's ugly, I know
-
-//     let mut msg = Message::from_buffer(&mut msg)?;
-//     let msg = msg.decrypt_and_decode(
-//         MESSAGE_HEADER_SIZE,
-//         secret,
-//         find_pair(enc_pub_keys, party_id)?,
-//     )?;
-
-//     Ok((msg, party_id))
-// }
 
 /// Result after pre-signature of party_i
 #[derive(Clone, bincode::Encode, bincode::Decode)]
@@ -291,10 +217,10 @@ pub async fn pre_signature<R: Relay>(
     // vector of pairs (party_idx, party_id)
     let mut party_idx_to_id_map = vec![(my_party_idx, my_party_id)];
 
-    let mut js = recv_messages(&setup, DSG_MSG_R1, relay, false).await?;
+    let mut js = request_messages(setup, DSG_MSG_R1, relay, false).await?;
     while !js.is_empty() {
         let msg = relay.next().await.ok_or(SignError::MissingMessage)?;
-        let (msg, party_idx) = decode_signed_message::<SignMsg1>(&mut js, msg, &setup)?;
+        let (msg, party_idx) = decode_signed_message::<SignMsg1>(&mut js, msg, setup)?;
 
         party_idx_to_id_map.push((party_idx, msg.party_id));
         commitments.push((party_idx, (*msg.session_id, *msg.commitment_r_i)));
@@ -406,7 +332,7 @@ pub async fn pre_signature<R: Relay>(
 
     let mut sender_additive_shares = vec![];
 
-    let mut js = recv_messages(&setup, DSG_MSG_R2, relay, true).await?;
+    let mut js = request_messages(setup, DSG_MSG_R2, relay, true).await?;
     while !js.is_empty() {
         let msg = relay.next().await.ok_or(SignError::MissingMessage)?;
         let (msg1, party_idx) =
@@ -453,7 +379,7 @@ pub async fn pre_signature<R: Relay>(
 
     let mut receiver_additive_shares = vec![];
 
-    let mut js = recv_messages(&setup, DSG_MSG_R3, relay, true).await?;
+    let mut js = request_messages(setup, DSG_MSG_R3, relay, true).await?;
     while !js.is_empty() {
         let msg = relay.next().await.ok_or(SignError::MissingMessage)?;
         let (msg3, party_idx) =
@@ -537,21 +463,21 @@ pub async fn pre_signature<R: Relay>(
 }
 
 /// Locally create a partial signature from pre-signature and msg_hash
-pub fn create_partial_signature(
-    pre_sign_result: &PreSignResult,
-    msg_hash: &HashBytes,
+fn create_partial_signature(
+    pre_sign_result: PreSignResult,
+    msg_hash: HashBytes,
 ) -> PartialSignature {
-    let m = Scalar::reduce(U256::from_be_slice(msg_hash));
+    let m = Scalar::reduce(U256::from_be_slice(&msg_hash));
     let s_0 = m * pre_sign_result.phi_i.0 + pre_sign_result.s_0.0;
-    let partial_signature = PartialSignature {
+
+    PartialSignature {
         final_session_id: pre_sign_result.final_session_id,
         public_key: pre_sign_result.public_key,
-        message_hash: Opaque::from(*msg_hash),
+        message_hash: Opaque::from(msg_hash),
         s_0: Opaque::from(s_0),
         s_1: pre_sign_result.s_1,
         r: pre_sign_result.r,
-    };
-    partial_signature
+    }
 }
 
 /// Locally combine list of t partial signatures into a final signature
@@ -606,8 +532,8 @@ pub async fn run<R: Relay>(
     let public_key = pre_signature_result.public_key;
     let r: Opaque<ProjectivePoint, GR> = pre_signature_result.r;
 
-    let msg_hash = &setup.hash();
-    let partial_signature = create_partial_signature(&pre_signature_result, &msg_hash);
+    let msg_hash = setup.hash();
+    let partial_signature = create_partial_signature(pre_signature_result, msg_hash);
 
     relay
         .send(Builder::<Signed>::encode(
@@ -615,9 +541,9 @@ pub async fn run<R: Relay>(
             setup.ttl(),
             setup.signing_key(),
             &SignMsg4 {
-                session_id: Opaque::from(partial_signature.final_session_id),
-                s_0: Opaque::from(partial_signature.s_0),
-                s_1: Opaque::from(partial_signature.s_1),
+                session_id: partial_signature.final_session_id,
+                s_0: partial_signature.s_0,
+                s_1: partial_signature.s_1,
             },
         )?)
         .await?;
@@ -625,16 +551,16 @@ pub async fn run<R: Relay>(
     let mut partial_signatures: Vec<PartialSignature> = Vec::new();
     partial_signatures.push(partial_signature);
 
-    let mut js = recv_messages(&setup, DSG_MSG_R4, &mut relay, false).await?;
+    let mut js = request_messages(&setup, DSG_MSG_R4, &mut relay, false).await?;
     while !js.is_empty() {
         let msg = relay.next().await.ok_or(SignError::MissingMessage)?;
         let (msg, _party_idx) = decode_signed_message::<SignMsg4>(&mut js, msg, &setup)?;
         let party_j_partial_sign = PartialSignature {
             final_session_id,
             public_key,
-            message_hash: Opaque::from(msg_hash.clone()),
-            s_0: Opaque::from(msg.s_0),
-            s_1: Opaque::from(msg.s_1),
+            message_hash: Opaque::from(msg_hash),
+            s_0: msg.s_0,
+            s_1: msg.s_1,
             r,
         };
         partial_signatures.push(party_j_partial_sign);
@@ -800,7 +726,7 @@ mod tests {
             .build(&setup_msg_id, 100, &setup_sk)
             .unwrap();
 
-        let list = party_sk
+        party_sk
             .into_iter()
             .enumerate()
             .map(|(idx, party_sk)| {
@@ -810,14 +736,7 @@ mod tests {
                 .unwrap()
             })
             .map(|setup| (setup, rng.gen()))
-            .collect::<Vec<_>>();
-
-        list
-    }
-
-    #[test]
-    fn s0() {
-        assert!(true);
+            .collect::<Vec<_>>()
     }
 
     #[tokio::test(flavor = "multi_thread")]

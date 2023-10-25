@@ -42,6 +42,10 @@ export class MsgRelayClient {
         this.waiter = null;
     }
 
+    wsClose() {
+        this.ws.close();
+    }
+
     async close () {
         if (this.ws.readyState == 3) {
             return Promise.resolved(true);
@@ -71,8 +75,12 @@ export class MsgRelayClient {
         }
     }
 
-    static async connect(endpoint) {
+    static async connect(endpoint, signal) {
         return new Promise(async (resolve, reject) => {
+            if (signal && signal.aborted) {
+                reject(signal.reason);
+            }
+
             let ws = new WebSocket(endpoint);
             let relay = new MsgRelayClient(ws);
 
@@ -105,6 +113,12 @@ export class MsgRelayClient {
 
             ws.onerror = (evt) => {
                 reject(evt);
+            }
+
+            if (signal) {
+                signal.onabort = () => {
+                    ws.close();
+                }
             }
         })
     }

@@ -35,13 +35,15 @@ const msgEq = (m1: Uint8Array, m2: Uint8Array): Boolean => {
 }
 
 test('connect MsgRelayClient', async () => {
-    let client = await msg_relay_connect(ENDPOINT);
+    let abort = new AbortController();
+    let client = await msg_relay_connect(ENDPOINT, abort.signal);
 
     await client.close();
 });
 
 test('connect', async () => {
-    let relay = await MsgRelayClient.connect(ENDPOINT);
+    let abort = new AbortController();
+    let relay = await MsgRelayClient.connect(ENDPOINT, abort.signal);
     let msg = genMsg(100, 10);
 
     relay.send(msg);
@@ -52,12 +54,14 @@ test('connect', async () => {
 });
 
 test('send/recv', async () => {
-    let r1 = await MsgRelayClient.connect(ENDPOINT);
+    let abort = new AbortController();
+
+    let r1 = await MsgRelayClient.connect(ENDPOINT, abort.signal);
     let msg = genMsg(100, 10);
 
     r1.send(msg);
 
-    let r2 = await MsgRelayClient.connect(ENDPOINT);
+    let r2 = await MsgRelayClient.connect(ENDPOINT, abort.signal);
 
     r2.send(msgHdr(msg));
 

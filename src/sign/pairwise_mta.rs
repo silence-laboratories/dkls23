@@ -3,7 +3,7 @@ use k256::{
         bigint::Encoding,
         generic_array::GenericArray,
         ops::Reduce,
-        subtle::{Choice, ConditionallySelectable}
+        subtle::{Choice, ConditionallySelectable, ConstantTimeEq}
     },
     schnorr::CryptoRngCore,
     Scalar, U256,
@@ -213,8 +213,7 @@ impl PairwiseMtaRec<MtaRecR1> {
 
         let r_hash_digest: [u8; 32] = r_hash.finalize().into();
 
-        // FIXME use constant time EQ?
-        if round2_output.r != r_hash_digest {
+        if round2_output.r.ct_ne(&r_hash_digest).into() {
             Err("Consistency check failed")
         } else {
             Ok(output_additive_shares)

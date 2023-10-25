@@ -1,7 +1,7 @@
 import { assertEquals } from "https://deno.land/std@0.203.0/assert/mod.ts";
 import { decodeHex, encodeHex } from "https://deno.land/std@0.203.0/encoding/hex.ts";
 import * as base64 from "https://deno.land/x/base64/mod.ts";
-import { genInstanceId, dkgSetupMessage, verifyingKey, dkg, dsg } from './pkg/dkls_wasm.js';
+import { genInstanceId, dkgSetupMessage, verifyingKey, join_dkg, dsg } from './pkg/dkls_wasm.js';
 
 import { start_dkg } from './main.ts';
 import { MsgRelayClient } from './js/msg-relay.js';
@@ -9,7 +9,7 @@ import { MsgRelayClient } from './js/msg-relay.js';
 import { test } from './dkls_test.js';
 
 const ENDPOINT = 'ws://localhost:8080';
-//const ENDPOINT = 'ws://msg-relay.process.sl-demo.internal:8080';
+// const ENDPOINT = 'ws://msg-relay.process.sl-demo.internal:8080';
 // const ENDPOINT = 'wss://sl-demo.fly.dev/v1/msg-relay';
 
 
@@ -33,12 +33,14 @@ test('load', async () => {
 });
 
 test('create DKG setup message', async () => {
+    let abort = new AbortController();
+
     let instance = genInstanceId();
     let opts = {
         instance,
         signing_key: SETUP_SK,
         threshold: 2,
-        ttl: 10,
+        ttl: 3,
         parties: [
             {
                 rank: 0,
@@ -59,18 +61,18 @@ test('create DKG setup message', async () => {
 
     let setup_msg = dkgSetupMessage(opts);
 
-    console.log('setup', setup_msg);
+    console.log('setup.length', setup_msg.length);
 
-    let ws = await MsgRelayClient.connect(ENDPOINT + '/v1/msg-relay');
+    let ws = await MsgRelayClient.connect(ENDPOINT + '/v1/msg-relay', abort.signal);
     ws.send(setup_msg);
 
-    // let p1 = dkg(
-    //     encodeHex(instance),
-    //     encodeHex(verifyingKey(SETUP_SK)),
-    //     encodeHex(PartySk[0]),
-    //     ENDPOINT + '/v1/msg-relay',
-    //     encodeHex(genInstanceId())
-    // );
+    let p1 = join_dkg(
+        encodeHex(instance),
+        encodeHex(verifyingKey(SETUP_SK)),
+        encodeHex(PartySk[0]),
+        ENDPOINT + '/v1/msg-relay',
+        encodeHex(genInstanceId())
+    );
 
     // let p2 = dkg(
     //     encodeHex(instance),
@@ -91,12 +93,12 @@ test('create DKG setup message', async () => {
     // console.log('stat p1 - loc, p2,p3 remote');
 
     let resp = await Promise.all([
-        start_dkg('http://localhost:8080/party-0', instance),
-        start_dkg('http://localhost:8080/party-1', instance),
-        start_dkg('http://localhost:8080/party-2', instance)
-        // start_dkg('http://localhost:8081', instance),
-        // start_dkg('http://localhost:8082', instance),
-        // start_dkg('http://localhost:8083', instance)
+        // start_dkg('http://localhost:8080/party-0', instance),
+        // start_dkg('http://localhost:8080/party-1', instance),
+        // start_dkg('http://localhost:8080/party-2', instance)
+        p1, // start_dkg('http://localhost:8081', instance),
+        start_dkg('http://localhost:8082', instance),
+        start_dkg('http://localhost:8083', instance)
     ]);
 
     let pk = resp[0];
