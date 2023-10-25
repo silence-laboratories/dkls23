@@ -25,6 +25,8 @@ serde = "1.0"
 serde_bytes = "0.11"
 derivation-path = { workspace = true }
 
+tracing-wasm = "0.2"
+
 # The `console_error_panic_hook` crate provides better debugging of panics by
 # logging them with `console.error`. This is great for development, but requires
 # all the `std::fmt` and `std::panicking` infrastructure, so isn't great for
@@ -35,16 +37,18 @@ console_error_panic_hook = { version = "0.1.7", optional = true }
 [dependencies.web-sys]
 version = "0.3"
 features = [
+  "AbortController",
+  "AbortSignal",
   "Crypto",
   "CryptoKey",
   "CryptoKeyPair",
   "SubtleCrypto",
-  "BinaryType",
-  "Blob",
-  "ErrorEvent",
-  "MessageEvent",
-  "ProgressEvent",
-  "WebSocket",
+  # "BinaryType",
+  # "Blob",
+  # "ErrorEvent",
+  # "MessageEvent",
+  # "ProgressEvent",
+  # "WebSocket",
 ]
 
 [dev-dependencies]

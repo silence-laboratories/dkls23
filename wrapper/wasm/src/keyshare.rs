@@ -40,7 +40,7 @@ impl Keyshare {
         let bytes: Vec<u8> = bytes.to_vec();
 
         let (share, _) = bincode::decode_from_slice(&bytes, bincode::config::standard())
-            .map_err(|_| JsValue::from_str(""))?;
+            .map_err(|_| JsValue::from_str("Keyshare decode error"))?;
 
         Ok(Keyshare { share })
     }

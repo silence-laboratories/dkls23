@@ -3,6 +3,7 @@ use std::net::ToSocketAddrs;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use tokio::signal::unix::{signal, SignalKind};
 use tokio::{sync::broadcast, task::JoinSet};
 
 use axum::{routing::get, Router};
@@ -23,11 +24,14 @@ async fn run_peer<F: FnMut(Vec<u8>) + Send + 'static>(
     state: AppState<F>,
 ) {
     loop {
-        tracing::info!("connecting to {}", peer);
-
         let ws = loop {
+            tracing::info!("connecting to {}", peer);
+
             match connect_async(&peer).await {
-                Ok((ws, _)) => break ws,
+                Ok((ws, _)) => {
+                    tracing::info!("connected to {}", peer);
+                    break ws;
+                },
 
                 Err(err) => {
                     tracing::error!("connection error {:?}", err);
@@ -146,7 +150,28 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    while servers.join_next().await.is_some() {}
+    let mut sigint = signal(SignalKind::interrupt())?;
+    let mut sigterm = signal(SignalKind::terminate())?;
+
+    loop {
+        tokio::select! {
+            _ = sigint.recv() => {
+                tracing::info!("got SIGINT, exiting");
+                break;
+            }
+
+            _ = sigterm.recv() => {
+                tracing::info!("got SIGTERM, exiting");
+                break;
+            }
+
+            listener = servers.join_next() => {
+                if listener.is_none() {
+                    break;
+                }
+            }
+        };
+    }
 
     Ok(())
 }
