@@ -25,10 +25,10 @@ where
 }
 
 use sl_oblivious::{
+    endemic_ot::{EndemicOTMsg1, EndemicOTMsg2, EndemicOTReceiver, EndemicOTSender},
     soft_spoken::{build_pprf, eval_pprf, PPRFOutput, SenderOTSeed},
     soft_spoken_mod::SOFT_SPOKEN_K,
     utils::TranscriptProtocol,
-    endemic_ot::{EndemicOTSender, EndemicOTReceiver, EndemicOTMsg1, EndemicOTMsg2},
     zkproofs::DLogProof,
 };
 
@@ -161,7 +161,7 @@ fn decode_encrypted_message<T: bincode::Decode>(
 pub async fn run<R>(setup: ValidatedSetup, seed: Seed, relay: R) -> Result<Keyshare, KeygenError>
 where
     R: Relay,
-{   
+{
     // just some x_i value not used for key generation
     let x_i = NonZeroScalar::new(Scalar::ONE).unwrap();
     run_inner(setup, seed, |_| {}, relay, x_i, false).await
@@ -228,15 +228,16 @@ where
     let r_i = rng.gen();
 
     // u_i_k
-    let polynomial = match for_key_refresh {
-        false => Polynomial::random(&mut rng, t as usize - 1),
-        true => Polynomial::random_with_zero_constant_term(&mut rng, t as usize - 1),
-    };
+    let mut polynomial = Polynomial::random(&mut rng, t as usize - 1);
 
-    // let x_i = NonZeroScalar::random(&mut rng);
-    let x_i = match for_key_refresh {
-        false => NonZeroScalar::random(&mut rng),
-        true => party_x_i,
+    if for_key_refresh {
+        polynomial.coeffs[0] = Scalar::ZERO;
+    }
+
+    let x_i = if for_key_refresh {
+        party_x_i
+    } else {
+        NonZeroScalar::random(&mut rng)
     };
 
     let enc_keys = ReusableSecret::random_from_rng(&mut rng);
@@ -344,7 +345,6 @@ where
         })
         .collect::<Vec<_>>();
 
-
     let mut base_ot_senders = setup
         .other_parties_iter()
         .map(|(p, _)| {
@@ -437,32 +437,26 @@ where
         bool::from(commit_hash.ct_eq(commitment))
             .then_some(())
             .ok_or(KeygenError::InvalidCommitmentHash)?;
-        
+
         // Check that msg.big_f_i_vector.points() != IDENTITY
         // for key_refresh first point should be IDENTITY
-        match for_key_refresh {
-            false => {
-                for point in msg.big_f_i_vector.points() {
+        if !for_key_refresh {
+            for point in msg.big_f_i_vector.points() {
+                (point != &ProjectivePoint::IDENTITY)
+                    .then_some(())
+                    .ok_or(KeygenError::InvalidPolynomialPoint)?;
+            }
+        } else {
+            for (i, point) in msg.big_f_i_vector.points().enumerate() {
+                if i != 0 {
                     (point != &ProjectivePoint::IDENTITY)
                         .then_some(())
-                        .ok_or(KeygenError::InvalidPolynomialPoint)?;  
-                }        
-            },
-            true => {
-                for (i, point) in msg.big_f_i_vector.points().enumerate() {
-                    match i == 0 {
-                        false => {
-                            (point != &ProjectivePoint::IDENTITY)
-                                .then_some(())
-                                .ok_or(KeygenError::InvalidPolynomialPoint)?;  
-                        },
-                        true => {
-                            (point == &ProjectivePoint::IDENTITY)
-                                .then_some(())
-                                .ok_or(KeygenError::InvalidPolynomialPoint)?;             
-                        }
-                    }
-                }      
+                        .ok_or(KeygenError::InvalidPolynomialPoint)?;
+                } else {
+                    (point == &ProjectivePoint::IDENTITY)
+                        .then_some(())
+                        .ok_or(KeygenError::InvalidPolynomialPoint)?;
+                }
             }
         }
 
@@ -505,7 +499,7 @@ where
         // check that public_key == IDENTITY
         (public_key == ProjectivePoint::IDENTITY)
             .then_some(())
-            .ok_or(KeygenError::InvalidPolynomialPoint)?; 
+            .ok_or(KeygenError::InvalidPolynomialPoint)?;
     }
     recv_pk(public_key);
 
@@ -595,7 +589,6 @@ where
         if let Some(seed_j_i) = msg3.seed_i_j {
             rec_seed_list.push((party_id, seed_j_i));
         }
-
     }
 
     // tracing::info!("R3 P2P done {}", setup.party_id());
@@ -759,7 +752,11 @@ fn hash_commitment(
     HashBytes::new(hasher.finalize().into())
 }
 
-fn get_base_ot_session_id(sender_id: usize, receiver_id: usize, session_id: &SessionId) -> SessionId {
+fn get_base_ot_session_id(
+    sender_id: usize,
+    receiver_id: usize,
+    session_id: &SessionId,
+) -> SessionId {
     SessionId::new(
         Sha256::new()
             .chain_update(DKG_LABEL)
