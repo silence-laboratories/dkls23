@@ -11,6 +11,7 @@ use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use rayon::prelude::*;
 use sha2::Sha256;
+use std::collections::HashSet;
 
 #[cfg(not(target_arch = "wasm32"))]
 use tokio::task::{block_in_place, JoinHandle};
@@ -160,8 +161,10 @@ fn decode_encrypted_message<T: bincode::Decode>(
 pub async fn run<R>(setup: ValidatedSetup, seed: Seed, relay: R) -> Result<Keyshare, KeygenError>
 where
     R: Relay,
-{
-    run_inner(setup, seed, |_| {}, relay).await
+{   
+    let mut rng = ChaCha20Rng::from_seed(seed);
+    let x_i = NonZeroScalar::random(&mut rng);
+    run_inner(setup, seed, |_| {}, relay, x_i, false).await
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -191,7 +194,9 @@ where
         let _ = tx.send(pk);
     };
 
-    let handle = tokio::spawn(run_inner(setup, seed, recv_pk, relay));
+    let mut rng = ChaCha20Rng::from_seed(seed);
+    let x_i = NonZeroScalar::random(&mut rng);
+    let handle = tokio::spawn(run_inner(setup, seed, recv_pk, relay, x_i, false));
 
     // If rx.await returns Err, then sender was dropped without sending
     // PK. This mean that run_inner() is finished at this point.
@@ -207,6 +212,8 @@ async fn run_inner<R, F>(
     seed: Seed,
     recv_pk: F,
     mut relay: R,
+    x_i: NonZeroScalar,
+    for_key_refresh: bool,
 ) -> Result<Keyshare, KeygenError>
 where
     R: Relay,
@@ -219,8 +226,14 @@ where
     let my_party_id = setup.party_id();
     let session_id = SessionId::new(rng.gen());
     let r_i = rng.gen();
-    let polynomial = Polynomial::random(&mut rng, t as usize - 1); // u_i_k
-    let x_i = NonZeroScalar::random(&mut rng);
+
+    // u_i_k
+    let polynomial = match for_key_refresh {
+        false => Polynomial::random(&mut rng, t as usize - 1),
+        true => Polynomial::random_with_zero_constant_term(&mut rng, t as usize - 1),
+    };
+
+    // let x_i = NonZeroScalar::random(&mut rng);
 
     let enc_keys = ReusableSecret::random_from_rng(&mut rng);
 
@@ -280,6 +293,15 @@ where
     }
 
     // tracing::info!("R1 done {}", setup.party_id());
+
+    // Check that x_i_list contains unique elements
+    let mut x_i_set = HashSet::new();
+    for (_party_id, x_i_value) in &x_i_list {
+        x_i_set.insert(x_i_value.to_bytes());
+    }
+    (x_i_list.len() == x_i_set.len())
+        .then_some(())
+        .ok_or(KeygenError::NotUniqueXiValues)?;
 
     // Create a common session ID from pieces od random data that we received
     // from other parties.
@@ -411,6 +433,34 @@ where
         bool::from(commit_hash.ct_eq(commitment))
             .then_some(())
             .ok_or(KeygenError::InvalidCommitmentHash)?;
+        
+        // Check that msg.big_f_i_vector.points() != IDENTITY
+        // for key_refresh first point should be IDENTITY
+        match for_key_refresh {
+            false => {
+                for point in msg.big_f_i_vector.points() {
+                    (point != &ProjectivePoint::IDENTITY)
+                        .then_some(())
+                        .ok_or(KeygenError::InvalidPolynomialPoint)?;  
+                }        
+            },
+            true => {
+                for (i, point) in msg.big_f_i_vector.points().enumerate() {
+                    match i == 0 {
+                        false => {
+                            (point != &ProjectivePoint::IDENTITY)
+                                .then_some(())
+                                .ok_or(KeygenError::InvalidPolynomialPoint)?;  
+                        },
+                        true => {
+                            (point == &ProjectivePoint::IDENTITY)
+                                .then_some(())
+                                .ok_or(KeygenError::InvalidPolynomialPoint)?;             
+                        }
+                    }
+                }      
+            }
+        }
 
         // Verify DLog proofs.
         let mut dlog_transcript = Transcript::new_dlog_proof(
@@ -446,6 +496,13 @@ where
     }
 
     let public_key = *big_f_vec.get(0).unwrap(); // FIXME dup data
+
+    if for_key_refresh {
+        // check that public_key == IDENTITY
+        (public_key == ProjectivePoint::IDENTITY)
+            .then_some(())
+            .ok_or(KeygenError::InvalidPolynomialPoint)?; 
+    }
     recv_pk(public_key);
 
     // start receiving P2P messages

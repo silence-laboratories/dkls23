@@ -28,6 +28,14 @@ pub enum KeygenError {
     /// Invalid DLog proof
     InvalidDLogProof,
 
+    #[error("Invalid Polynomial Point")]
+    /// Invalid Polynomial Point
+    InvalidPolynomialPoint,
+
+    /// Not unique x_i values
+    #[error("Not unique x_i values")]
+    NotUniqueXiValues,
+
     /// Big F vec mismatch
     #[error("Big F vec mismatch")]
     BigFVecMismatch,
