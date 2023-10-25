@@ -162,8 +162,8 @@ pub async fn run<R>(setup: ValidatedSetup, seed: Seed, relay: R) -> Result<Keysh
 where
     R: Relay,
 {   
-    let mut rng = ChaCha20Rng::from_seed(seed);
-    let x_i = NonZeroScalar::random(&mut rng);
+    // just some x_i value not used for key generation
+    let x_i = NonZeroScalar::new(Scalar::ONE).unwrap();
     run_inner(setup, seed, |_| {}, relay, x_i, false).await
 }
 
@@ -194,8 +194,8 @@ where
         let _ = tx.send(pk);
     };
 
-    let mut rng = ChaCha20Rng::from_seed(seed);
-    let x_i = NonZeroScalar::random(&mut rng);
+    // just some x_i value not used for key generation
+    let x_i = NonZeroScalar::new(Scalar::ONE).unwrap();
     let handle = tokio::spawn(run_inner(setup, seed, recv_pk, relay, x_i, false));
 
     // If rx.await returns Err, then sender was dropped without sending
@@ -212,7 +212,7 @@ async fn run_inner<R, F>(
     seed: Seed,
     recv_pk: F,
     mut relay: R,
-    x_i: NonZeroScalar,
+    party_x_i: NonZeroScalar,
     for_key_refresh: bool,
 ) -> Result<Keyshare, KeygenError>
 where
@@ -234,6 +234,10 @@ where
     };
 
     // let x_i = NonZeroScalar::random(&mut rng);
+    let x_i = match for_key_refresh {
+        false => NonZeroScalar::random(&mut rng),
+        true => party_x_i,
+    };
 
     let enc_keys = ReusableSecret::random_from_rng(&mut rng);
 
