@@ -1,15 +1,14 @@
 //! Distributed key generation protocol.
 //
 
-use digest::{generic_array::GenericArray, Digest};
+use digest::Digest;
 use k256::{
-    elliptic_curve::{group::GroupEncoding, subtle::ConstantTimeEq, PrimeField},
-    FieldBytes, NonZeroScalar, ProjectivePoint, Scalar, Secp256k1,
+    elliptic_curve::{group::GroupEncoding, subtle::ConstantTimeEq},
+    NonZeroScalar, ProjectivePoint, Scalar, Secp256k1,
 };
 use merlin::Transcript;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
-use rayon::prelude::*;
 use sha2::Sha256;
 use std::collections::HashSet;
 
@@ -25,8 +24,8 @@ where
 }
 
 use sl_oblivious::{
-    endemic_ot::{EndemicOTMsg1, EndemicOTMsg2, EndemicOTReceiver, EndemicOTSender},
-    soft_spoken::{build_pprf, eval_pprf, PPRFOutput, SenderOTSeed},
+    endemic_ot::{EndemicOTReceiver, EndemicOTSender},
+    soft_spoken::{build_pprf, eval_pprf},
     soft_spoken_mod::SOFT_SPOKEN_K,
     utils::TranscriptProtocol,
     zkproofs::DLogProof,
@@ -41,7 +40,7 @@ use sl_mpc_mate::{
 
 use crate::{
     keygen::{check_secret_recovery, constants::*, messages::*, KeygenError},
-    setup::{keygen::ValidatedSetup, PartyInfo},
+    setup::{keygen::ValidatedSetup, PartyInfo, ABORT_MESSAGE_TAG},
 };
 
 /// Seed for our RNG
@@ -92,8 +91,8 @@ async fn request_messages<R: Relay>(
     tag: MessageTag,
     relay: &mut R,
     p2p: bool,
-) -> Result<Vec<(MsgId, u8)>, InvalidMessage> {
-    let mut tags = vec![];
+) -> Result<Vec<(MsgId, u8)>, KeygenError> {
+    let mut tags = Vec::with_capacity(setup.participants() as usize - 1);
     let me = if p2p { Some(setup.party_id()) } else { None };
 
     for (p, vk) in setup.other_parties_iter() {
@@ -112,10 +111,10 @@ async fn request_messages<R: Relay>(
 
         tags.push((msg_id, p));
 
-        relay.feed(msg).await?;
+        relay.feed(msg).await.map_err(|_| KeygenError::SendMessage)?;
     }
 
-    relay.flush().await?;
+    relay.flush().await.map_err(|_| KeygenError::SendMessage)?;
 
     Ok(tags)
 }
@@ -159,27 +158,57 @@ fn decode_encrypted_message<T: bincode::Decode>(
     Ok((msg, party_id))
 }
 
+fn check_abort_message(tags: &[(MsgId, u8)], msg: &[u8]) -> Result<(), KeygenError> {
+    let hdr = MsgHdr::from(msg).ok_or_else(|| KeygenError::InvalidMessage)?;
+
+    let p = tags.iter().find(|(id, _)| *id == hdr.id).map(|(_, v)| v);
+
+    match p {
+        None => Ok(()),
+        Some(p) => Err(KeygenError::AbortProtocol(*p)),
+    }
+}
+
 /// Execute DKG protocol.
-pub async fn run<R>(setup: ValidatedSetup, seed: Seed, relay: R) -> Result<Keyshare, KeygenError>
+pub async fn run<R>(
+    setup: ValidatedSetup,
+    seed: Seed,
+    mut relay: R,
+) -> Result<Keyshare, KeygenError>
 where
     R: Relay,
 {
     // just some x_i value not used for key generation
     let x_i = NonZeroScalar::new(Scalar::ONE).unwrap();
-    run_inner(setup, seed, |_| {}, relay, x_i, false).await
+
+    let abort_msg = Builder::<Signed>::encode(
+        &setup.msg_id(None, ABORT_MESSAGE_TAG),
+        setup.ttl(),
+        setup.signing_key(),
+        &(), // emoty message
+    )?;
+
+    match run_inner(setup, seed, |_| {}, &mut relay, x_i, false).await {
+        Ok(share) => Ok(share),
+        Err(KeygenError::AbortProtocol(p)) => Err(KeygenError::AbortProtocol(p)),
+        Err(KeygenError::SendMessage) => Err(KeygenError::SendMessage),
+        Err(err) => {
+            tracing::debug!("sending abort message");
+            relay.send(abort_msg).await?;
+            Err(err)
+        },
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-/// A version of DKG that return a public key as soon as possbile and
-/// continues execution of the rest protocol in background.
+/// A version of DKG that returns a public key as soon as possbile and
+/// continues execution of the rest of the protocol in background.
 ///
-/// It returns a piblic key and a handle to a tokio task that executes
-/// the rest of the DKG protocol. The caller should await the handle
-/// to receive resulting keyshare object or and error.
+/// The caller should await the handle to receive resulting keyshare.
 pub async fn fast_pk<R, F>(
     setup: ValidatedSetup,
     seed: Seed,
-    relay: R,
+    mut relay: R,
 ) -> Result<(ProjectivePoint, JoinHandle<Result<Keyshare, KeygenError>>), KeygenError>
 where
     R: Relay + Send,
@@ -198,7 +227,9 @@ where
 
     // just some x_i value not used for key generation
     let x_i = NonZeroScalar::new(Scalar::ONE).unwrap();
-    let handle = tokio::spawn(run_inner(setup, seed, recv_pk, relay, x_i, false));
+    let handle = tokio::spawn(async move {
+        run_inner(setup, seed, recv_pk, &mut relay, x_i, false).await
+    });
 
     // If rx.await returns Err, then sender was dropped without sending
     // PK. This mean that run_inner() is finished at this point.
@@ -213,7 +244,7 @@ pub(crate) async fn run_inner<R, F>(
     setup: ValidatedSetup,
     seed: Seed,
     recv_pk: F,
-    mut relay: R,
+    relay: &mut R,
     party_x_i: NonZeroScalar,
     for_key_refresh: bool,
 ) -> Result<Keyshare, KeygenError>
@@ -265,6 +296,8 @@ where
     let mut enc_pub_key = vec![];
     let mut big_f_i_vecs = vec![(my_party_id, big_f_i_vec.clone())];
 
+    let abort_tags = request_messages(&setup, ABORT_MESSAGE_TAG, relay, false).await?;
+
     // send out first message
     relay
         .send(Builder::<Signed>::encode(
@@ -278,11 +311,13 @@ where
                 enc_pk: Opaque::from(PublicKey::from(&enc_keys).to_bytes()),
             },
         )?)
-        .await?;
+        .await.map_err(|_| KeygenError::SendMessage)?;
 
-    let mut r1_tags = request_messages(&setup, DKG_MSG_R1, &mut relay, false).await?;
+    let mut r1_tags = request_messages(&setup, DKG_MSG_R1, relay, false).await?;
     while !r1_tags.is_empty() {
         let msg = relay.next().await.ok_or(KeygenError::MissingMessage)?;
+
+        check_abort_message(&abort_tags, &msg)?;
 
         let (
             KeygenMsg1 {
@@ -397,7 +432,7 @@ where
 
     // send out R2 P2P messages
     for msg in to_send.into_iter() {
-        relay.send(msg).await?;
+        relay.feed(msg).await.map_err(|_| KeygenError::SendMessage)?;
     }
 
     // send out our R2 broadcast message
@@ -413,13 +448,16 @@ where
                 dlog_proofs_i: dlog_proofs,
             },
         )?)
-        .await?;
+        .await.map_err(|_| KeygenError::SendMessage)?;
 
     // ... and while we are receiving P2P messages,
     // receive and process broadcast messages from parties.
-    let mut r2_msgs = request_messages(&setup, DKG_MSG_R2, &mut relay, false).await?;
+    let mut r2_msgs = request_messages(&setup, DKG_MSG_R2, relay, false).await?;
     while !r2_msgs.is_empty() {
         let msg = relay.next().await.ok_or(KeygenError::MissingMessage)?;
+
+        check_abort_message(&abort_tags, &msg)?;
+
         let (msg, party_id) = decode_signed_message::<KeygenMsg2>(&mut r2_msgs, msg, &setup)?;
 
         // Verify commitments.
@@ -507,11 +545,14 @@ where
     recv_pk(public_key);
 
     // start receiving P2P messages
-    let mut r2_p2p = request_messages(&setup, DKG_MSG_R2, &mut relay, true).await?;
+    let mut r2_p2p = request_messages(&setup, DKG_MSG_R2, relay, true).await?;
     let mut seed_ot_senders = vec![];
     let mut seed_i_j_list = vec![];
     while !r2_p2p.is_empty() {
         let msg = relay.next().await.ok_or(KeygenError::MissingMessage)?;
+
+        check_abort_message(&abort_tags, &msg)?;
+
         let (base_ot_msg1, party_id) =
             decode_encrypted_message(&mut r2_p2p, msg, &enc_keys, &enc_pub_key)?;
 
@@ -555,7 +596,7 @@ where
                 &msg3,
                 nonce_counter.next_nonce(),
             )?)
-            .await?;
+            .await.map_err(|_| KeygenError::SendMessage)?;
     }
     drop(r2_p2p);
 
@@ -563,9 +604,12 @@ where
 
     let mut seed_ot_receivers = vec![];
     let mut rec_seed_list = vec![];
-    let mut r3_msgs = request_messages(&setup, DKG_MSG_R3, &mut relay, true).await?;
+    let mut r3_msgs = request_messages(&setup, DKG_MSG_R3, relay, true).await?;
     while !r3_msgs.is_empty() {
         let msg = relay.next().await.ok_or(KeygenError::MissingMessage)?;
+
+        check_abort_message(&abort_tags, &msg)?;
+
         let (msg3, party_id) =
             decode_encrypted_message::<KeygenMsg3>(&mut r3_msgs, msg, &enc_keys, &enc_pub_key)?;
 
@@ -641,13 +685,16 @@ where
             setup.signing_key(),
             &msg4,
         )?)
-        .await?;
+        .await.map_err(|_| KeygenError::SendMessage)?;
 
     let mut big_s_list = vec![(my_party_id, big_s_i)];
 
-    let mut r4_msgs = request_messages(&setup, DKG_MSG_R4, &mut relay, false).await?;
+    let mut r4_msgs = request_messages(&setup, DKG_MSG_R4, relay, false).await?;
     while !r4_msgs.is_empty() {
         let msg = relay.next().await.ok_or(KeygenError::MissingMessage)?;
+
+        check_abort_message(&abort_tags, &msg)?;
+
         let (msg, party_id) = decode_signed_message::<KeygenMsg4>(&mut r4_msgs, msg, &setup)?;
 
         if public_key != *msg.public_key {
@@ -792,13 +839,10 @@ fn verfiy_dlog_proofs<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::array;
 
     use tokio::task::JoinSet;
 
     use sl_mpc_mate::coord::SimpleMessageRelay;
-
-    use crate::setup::{keygen::*, SETUP_MESSAGE_TAG};
 
     use crate::keygen::utils::setup_keygen;
 

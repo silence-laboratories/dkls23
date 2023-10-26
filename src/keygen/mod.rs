@@ -1,5 +1,3 @@
-#![allow(unused_imports)]
-
 mod dkg;
 mod types;
 mod utils;
@@ -23,7 +21,7 @@ pub use crate::setup::keygen::ValidatedSetup;
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
+    // use std::collections::HashSet;
 
     // use k256::elliptic_curve::group::GroupEncoding;
     // use rand::seq::SliceRandom;

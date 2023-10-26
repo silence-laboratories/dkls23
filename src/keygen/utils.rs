@@ -1,17 +1,13 @@
-#![allow(unused_imports)]
-
-use std::array;
-
 use k256::{NonZeroScalar, ProjectivePoint};
 use rand::prelude::*;
-// use rayon::prelude::*;
+
 use sl_mpc_mate::{math::birkhoff_coeffs, message::*};
 
-#[cfg(test)]
-use sl_oblivious::{
-    soft_spoken::{ReceiverOTSeed, SenderOTSeed},
-    soft_spoken_mod::{KAPPA_DIV_SOFT_SPOKEN_K, SOFT_SPOKEN_Q},
-};
+// #[cfg(test)]
+// use sl_oblivious::{
+//     soft_spoken::{ReceiverOTSeed, SenderOTSeed},
+//     soft_spoken_mod::{KAPPA_DIV_SOFT_SPOKEN_K, SOFT_SPOKEN_Q},
+// };
 
 use crate::{
     setup::keygen::{SetupBuilder, ValidatedSetup},
@@ -153,7 +149,7 @@ pub async fn gen_keyshares(t: u8, n: u8, n_i_list: Option<&[u8]>) -> Vec<Keyshar
 
     let mut parties = tokio::task::JoinSet::new();
     for (setup, seed) in setup_keygen(t, n, n_i_list).into_iter() {
-        parties.spawn( {
+        parties.spawn({
             let relay = coord.connect();
             crate::keygen::run(setup, seed, relay)
         });
