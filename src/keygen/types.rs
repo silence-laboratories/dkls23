@@ -32,6 +32,10 @@ pub enum KeygenError {
     /// Invalid Polynomial Point
     InvalidPolynomialPoint,
 
+    #[error("Invalid key refresh")]
+    /// Invalid key refresh
+    InvalidKeyRefresh,
+
     /// Not unique x_i values
     #[error("Not unique x_i values")]
     NotUniqueXiValues,

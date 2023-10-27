@@ -8,6 +8,9 @@ pub use dkg::*;
 pub use types::*;
 pub use utils::*;
 
+/// Key refresh protocol
+pub mod key_refresh;
+
 /// Keygen protocol messages
 pub mod messages;
 

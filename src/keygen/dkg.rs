@@ -209,7 +209,7 @@ where
     Ok((pk, handle))
 }
 
-async fn run_inner<R, F>(
+pub(crate) async fn run_inner<R, F>(
     setup: ValidatedSetup,
     seed: Seed,
     recv_pk: F,
