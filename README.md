@@ -44,6 +44,9 @@ This is the core crate, and handles the cryptographic heavy lifting. The main fu
 // Distributed Key Generation
 dkls23::keygen::dkg::run()
 
+// Key Refresh
+dkls23::keygen::key_refresh::run()
+
 // Distributed Signature Generation
 dkls23::sign::dsg::run()
 
