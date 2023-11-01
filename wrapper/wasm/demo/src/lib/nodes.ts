@@ -44,7 +44,7 @@ export function createKeygenSetupOpts(cluster, threshold, ttl = 10) {
         threshold,
         ttl,
         parties: cluster.nodes.map((n) => {
-            return { rank: 0, public_key: n.publicKey }
+            return { rank: 0, publicKey: n.publicKey }
         })
     };
 }

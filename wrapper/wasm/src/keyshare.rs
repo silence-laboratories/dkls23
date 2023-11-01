@@ -1,10 +1,17 @@
-use js_sys::Uint8Array;
 use wasm_bindgen::prelude::*;
+
+use js_sys::Uint8Array;
 
 use k256::elliptic_curve::group::GroupEncoding;
 
 use dkls23::keygen;
 use sl_mpc_mate::bincode;
+
+#[wasm_bindgen(module = "/js/keyshare-cast.js")]
+extern "C" {
+    #[wasm_bindgen(js_name = keyshareCast)]
+    pub fn keyshareCast(value: JsValue) -> Keyshare;
+}
 
 #[wasm_bindgen]
 pub struct Keyshare {
@@ -14,6 +21,14 @@ pub struct Keyshare {
 impl Keyshare {
     pub fn new(share: keygen::Keyshare) -> Self {
         Self { share }
+    }
+
+    pub fn into_inner(self) -> keygen::Keyshare {
+        self.share
+    }
+
+    pub fn clone_inner(&self) -> keygen::Keyshare {
+        self.share.clone()
     }
 }
 

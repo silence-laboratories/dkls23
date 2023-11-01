@@ -1,4 +1,4 @@
-import initDkls, { join_dkg, init_dkg, dsg, genInstanceId, msg_relay_connect } from './pkg/dkls_wasm.js';
+import initDkls, { msg_relay_connect } from './pkg/dkls_wasm.js';
 
 export const test = (name, f) => {
     Deno.test(name, async (t) => {
@@ -7,4 +7,4 @@ export const test = (name, f) => {
     });
 };
 
-export { init_dkg, join_dkg, dsg, genInstanceId, msg_relay_connect };
+export { msg_relay_connect };

@@ -12,10 +12,10 @@ use rand_chacha::ChaCha20Rng;
 use sha2::Sha256;
 use std::collections::HashSet;
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "milti-thread")]
 use tokio::task::{block_in_place, JoinHandle};
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(not(feature = "milti-thread"))]
 fn block_in_place<F, R>(f: F) -> R
 where
     F: FnOnce() -> R,
@@ -41,6 +41,7 @@ use sl_mpc_mate::{
 use crate::{
     keygen::{check_secret_recovery, constants::*, messages::*, KeygenError},
     setup::{keygen::ValidatedSetup, PartyInfo, ABORT_MESSAGE_TAG},
+    proto::create_abort_message
 };
 
 /// Seed for our RNG
@@ -159,7 +160,7 @@ fn decode_encrypted_message<T: bincode::Decode>(
 }
 
 fn check_abort_message(tags: &[(MsgId, u8)], msg: &[u8]) -> Result<(), KeygenError> {
-    let hdr = MsgHdr::from(msg).ok_or_else(|| KeygenError::InvalidMessage)?;
+    let hdr = MsgHdr::from(msg).ok_or(KeygenError::InvalidMessage)?;
 
     let p = tags.iter().find(|(id, _)| *id == hdr.id).map(|(_, v)| v);
 
@@ -181,12 +182,7 @@ where
     // just some x_i value not used for key generation
     let x_i = NonZeroScalar::new(Scalar::ONE).unwrap();
 
-    let abort_msg = Builder::<Signed>::encode(
-        &setup.msg_id(None, ABORT_MESSAGE_TAG),
-        setup.ttl(),
-        setup.signing_key(),
-        &(), // emoty message
-    )?;
+    let abort_msg = create_abort_message(setup.instance(), setup.ttl(), setup.signing_key());
 
     match run_inner(setup, seed, |_| {}, &mut relay, x_i, false).await {
         Ok(share) => Ok(share),
@@ -200,7 +196,7 @@ where
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "milti-thread")]
 /// A version of DKG that returns a public key as soon as possbile and
 /// continues execution of the rest of the protocol in background.
 ///

@@ -13,10 +13,11 @@ pub mod sign;
 /// Setup message creation/parsing
 pub mod setup;
 
+/// Misc protocol helper functions.
+pub mod proto;
+
 /// Utilities
 pub mod utils {
-    // use std::task::{Context, Poll};
-
     use k256::ecdsa::{signature::hazmat::PrehashVerifier, Signature, VerifyingKey};
 
     /// Parse the raw signature (r, s) into a Signature object.

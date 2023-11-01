@@ -134,7 +134,7 @@ pub async fn run_keygen(opts: flags::KeyGen) -> anyhow::Result<()> {
                 &instance,
                 &setup_vk,
                 sk,
-                |_, _, _| true,
+                |_, _| true,
             )
             .ok_or(anyhow::Error::msg("cant parse setup message"))?;
 

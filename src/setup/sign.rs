@@ -15,7 +15,7 @@ use sl_mpc_mate::{message::*, HashBytes};
 
 use crate::{
     keygen::Keyshare,
-    setup::{HashAlgo, Magic},
+    setup::{HashAlgo, Magic, SETUP_MESSAGE_TAG},
 };
 
 use derivation_path::DerivationPath;
@@ -164,6 +164,51 @@ impl Setup {
     pub fn chain_path(&self) -> &DerivationPath {
         &self.chain_path
     }
+
+    /// Find an index of a party with a given verifying key
+    pub fn find_party_idx(&self, vk: &VerifyingKey) -> Option<usize> {
+        self.parties.iter().position(|pk| pk == vk)
+    }
+}
+
+/// A decoded setup message with corresponding instance ID
+pub struct DecodedSetup {
+    setup: Setup,
+    instance: InstanceId,
+    hdr: MsgHdr,
+}
+
+impl std::ops::Deref for DecodedSetup {
+    type Target = Setup;
+
+    fn deref(&self) -> &Self::Target {
+        &self.setup
+    }
+}
+
+impl DecodedSetup {
+    /// Decode setup message
+    pub fn decode(
+        instance: InstanceId,
+        message_buffer: &mut [u8],
+        verify_key: &VerifyingKey,
+    ) -> Option<Self> {
+        let hdr = MsgHdr::from(message_buffer)?;
+
+        if hdr.id != MsgId::broadcast(&instance, verify_key.as_bytes(), SETUP_MESSAGE_TAG) {
+            return None;
+        }
+
+        let msg = Message::from_buffer(message_buffer).ok()?;
+
+        let setup: Setup = msg.verify_and_decode(verify_key).ok()?;
+
+        Some(Self {
+            setup,
+            hdr,
+            instance,
+        })
+    }
 }
 
 ///
@@ -255,6 +300,30 @@ impl ValidatedSetup {
         MsgId::new(self.instance(), sender_vk.as_bytes(), receiver_vk, tag)
     }
 
+    /// Validate decoded setup message
+    pub fn validate_decoded_setup(
+        setup: DecodedSetup,
+        signing_key: SigningKey,
+        keyshare: Keyshare,
+    ) -> Option<ValidatedSetup> {
+        let DecodedSetup {
+            setup,
+            hdr,
+            instance,
+        } = setup;
+
+        let party_idx = setup.find_party_idx(&signing_key.verifying_key())?;
+
+        Some(ValidatedSetup {
+            setup,
+            instance,
+            signing_key,
+            keyshare,
+            party_idx,
+            ttl: hdr.ttl,
+        })
+    }
+
     ///
     pub fn decode<F>(
         message_buffer: &mut [u8],
@@ -264,31 +333,13 @@ impl ValidatedSetup {
         user_validator: F,
     ) -> Option<ValidatedSetup>
     where
-        F: FnOnce(&Setup, &Message) -> Option<Keyshare>,
+        F: FnOnce(&Setup) -> Option<Keyshare>,
     {
-        let hdr = MsgHdr::from(message_buffer)?;
+        let decoded = DecodedSetup::decode(*instance, message_buffer, verify_key)?;
 
-        let setup_msg = Message::from_buffer(message_buffer).ok()?;
+        let keyshare = user_validator(&decoded.setup)?;
 
-        let reader = setup_msg.verify(verify_key).ok()?;
-
-        let setup: Setup = MessageReader::decode(reader).ok()?;
-
-        let vk = signing_key.verifying_key();
-
-        // one of PK is our own
-        let party_idx = setup.parties.iter().position(|pk| &vk == pk)?;
-
-        let keyshare = user_validator(&setup, &setup_msg)?;
-
-        Some(ValidatedSetup {
-            setup,
-            instance: *instance,
-            signing_key,
-            keyshare,
-            party_idx,
-            ttl: hdr.ttl,
-        })
+        Self::validate_decoded_setup(decoded, signing_key, keyshare)
     }
 
     /// Signing key for this Setup

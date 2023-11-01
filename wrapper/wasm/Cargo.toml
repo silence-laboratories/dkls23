@@ -12,11 +12,11 @@ default = ["console_error_panic_hook"]
 
 [dependencies]
 getrandom = { version = "0.2", features = ["js"] }
-wasm-bindgen = "0.2.87"
-wasm-bindgen-futures = "0.4.37"
+wasm-bindgen = "0.2.88"
+wasm-bindgen-futures = "0.4"
 serde-wasm-bindgen = "0.6.0"
 js-sys = "0.3"
-dkls23 = { path = "../.." }
+dkls23 = { path = "../..", default-features = false }
 sl-mpc-mate = { workspace = true }
 k256 = { workspace = true }
 rand = { workspace = true }
@@ -24,7 +24,7 @@ hex = "0.4"
 serde = "1.0"
 serde_bytes = "0.11"
 derivation-path = { workspace = true }
-
+tracing.workspace = true
 tracing-wasm = "0.2"
 
 # The `console_error_panic_hook` crate provides better debugging of panics by

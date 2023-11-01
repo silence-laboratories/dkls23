@@ -6,49 +6,10 @@ services:
     command: |
       /usr/local/bin/msg-relay-svc
         --listen 0.0.0.0:8080
-    environment: &relay-env
+    environment:
       RUST_LOG: info
-    expose:
-      - 8080
     ports:
       - 8080:8080
-
-
-  p-1-coord:
-    image: dkls-party
-    command: |
-      /usr/local/bin/msg-relay-svc
-        --listen 0.0.0.0:8080
-        --peer ws://setup-coord:8080/v1/msg-relay
-        --peer ws://p-2-coord:8080/v1/msg-relay
-        --peer ws://p-3-coord:8080/v1/msg-relay
-    environment: *relay-env
-    expose:
-      - 8080
-
-  p-2-coord:
-    image: dkls-party
-    command: |
-      /usr/local/bin/msg-relay-svc
-        --listen 0.0.0.0:8080
-        --peer ws://setup-coord:8080/v1/msg-relay
-        --peer ws://p-1-coord:8080/v1/msg-relay
-        --peer ws://p-3-coord:8080/v1/msg-relay
-    environment: *relay-env
-    expose:
-      - 8080
-
-  p-3-coord:
-    image: dkls-party
-    command: |
-      /usr/local/bin/msg-relay-svc
-        --listen 0.0.0.0:8080
-        --peer ws://setup-coord:8080/v1/msg-relay
-        --peer ws://p-1-coord:8080/v1/msg-relay
-        --peer ws://p-2-coord:8080/v1/msg-relay
-    environment: *relay-env
-    expose:
-      - 8080
 
   p-1-1:
     image: dkls-party
@@ -57,11 +18,9 @@ services:
         --storage /data
         --party-key /run/secrets/party-1-sk
         --setup-vk-file /run/secrets/setup-vk
-        --coordinator ws://p-1-coord:8080/v1/msg-relay
-    environment: &node-env
+        --coordinator ws://setup-coord:8080/v1/msg-relay
+    environment:
       RUST_LOG: info
-      RAYON_NUM_THREADS: 3
-      TOKIO_WORKER_THREADS: 1
     ports:
       - 8081:8080
     volumes:
@@ -77,8 +36,9 @@ services:
         --storage /data
         --party-key /run/secrets/party-2-sk
         --setup-vk-file /run/secrets/setup-vk
-        --coordinator ws://p-2-coord:8080/v1/msg-relay
-    environment: *node-env
+        --coordinator ws://setup-coord:8080/v1/msg-relay
+    environment:
+      RUST_LOG: info
     ports:
       - 8082:8080
     volumes:
@@ -94,8 +54,9 @@ services:
         --storage /data
         --party-key /run/secrets/party-3-sk
         --setup-vk-file /run/secrets/setup-vk
-        --coordinator ws://p-3-coord:8080/v1/msg-relay
-    environment: *node-env
+        --coordinator ws://setup-coord:8080/v1/msg-relay
+    environment:
+      RUST_LOG: info
     ports:
       - 8083:8080
     volumes:

@@ -1,5 +1,9 @@
-<details open>
-    <summary><strong> Introduction </strong></summary>
+<script lang="ts">
+ import { goto } from '$app/navigation'
+</script>
+
+<section>
+    <h6>Introduction</h6>
 
     <p>
         This page is a simple demo of the DKLs23-rs library. It allows
@@ -15,10 +19,10 @@
         relay service.
     </p>
 
-    <p>
-        The following sections will guide you through several
-        examples. You could execute them and get some time metrics.
-    </p>
+    <!-- <p>
+         The following sections will guide you through several
+         examples. You could execute them and get some time metrics.
+         </p> -->
 
     <p>
         The typical scheme of all protocols: prepare a "setup message"
@@ -26,4 +30,4 @@
         service and then trigger execution of a protocol by making a
         special request to all network nodes.
     </p>
-</details>
+</section>

@@ -11,7 +11,7 @@ use bincode::{
 
 use sl_mpc_mate::message::*;
 
-use crate::setup::{Magic, PartyInfo};
+use crate::setup::{Magic, PartyInfo, SETUP_MESSAGE_TAG};
 
 /// Distributed key generation setup message.
 ///
@@ -26,7 +26,7 @@ use crate::setup::{Magic, PartyInfo};
 /// A reference to this structure will be passed
 /// to a user supplied validation closure.
 ///
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Setup {
     t: u8,
     parties: Vec<(u8, VerifyingKey)>,
@@ -100,9 +100,8 @@ impl Decode for Setup {
         for i in 0..n as usize - 1 {
             let (_, ki) = &parties[i];
 
-            for (_, kj) in &parties[i+1..] {
+            for (_, kj) in &parties[i + 1..] {
                 if ki == kj {
-                    // panic!("ttt {}", i);
                     return Err(DecodeError::Other("PK dup"));
                 }
             }
@@ -113,24 +112,75 @@ impl Decode for Setup {
 }
 
 impl Setup {
-    /// Returns totoal number of participants
+    /// Returns total number of participants
     pub fn participants(&self) -> u8 {
         self.parties.len() as u8
     }
 
-    ///
+    /// Returns number of participants required to generate a signature.
     pub fn threshold(&self) -> u8 {
         self.t
     }
 
-    ///
+    /// Returns a rank of a party.
     pub fn party_rank(&self, party: u8) -> Option<u8> {
         self.parties.get(party as usize).map(|(rank, _)| *rank)
     }
 
-    ///
+    /// Get verifying key of a party with a given index
     pub fn party_verifying_key(&self, party: u8) -> Option<&VerifyingKey> {
         self.parties.get(party as usize).map(|(_, pk)| pk)
+    }
+
+    /// Find an index of a party with a given verifying key
+    pub fn find_party_id(&self, vk: &VerifyingKey) -> Option<u8> {
+        Some(self.parties.iter().position(|(_, pk)| pk == vk)? as u8)
+    }
+}
+
+/// A decoded setup message with corresponding instance ID and message header
+#[derive(Debug)]
+pub struct DecodedSetup {
+    setup: Setup,
+    hdr: MsgHdr,
+    instance: InstanceId,
+}
+
+impl std::ops::Deref for DecodedSetup {
+    type Target = Setup;
+
+    fn deref(&self) -> &Self::Target {
+        &self.setup
+    }
+}
+
+impl DecodedSetup {
+    /// Decode setup message
+    pub fn decode(
+        instance: InstanceId,
+        message_buffer: &mut [u8],
+        verify_key: &VerifyingKey,
+    ) -> Option<Self> {
+        let hdr = MsgHdr::from(message_buffer)?;
+
+        if hdr.id != MsgId::broadcast(&instance, verify_key.as_bytes(), SETUP_MESSAGE_TAG) {
+            return None;
+        }
+
+        let msg = Message::from_buffer(message_buffer).ok()?;
+
+        let setup: Setup = msg.verify_and_decode(verify_key).ok()?;
+
+        Some(Self {
+            setup,
+            hdr,
+            instance,
+        })
+    }
+
+    ///
+    pub fn setup(&self) -> &Setup {
+        &self.setup
     }
 }
 
@@ -230,6 +280,28 @@ impl ValidatedSetup {
         MsgId::new(self.instance(), sender_vk.as_bytes(), receiver_vk, tag)
     }
 
+    /// Validate decoded setup message
+    pub fn validate_decoded_setup(
+        setup: DecodedSetup,
+        signing_key: SigningKey,
+    ) -> Option<ValidatedSetup> {
+        let DecodedSetup {
+            setup,
+            hdr,
+            instance,
+        } = setup;
+
+        let party_id = setup.find_party_id(&signing_key.verifying_key())?;
+
+        Some(ValidatedSetup {
+            setup,
+            instance,
+            signing_key,
+            party_id,
+            ttl: hdr.ttl,
+        })
+    }
+
     ///
     /// Decode and validate a raw setup message.
     ///
@@ -247,31 +319,17 @@ impl ValidatedSetup {
         user_validator: F,
     ) -> Option<ValidatedSetup>
     where
-        F: FnOnce(&Setup, u8, &Message) -> bool,
+        F: FnOnce(&Setup, u8) -> bool,
     {
-        let hdr = MsgHdr::from(message_buffer)?;
+        let decoded = DecodedSetup::decode(*instance, message_buffer, verify_key)?;
 
-        let setup_msg = Message::from_buffer(message_buffer).ok()?;
+        let party_id = decoded.setup.find_party_id(&signing_key.verifying_key())?;
 
-        let reader = setup_msg.verify(verify_key).ok()?;
-
-        let setup: Setup = MessageReader::decode(reader).ok()?;
-
-        let vk = signing_key.verifying_key();
-
-        let party_id = setup.parties.iter().position(|(_, pk)| pk == &vk)? as u8;
-
-        if !user_validator(&setup, party_id, &setup_msg) {
+        if !user_validator(&decoded.setup, party_id) {
             return None;
         }
 
-        Some(ValidatedSetup {
-            setup,
-            instance: *instance,
-            signing_key,
-            party_id,
-            ttl: hdr.ttl,
-        })
+        Self::validate_decoded_setup(decoded, signing_key)
     }
 }
 
@@ -323,7 +381,6 @@ mod tests {
     use std::array;
 
     use super::*;
-    use crate::setup::SETUP_MESSAGE_TAG;
 
     #[test]
     fn keygen() {
@@ -350,9 +407,9 @@ mod tests {
             &inst,
             &setup_signing_key.verifying_key(),
             sk[0].clone(),
-            |setup, part_id, msg| {
-                msg.verify(&setup_signing_key.verifying_key()).is_ok()
-                    && setup.participants() == 3
+            |setup, part_id| {
+                //                msg.verify(&setup_signing_key.verifying_key()).is_ok()
+                setup.participants() == 3
                     && setup.threshold() == 2
                     && part_id == 0
                     && setup.party_verifying_key(part_id) == Some(&sk[0].verifying_key())

@@ -19,10 +19,11 @@
  import {
      init_dkg,
      join_dkg,
-     dsg,
+     join_dsg,
      genInstanceId,
      verifyingKey,
-     msg_relay_connect
+     msg_relay_connect,
+     createAbortMessage
  } from 'dkls-wasm';
 
  let generatedPublicKey = null;
@@ -30,7 +31,7 @@
  let generatingKeys = false;
  let threshold = 2;
  let partiesNumber = 3;
- let joinPartyId = 0;
+ let joinPartyId = 1;
  let joinInstanceId = null;
 
 
@@ -53,138 +54,55 @@
  let signStats = null;
  let signTimes = {};
 
- const handleGenKeys = async () => {
-     let startTime = Date.now();
-     generatingKeys = true;
-
-     let cluster = await configs();
-
-     cluster = cluster[1]; // TODO provide UI to select a cluster
-
-     let { setup, instance } = await createKeygenSetup(cluster, threshold);
-
-     let setupGen = Date.now();
-
-     console.log('DKG setup gen', setupGen - startTime);
-
-     let abort = new AbortController();
-
-     let ws = await msg_relay_connect(wsUrl(cluster.setup.relay), abort.signal);
-
-     let relayConnTime = Date.now();
-
-     ws.send(setup);
-     ws.close();
-
-     let genStart = Date.now();
-
-     let resp = await Promise.all(cluster.nodes.map((n) => startDkg(n.endpoint, instance)));
-
-     let genEnd = Date.now();
-
-     keygenStats = resp;
-     keygenTimes = {
-         totalTime: genEnd - startTime,
-         setupGenTime: setupGen - startTime,
-         relayConnTime: relayConnTime - setupGen
-     };
-
-     console.log('conn time', relayConnTime - setupGen);
-
-     console.log('resp[0]', resp[0]);
-
-     generatedPublicKey = resp[0].public_key;
-
-     generatingKeys = false;
- };
-
- const handleSignGen = async () => {
-     let startTime = Date.now();
-     generatingSign = true;
-
-     let cluster = await configs();
-
-     cluster = cluster[1]; // TODO provide UI to select a cluster
-
-     let { setup, instance } = await createSignSetup(
-         cluster,
-         decodeBase64(keygenStats[0].public_key),
-         new TextEncoder().encode(signMessage),
-         threshold
-     );
-
-     let setupGen = Date.now();
-
-     console.log('DKG setup gen', setupGen - startTime, setup);
-
-     let abort = new AbortController();
-
-     let ws = await msg_relay_connect(wsUrl(cluster.setup.relay), abort.signal);
-
-     let relayConnTime = Date.now();
-
-     ws.send(setup);
-
-     let genStart = Date.now();
-
-     let resp = await Promise.all(cluster.nodes.slice(0, threshold).map((n) => startDsg(n.endpoint, instance)));
-
-     let genEnd = Date.now();
-
-     signStats = resp;
-     signTimes = {
-         totalTime: genEnd - startTime,
-         relayConnTime: genStart - startTime
-     };
-
-     generatingSign = false;
- };
 
 
  const handleGenKeysWeb = async () => {
      let startTime = Date.now();
+
      generatingKeys = true;
 
      let cluster = await configs();
 
      cluster = cluster[1]; // TODO provide UI to select a cluster
 
-     let opts = await createKeygenSetupOpts(cluster, threshold);
+     try {
+         let opts = await createKeygenSetupOpts(cluster, threshold);
 
-     let setupGen = Date.now();
+         let setupGen = Date.now();
 
-     console.log('DKG setup gen', setupGen - startTime);
+         console.log('DKG setup gen', setupGen - startTime);
 
-     let msgRelayUrl = wsUrl(cluster.setup.relay);
+         let msgRelayUrl = wsUrl(cluster.setup.relay);
 
-     let genStart = Date.now();
+         let genStart = Date.now();
 
-     let web_party = init_dkg(
-         opts,
-         encodeHex(cluster.nodes[0].secretKey),
-         msgRelayUrl,
-         encodeHex(genInstanceId()) // seed
-     );
+         let web_party = init_dkg(
+             opts,
+             encodeHex(cluster.nodes[0].secretKey),
+             msgRelayUrl,
+             encodeHex(genInstanceId()) // seed
+         );
 
-     let resp = await Promise.all([
-         web_party,
-         ...cluster.nodes.slice(1).map((n) => startDkg(n.endpoint, opts.instance))
-     ]);
+         let resp = await Promise.all([
+             web_party,
+             ...cluster.nodes.slice(1).map((n) => startDkg(n.endpoint, opts.instance))
+         ]);
 
-     let genEnd = Date.now();
+         let genEnd = Date.now();
 
-     console.log('resp', resp);
+         console.log('resp', resp);
 
-     console.log('pk', resp[0].publicKey(), encodeBase64(resp[0].publicKey()));
+         console.log('pk', resp[0].publicKey(), encodeBase64(resp[0].publicKey()));
 
-     keygenWebStats = resp;
+         keygenWebStats = resp;
 
-     keygenWebTimes = {
-         totalTime: genEnd - startTime,
-         setupGenTime: setupGen - startTime,
-     };
-
-     generatingKeys = false;
+         keygenWebTimes = {
+             totalTime: genEnd - startTime,
+             setupGenTime: setupGen - startTime,
+         };
+     } finally {
+         generatingKeys = false;
+     }
  };
 
 
@@ -214,6 +132,8 @@
      );
 
      currentInstanceId = opts.instance;
+
+     await navigator.clipboard.writeText(encodeHex(currentInstanceId));
 
      let share = await web_party;
 
@@ -257,81 +177,31 @@
      generatingKeys = false;
  };
 
+ const handleKeygenAbort = async () => {
+     console.log('abort keygen');
+
+     let cluster = await configs();
+
+     cluster = cluster[1]; // TODO provide UI to select a cluster
+
+     let abort_msg = createAbortMessage(
+         joinInstanceId,
+         10000,
+         encodeHex(cluster.nodes[+joinPartyId].secretKey)
+     );
+
+     let abort = new AbortController();
+     let ws = await msg_relay_connect(wsUrl(cluster.setup.relay), abort.signal);
+
+     let relayConnTime = Date.now();
+
+     ws.send(abort_msg);
+     ws.close();
+
+ };
 </script>
 
 <Intro />
-
-
-<details>
-    <summary><strong>Key generation with "all cloud nodes" network</strong></summary>
-
-    <p>
-        The web application authorizes cloud nodes to generate a
-        distributed key in this variant. All computations performed by
-        cloud nodes and resulting shares of a generated key are stored
-        in the cloud.
-    </p>
-
-    <div class="grid">
-        <input
-            type="text"
-            name="threshold"
-            placeholder="Threshold"
-            aria-invalid={validThreshold ? "false" : "true"}
-            bind:value={threshold}
-        />
-        <input
-            type="text"
-            name="participants"
-            placeholder="Number of parties"
-            aria-invalid={!validPartiesNum}
-            bind:value={partiesNumber}
-        />
-        <button
-            aria-busy={generatingKeys}
-            on:click={handleGenKeys}
-            disabled={!validPartiesNum || !validThreshold}
-        >
-            Generate key
-        </button>
-    </div>
-
-    <SummaryTimes {... keygenTimes} />
-    <TimeMetrics stats={keygenStats} showLegend="true" />
-
-</details>
-
-<details>
-    <summary><strong>Signature generation</strong></summary>
-
-    <p>
-        Prepare a signature description message, publish it via the
-        message relay service, and trigger a signature generation by
-        network nodes.
-    </p>
-
-    <p>
-        We could generate more than one signature in a row to get more
-        realistic metrics of execution time. <b> TODO </b>
-    </p>
-
-    <div class="grid">
-        <input
-            type="text"
-            placeholder="Enter messaege to sign"
-            bind:value={signMessage}
-        />
-        <input type="number" bind:value={signNum} placeholder="N" />
-
-        <button aria-busy={generatingSign} on:click={handleSignGen}>
-            Generate signature
-        </button>
-    </div>
-
-    <SummaryTimes {... signTimes} />
-    <TimeMetrics stats={signStats} />
-
-</details>
 
 <details>
     <summary>
@@ -407,7 +277,7 @@
             on:click={handleInitGenKeyAllWeb}
             disabled={!validPartiesNum || !validThreshold}
         >
-            Generate key
+            Init key generation
         </button>
     </div>
 
@@ -449,7 +319,9 @@
             placeholder="Instance ID"
             bind:value={joinInstanceId}
         />
+    </div>
 
+    <div class="grid">
         <input
             type="text"
             name="joinPartyId"
@@ -463,6 +335,13 @@
             on:click={handleJoinGenKeyAllWeb}
         >
             Join
+        </button>
+
+        <button
+            aria-busy={generatingKeys}
+            on:click={handleKeygenAbort}
+        >
+            Abort
         </button>
     </div>
 

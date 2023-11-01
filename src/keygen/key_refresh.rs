@@ -1,28 +1,17 @@
-use digest::{generic_array::GenericArray, Digest};
-use k256::{
-    elliptic_curve::{group::GroupEncoding, subtle::ConstantTimeEq, PrimeField},
-    FieldBytes, NonZeroScalar, ProjectivePoint, Scalar, Secp256k1,
-};
-use merlin::Transcript;
-use rand::prelude::*;
-use rand_chacha::ChaCha20Rng;
-use rayon::prelude::*;
-use sha2::Sha256;
-use std::collections::HashSet;
+//
 
-use sl_mpc_mate::{
-    coord::*,
-    message::*
-};
+use k256::{NonZeroScalar, ProjectivePoint, Scalar};
+use rand::prelude::*;
+
+use sl_mpc_mate::{coord::*, message::*};
 
 use crate::{
-    keygen::{Seed, check_secret_recovery, Keyshare, KeygenError, run_inner},
-    setup::{keygen::ValidatedSetup, keygen::SetupBuilder, PartyInfo, SETUP_MESSAGE_TAG, Magic},
+    keygen::{check_secret_recovery, run_inner, KeygenError, Keyshare, Seed},
+    setup::{keygen::SetupBuilder, keygen::ValidatedSetup, PartyInfo, SETUP_MESSAGE_TAG},
 };
 
-
 /// Keyshare for refresh of a party.
-#[allow(unused)]
+// #[allow(unused)]
 #[derive(Clone, bincode::Encode, bincode::Decode)]
 pub struct KeyshareForRefresh {
     /// A marker
@@ -49,12 +38,12 @@ impl KeyshareForRefresh {
     /// Create KeyshareForRefresh struct from Keyshare
     pub fn from_keyshare(keyshare: &Keyshare) -> Self {
         Self {
-            magic: keyshare.magic.clone(),
+            magic: keyshare.magic,
             rank_list: keyshare.rank_list.clone(),
-            threshold: keyshare.threshold.clone(),
-            public_key: keyshare.public_key.clone(),
-            root_chain_code: keyshare.root_chain_code.clone(),
-            s_i: keyshare.s_i.clone(),
+            threshold: keyshare.threshold,
+            public_key: keyshare.public_key,
+            root_chain_code: keyshare.root_chain_code,
+            s_i: keyshare.s_i,
             big_s_list: keyshare.big_s_list.clone(),
             x_i_list: keyshare.x_i_list.clone(),
         }
@@ -63,30 +52,28 @@ impl KeyshareForRefresh {
 
 /// Execute Key Refresh protocol.
 pub async fn run<R>(
-    setup: ValidatedSetup, 
-    seed: Seed, 
-    relay: R,
-    old_keyshare: KeyshareForRefresh
+    setup: ValidatedSetup,
+    seed: Seed,
+    mut relay: R,
+    old_keyshare: KeyshareForRefresh,
 ) -> Result<Keyshare, KeygenError>
 where
     R: Relay,
 {
     let x_i = &old_keyshare.x_i_list[setup.party_id() as usize] as &NonZeroScalar;
-    let result: Result<Keyshare, KeygenError> = run_inner(
-        setup, seed, |_| {}, relay, *x_i, true
-    ).await;
-    let mut new_keyshare = match result{
+    let result: Result<Keyshare, KeygenError> =
+        run_inner(setup, seed, |_| {}, &mut relay, *x_i, true).await;
+    let mut new_keyshare = match result {
         Ok(eph_keyshare) => eph_keyshare,
-        Err(err_message) => {return Err(err_message)}
+        Err(err_message) => return Err(err_message),
     };
-    
+
     // checks for new_keyshare
     let cond1 = (new_keyshare.rank_list == old_keyshare.rank_list)
-            && (new_keyshare.threshold == old_keyshare.threshold)
-            && (new_keyshare.big_s_list.len() == old_keyshare.big_s_list.len())
-            && (new_keyshare.x_i_list.len() == old_keyshare.x_i_list.len());
-    cond1.then_some(())
-        .ok_or(KeygenError::InvalidKeyRefresh)?;
+        && (new_keyshare.threshold == old_keyshare.threshold)
+        && (new_keyshare.big_s_list.len() == old_keyshare.big_s_list.len())
+        && (new_keyshare.x_i_list.len() == old_keyshare.x_i_list.len());
+    cond1.then_some(()).ok_or(KeygenError::InvalidKeyRefresh)?;
 
     let mut cond2 = true;
     for i in 0..new_keyshare.x_i_list.len() {
@@ -96,8 +83,7 @@ where
             cond2 = false;
         }
     }
-    cond2.then_some(())
-    .ok_or(KeygenError::InvalidKeyRefresh)?;
+    cond2.then_some(()).ok_or(KeygenError::InvalidKeyRefresh)?;
 
     // update existed keyshare with ephemeral keyshare
     new_keyshare.public_key = old_keyshare.public_key;
@@ -105,7 +91,8 @@ where
     new_keyshare.s_i = Opaque::from(&new_keyshare.s_i as &Scalar + &old_keyshare.s_i as &Scalar);
     let mut new_big_s_list: Vec<ProjectivePoint> = vec![];
     for i in 0..old_keyshare.big_s_list.len() {
-        let point = &new_keyshare.big_s_list[i] as &ProjectivePoint + &old_keyshare.big_s_list[i] as &ProjectivePoint;
+        let point = &new_keyshare.big_s_list[i] as &ProjectivePoint
+            + &old_keyshare.big_s_list[i] as &ProjectivePoint;
         new_big_s_list.push(point)
     }
 
@@ -118,19 +105,21 @@ where
         &new_keyshare.public_key as &ProjectivePoint,
     )?;
 
-    new_keyshare.big_s_list = new_big_s_list.into_iter().map(|v| Opaque::from(v)).collect();
- 
+    new_keyshare.big_s_list = new_big_s_list
+        .into_iter()
+        .map(Opaque::from)
+        .collect();
+
     Ok(new_keyshare)
 }
 
 /// Generate ValidatedSetup and seed for Key refresh
 pub fn setup_key_refresh(
-    t: u8, 
-    n: u8, 
+    t: u8,
+    n: u8,
     n_i_list: Option<&[u8]>,
     shares: &[Keyshare],
 ) -> Vec<(ValidatedSetup, [u8; 32], KeyshareForRefresh)> {
-    
     let n_i_list = if let Some(n_i_list) = n_i_list {
         assert_eq!(n_i_list.len(), n as usize);
         n_i_list.into()
@@ -169,35 +158,33 @@ pub fn setup_key_refresh(
 
     let mut result = vec![];
     for (party_sk, share) in party_sk.iter().zip(shares.iter()) {
-        result.push((ValidatedSetup::decode(
-            &mut setup, &instance, &setup_vk, party_sk.clone(), |_, _, _| true
-        ).unwrap(), rng.gen(), KeyshareForRefresh::from_keyshare(share)));
+        result.push((
+            ValidatedSetup::decode(
+                &mut setup,
+                &instance,
+                &setup_vk,
+                party_sk.clone(),
+                |_, _| true,
+            )
+            .unwrap(),
+            rng.gen(),
+            KeyshareForRefresh::from_keyshare(share),
+        ));
     }
-    result    
+    result
 }
-
 
 #[cfg(test)]
 mod tests {
+    use k256::elliptic_curve::group::GroupEncoding;
+
     use super::*;
-    use std::array;
 
     use tokio::task::JoinSet;
 
-    use sl_mpc_mate::coord::SimpleMessageRelay;
+    use crate::keygen::gen_keyshares;
 
-    use crate::setup::{keygen::*, SETUP_MESSAGE_TAG};
-
-    use crate::keygen::{
-        gen_keyshares,
-        utils::setup_keygen,
-        dkg::run as run_dkg,
-    };
-
-    use crate::sign::{
-        run as run_dsg,
-        setup_dsg,
-    };
+    use crate::sign::{run as run_dsg, setup_dsg};
 
     // (flavor = "multi_thread")
     #[tokio::test(flavor = "multi_thread")]
@@ -207,7 +194,9 @@ mod tests {
         let coord = SimpleMessageRelay::new();
 
         let mut parties = JoinSet::new();
-        for (setup, seed, share) in setup_key_refresh(2, 3, Some(&[0, 1, 1]), &old_shares).into_iter() {
+        for (setup, seed, share) in
+            setup_key_refresh(2, 3, Some(&[0, 1, 1]), &old_shares).into_iter()
+        {
             parties.spawn(run(setup, seed, coord.connect(), share));
         }
 
@@ -234,11 +223,11 @@ mod tests {
                     .collect::<Vec<_>>()
                     .join(".")
             );
-        } 
+        }
 
         // sign with new_keyshare
         let coord = SimpleMessageRelay::new();
-        
+
         new_shares.sort_by_key(|share| share.party_id);
         let subset = &new_shares[0..2 as usize];
 
@@ -258,7 +247,5 @@ mod tests {
             }
             let _fini = fini.unwrap();
         }
-
     }
 }
-

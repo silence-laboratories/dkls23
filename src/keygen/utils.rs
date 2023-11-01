@@ -14,7 +14,10 @@ use crate::{
     setup::SETUP_MESSAGE_TAG,
 };
 
-use super::{messages::Keyshare, KeygenError};
+#[cfg(feature = "multi-thread")]
+use super::messages::Keyshare;
+
+use super::KeygenError;
 
 /// Get the index of the message for the given party id.
 ///
@@ -136,14 +139,14 @@ pub fn setup_keygen(t: u8, n: u8, n_i_list: Option<&[u8]>) -> Vec<(ValidatedSetu
     party_sk
         .into_iter()
         .map(|party_sk| {
-            ValidatedSetup::decode(&mut setup, &instance, &setup_vk, party_sk, |_, _, _| true)
-                .unwrap()
+            ValidatedSetup::decode(&mut setup, &instance, &setup_vk, party_sk, |_, _| true).unwrap()
         })
         .map(|setup| (setup, rng.gen()))
         .collect::<Vec<_>>()
 }
 
 /// Execute DGK for given parameters
+#[cfg(feature = "multi-thread")]
 pub async fn gen_keyshares(t: u8, n: u8, n_i_list: Option<&[u8]>) -> Vec<Keyshare> {
     let coord = sl_mpc_mate::coord::SimpleMessageRelay::new();
 

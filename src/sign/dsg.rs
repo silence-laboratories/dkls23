@@ -234,7 +234,7 @@ async fn pre_signature_inner<R: Relay>(
 
     commitments.push((my_party_idx, (session_id, commitment_r_i)));
 
-    let abort_tags = request_messages(&setup, ABORT_MESSAGE_TAG, relay, false).await?;
+    let abort_tags = request_messages(setup, ABORT_MESSAGE_TAG, relay, false).await?;
 
     relay
         .send(Builder::<Signed>::encode(
@@ -804,7 +804,7 @@ mod tests {
             .into_iter()
             .enumerate()
             .map(|(idx, party_sk)| {
-                ValidatedSetup::decode(&mut setup, &instance, &setup_vk, party_sk, |_, _| {
+                ValidatedSetup::decode(&mut setup, &instance, &setup_vk, party_sk, |_| {
                     Some(shares[idx].clone())
                 })
                 .unwrap()

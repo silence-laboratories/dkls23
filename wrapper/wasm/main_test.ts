@@ -1,10 +1,12 @@
-import { assertEquals } from "https://deno.land/std@0.203.0/assert/mod.ts";
-import { decodeHex, encodeHex } from "https://deno.land/std@0.203.0/encoding/hex.ts";
-import * as base64 from "https://deno.land/x/base64/mod.ts";
-import { genInstanceId, dkgSetupMessage, verifyingKey, join_dkg, dsg } from './pkg/dkls_wasm.js';
+import { assertEquals }                        from 'https://deno.land/std@0.203.0/assert/mod.ts';
+import { decodeHex, encodeHex }                from 'https://deno.land/std@0.203.0/encoding/hex.ts';
+import * as base64                             from 'https://deno.land/x/base64/mod.ts';
 
-import { start_dkg } from './main.ts';
-import { MsgRelayClient } from './js/msg-relay.js';
+import { genInstanceId, verifyingKey, KeygenSetup }         from './pkg/dkls_wasm.js';
+import { dkgSetupMessage, init_dkg, join_dkg } from './pkg/dkls_wasm.js';
+import { dsgSetupMessage, init_dsg, join_dsg } from './pkg/dkls_wasm.js';
+import { start_dkg, start_dsg }                from './main.ts';
+import { MsgRelayClient }                      from './js/msg-relay.js';
 
 import { test } from './dkls_test.js';
 
@@ -32,77 +34,200 @@ test('load', async () => {
     console.log('gen-instance-id', genInstanceId());
 });
 
-test('create DKG setup message', async () => {
-    let abort = new AbortController();
-
-    let instance = genInstanceId();
-    let opts = {
+const dkgOpts = (instance: Uint8Array) => {
+    return {
         instance,
-        signing_key: SETUP_SK,
+        signingKey: SETUP_SK,
         threshold: 2,
-        ttl: 3,
+        ttl: 30,
         parties: [
             {
                 rank: 0,
-                public_key: PARTY_PK[0]
+                publicKey: PARTY_PK[0]
             },
 
             {
                 rank: 0,
-                public_key: PARTY_PK[1]
+                publicKey: PARTY_PK[1]
             },
 
             {
                 rank: 0,
-                public_key: PARTY_PK[2]
+                publicKey: PARTY_PK[2]
             }
         ]
-    };
+    }
+};
 
-    let setup_msg = dkgSetupMessage(opts);
+const dsgOpts = (instance: Uint8Array, publicKey: Uint8Array) => {
+    return {
+        instance,
+        signingKey: SETUP_SK,
+        publicKey,
+        ttl: 3,
+        message: instance,
 
-    console.log('setup.length', setup_msg.length);
+        parties: [
+            { publicKey: PARTY_PK[1] },
+            { publicKey: PARTY_PK[2] }
+        ]
+    }
+};
 
+const dkg_all_cloud = async() => {
+    let abort = new AbortController();
     let ws = await MsgRelayClient.connect(ENDPOINT + '/v1/msg-relay', abort.signal);
-    ws.send(setup_msg);
 
-    let p1 = join_dkg(
-        encodeHex(instance),
-        encodeHex(verifyingKey(SETUP_SK)),
-        encodeHex(PartySk[0]),
-        ENDPOINT + '/v1/msg-relay',
-        encodeHex(genInstanceId())
-    );
+    try {
+        let instance = genInstanceId();
+        let setup_msg = dkgSetupMessage(dkgOpts(instance));
 
-    // let p2 = dkg(
-    //     encodeHex(instance),
-    //     encodeHex(verifyingKey(SETUP_SK)),
-    //     encodeHex(PartySk[1]),
-    //     ENDPOINT + '/v1/msg-relay',
-    //     encodeHex(genInstanceId())
-    // );
+        ws.send(setup_msg);
 
-    // let p3 = dkg(
-    //     encodeHex(instance),
-    //     encodeHex(verifyingKey(SETUP_SK)),
-    //     encodeHex(PartySk[2]),
-    //     ENDPOINT + '/v1/msg-relay',
-    //     encodeHex(genInstanceId())
-    // );
+        let resp = await Promise.all([
+            start_dkg('http://localhost:8081', instance),
+            start_dkg('http://localhost:8082', instance),
+            start_dkg('http://localhost:8083', instance)
+        ]);
 
-    // console.log('stat p1 - loc, p2,p3 remote');
+        return base64.toUint8Array(resp[0].public_key);
+    } finally {
+        await ws.close();
+    }
+};
 
-    let resp = await Promise.all([
-        // start_dkg('http://localhost:8080/party-0', instance),
-        // start_dkg('http://localhost:8080/party-1', instance),
-        // start_dkg('http://localhost:8080/party-2', instance)
-        p1, // start_dkg('http://localhost:8081', instance),
-        start_dkg('http://localhost:8082', instance),
-        start_dkg('http://localhost:8083', instance)
-    ]);
+const dkg_web_cloud = async () => {
+    let abort = new AbortController();
+    let ws = await MsgRelayClient.connect(ENDPOINT + '/v1/msg-relay', abort.signal);
 
-    let pk = resp[0];
-    console.log('resp', resp);
+    try {
+        let instance = genInstanceId();
+        let setup_msg = dkgSetupMessage(dkgOpts(instance));
 
-    await ws.close();
+        ws.send(setup_msg);
+
+        let p1 = join_dkg(
+            encodeHex(instance),
+            encodeHex(verifyingKey(SETUP_SK)),
+            encodeHex(PartySk[0]),
+            ENDPOINT + '/v1/msg-relay',
+            encodeHex(genInstanceId()),
+            async (setup: KeygenSetup) => {
+                console.log('validate', setup); //, setup.rank(0), setup.verifyingKey(0));
+                return true;
+            }
+        );
+
+        let resp = await Promise.all([
+            p1,
+            start_dkg('http://localhost:8082', instance),
+            start_dkg('http://localhost:8083', instance)
+        ]);
+
+        return resp[0];
+    } finally {
+        await ws.close();
+    }
+};
+
+test('DKG all-cloud', async () => {
+    await dkg_all_cloud();
+});
+
+test('DKG join-web + join-cloud', async () => {
+    let abort = new AbortController();
+    let ws = await MsgRelayClient.connect(ENDPOINT + '/v1/msg-relay', abort.signal);
+
+    try {
+        let instance = genInstanceId();
+        let setup_msg = dkgSetupMessage(dkgOpts(instance));
+
+        ws.send(setup_msg);
+
+        let p1 = join_dkg(
+            encodeHex(instance),
+            encodeHex(verifyingKey(SETUP_SK)),
+            encodeHex(PartySk[0]),
+            ENDPOINT + '/v1/msg-relay',
+            encodeHex(genInstanceId()),
+            async (setup: KeygenSetup) => {
+                console.log('validate', setup); //, setup.rank(0), setup.verifyingKey(0));
+                return true;
+            }
+        );
+
+        let resp = await Promise.all([
+            p1,
+            start_dkg('http://localhost:8082', instance),
+            start_dkg('http://localhost:8083', instance)
+        ]);
+
+        let share = resp[0];
+        console.log('resp', resp);
+    } finally {
+        await ws.close();
+    }
+});
+
+test('DSG all-cloud', async () => {
+    const pk = await dkg_all_cloud();
+
+    let abort = new AbortController();
+    let ws = await MsgRelayClient.connect(ENDPOINT + '/v1/msg-relay', abort.signal);
+
+    try {
+        let instance = genInstanceId();
+        let setup_msg = dsgSetupMessage(dsgOpts(instance, pk));
+
+        ws.send(setup_msg);
+
+        let resp = await Promise.all([
+            start_dsg('http://localhost:8082', instance),
+            start_dsg('http://localhost:8083', instance)
+        ]);
+
+        let share = resp[0];
+        console.log('resp', resp);
+    } finally {
+        await ws.close();
+    }
+
+});
+
+test('DSG join-web + join-cloud', async () => {
+    const share = await dkg_web_cloud();
+
+    let abort = new AbortController();
+    let ws = await MsgRelayClient.connect(ENDPOINT + '/v1/msg-relay', abort.signal);
+
+    try {
+        let instance = genInstanceId();
+        let setup_msg = dsgSetupMessage(dsgOpts(instance, share.publicKey()));
+
+        ws.send(setup_msg);
+
+        let s2 = join_dsg(
+            encodeHex(instance),
+            encodeHex(verifyingKey(SETUP_SK)),
+            encodeHex(PartySk[1]),
+            ENDPOINT + '/v1/msg-relay',
+            encodeHex(genInstanceId()),
+
+            async (setup: any) => {
+                console.log('DSG validator', setup, share);
+                return share;
+            }
+        );
+
+        let resp = await Promise.all([
+            // start_dsg('http://localhost:8081', instance),
+            s2, // start_dsg('http://localhost:8082', instance),
+            start_dsg('http://localhost:8083', instance)
+        ]);
+
+        console.log('resp', resp);
+    } finally {
+        await ws.close();
+    }
+
 });
