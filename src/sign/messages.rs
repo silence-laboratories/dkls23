@@ -46,6 +46,9 @@ pub struct SignMsg3 {
 
     /// Encrypted data
     pub gamma1: Opaque<ProjectivePoint, GR>,
+
+    /// Encrypted psi scalar
+    pub psi: Opaque<Scalar, PF>,
 }
 
 /// Type for the sign gen message 4.

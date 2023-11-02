@@ -259,8 +259,9 @@ pub async fn pre_signature<R: Relay>(
                 &setup.keyshare().seed_ot_senders[get_idx_from_id(my_party_id, sender_id) as usize];
 
             let mta_receiver = PairwiseMtaRec::new(sid, sender_ot_results, &mut rng);
-
-            let (mta_receiver, mta_msg_1) = mta_receiver.process(&phi_i);
+            
+            let xi_i_j = Scalar::generate_biased(&mut rng);
+            let (mta_receiver, mta_msg_1) = mta_receiver.process(&xi_i_j);
 
             to_send.push(Builder::<Encrypted>::encode(
                 &setup.msg_id(Some(party_idx), DSG_MSG_R2),
@@ -271,7 +272,7 @@ pub async fn pre_signature<R: Relay>(
                 nonce_counter.next_nonce(),
             )?);
 
-            Ok((party_idx as u8, mta_receiver))
+            Ok((party_idx as u8, (mta_receiver, xi_i_j)))
         })
         .collect::<Result<Vec<_>, SignError>>()?;
 
@@ -344,6 +345,8 @@ pub async fn pre_signature<R: Relay>(
 
         let gamma0 = ProjectivePoint::GENERATOR * additive_shares[0];
         let gamma1 = ProjectivePoint::GENERATOR * additive_shares[1];
+        let (_mta_receiver, xi_i_j) = find_pair(&mut mta_receivers, party_idx as u8)?;
+        let psi = phi_i - xi_i_j;
 
         let msg3 = SignMsg3 {
             session_id: Opaque::from(final_session_id),
@@ -354,6 +357,7 @@ pub async fn pre_signature<R: Relay>(
             blind_factor: Opaque::from(blind_factor),
             gamma0: Opaque::from(gamma0),
             gamma1: Opaque::from(gamma1),
+            psi: Opaque::from(psi)
         };
 
         relay
@@ -372,10 +376,7 @@ pub async fn pre_signature<R: Relay>(
 
     let mut big_r_star = ProjectivePoint::IDENTITY;
     let mut sum_x_j = ProjectivePoint::IDENTITY;
-    let mut sum_gamma_0 = ProjectivePoint::IDENTITY;
-    let mut sum_gamma_1 = ProjectivePoint::IDENTITY;
-    let mut sum_big_t_0 = Scalar::ZERO;
-    let mut sum_big_t_1 = Scalar::ZERO;
+    let mut sum_psi_j_i = Scalar::ZERO;
 
     let mut receiver_additive_shares = vec![];
 
@@ -385,7 +386,7 @@ pub async fn pre_signature<R: Relay>(
         let (msg3, party_idx) =
             decode_encrypted_message::<SignMsg3>(&mut js, msg, &enc_keys, &enc_pub_keys)?;
 
-        let mta_receiver = pop_pair(&mut mta_receivers, party_idx as u8)?;
+        let (mta_receiver, xi_i_j) = pop_pair(&mut mta_receivers, party_idx as u8)?;
 
         let receiver_additive_shares_i = mta_receiver
             .process(msg3.mta_msg2)
@@ -403,35 +404,34 @@ pub async fn pre_signature<R: Relay>(
             return Err(SignError::InvalidDigest);
         }
 
-        big_r_star += &*msg3.big_r_i;
-        sum_x_j += &*msg3.big_x_i;
-        sum_gamma_0 += &*msg3.gamma0;
-        sum_gamma_1 += &*msg3.gamma1;
-        sum_big_t_0 += &receiver_additive_shares_i[0];
-        sum_big_t_1 += &receiver_additive_shares_i[1];
+        let big_r_j = &*msg3.big_r_i;
+        let big_x_j = &*msg3.big_x_i;
+
+        big_r_star += big_r_j;
+        sum_x_j += big_x_j;
+        sum_psi_j_i += &*msg3.psi;
+
+        let cond1 = (big_r_j * &xi_i_j) == (ProjectivePoint::GENERATOR * &receiver_additive_shares_i[1] + &*msg3.gamma1);
+        if !cond1 {
+            return Err(SignError::FailedCheck(
+                "Consistency check 1 failed",
+            ));
+        }
+
+        let cond2 = (big_x_j * &xi_i_j) == (ProjectivePoint::GENERATOR * &receiver_additive_shares_i[0] + &*msg3.gamma0);
+        if !cond2 {
+            return Err(SignError::FailedCheck(
+                "Consistency check 2 failed",
+            ));
+        }
     }
 
-    let big_t_0 = ProjectivePoint::GENERATOR * sum_big_t_0;
-    let big_t_1 = ProjectivePoint::GENERATOR * sum_big_t_1;
-    let big_x_star_i = derived_public_key + (-big_x_i);
     // new var
     let big_r = big_r_star + big_r_i;
-
+    sum_x_j += big_x_i;
     // Checks
-    if sum_x_j != big_x_star_i {
-        return Err(SignError::FailedCheck("sum_x_j != big_x_star_i"));
-    }
-
-    if sum_gamma_0 != (big_x_star_i * phi_i + (-&big_t_0)) {
-        return Err(SignError::FailedCheck(
-            "sum_gamma_0 != (self.phi_i * big_x_star_i + (-big_t))",
-        ));
-    }
-
-    if sum_gamma_1 != (big_r_star * phi_i + (-big_t_1)) {
-        return Err(SignError::FailedCheck(
-            "sum_gamma_1 != (self.phi_i * big_r_star + (-big_t_1)",
-        ));
+    if sum_x_j != derived_public_key {
+        return Err(SignError::FailedCheck("Consistency check 3 failed"));
     }
 
     let mut sum0 = Scalar::ZERO;
@@ -447,8 +447,9 @@ pub async fn pre_signature<R: Relay>(
     let r_point = big_r.to_affine();
     let r_x = Scalar::from_repr(r_point.x()).unwrap();
     //        let recid = r_point.y_is_odd().unwrap_u8();
-    let s_0 = r_x * (x_i * phi_i + sum0);
-    let s_1 = k_i * phi_i + sum1;
+    let phi_plus_sum_psi = &phi_i + &sum_psi_j_i;
+    let s_0 = r_x * (x_i * &phi_plus_sum_psi + sum0);
+    let s_1 = k_i * phi_plus_sum_psi + sum1;
 
     let pre_sign_result = PreSignResult {
         final_session_id: Opaque::from(final_session_id),
