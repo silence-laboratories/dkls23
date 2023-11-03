@@ -1,9 +1,11 @@
 use std::rc::Rc;
+use std::time::Duration;
 use wasm_bindgen::prelude::*;
 
 use web_sys::{AbortController, AbortSignal};
 
 use super::*;
+use dkls23::proto;
 
 #[wasm_bindgen]
 extern "C" {
@@ -59,4 +61,20 @@ impl Drop for AbortGuard {
             self.closure = None; // drop closure
         }
     }
+}
+
+#[wasm_bindgen(js_name = createAbortMessage)]
+pub fn create_abort_message(
+    instance: &str,
+    ttl: u32,
+    signing_key: &str,
+) -> Result<Uint8Array, JsValue> {
+    Ok(Uint8Array::from(
+        proto::create_abort_message(
+            &parse_instance_id(instance)?,
+            Duration::from_millis(ttl as u64),
+            &SigningKey::from_bytes(&parse_instance_bytes(signing_key)?),
+        )
+        .as_ref(),
+    ))
 }

@@ -61,7 +61,7 @@ pub fn setup_dsg(
         .into_iter()
         .enumerate()
         .map(|(idx, party_sk)| {
-            ValidatedSetup::decode(&mut setup, &instance, &setup_vk, party_sk, |_, _| {
+            ValidatedSetup::decode(&mut setup, &instance, &setup_vk, party_sk, |_| {
                 Some(shares[idx].clone())
             })
             .unwrap()

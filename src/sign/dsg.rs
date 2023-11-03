@@ -20,7 +20,7 @@ use sl_oblivious::soft_spoken_mod::Round1Output;
 
 use crate::{
     keygen::{get_idx_from_id, messages::Keyshare},
-    setup::sign::ValidatedSetup,
+    setup::{sign::ValidatedSetup, ABORT_MESSAGE_TAG},
     sign::{
         messages::{SignMsg1, SignMsg3, SignMsg4},
         pairwise_mta::{PairwiseMtaRec, PairwiseMtaSender},
@@ -67,7 +67,7 @@ async fn request_messages<R: Relay>(
     tag: MessageTag,
     relay: &mut R,
     p2p: bool,
-) -> Result<Vec<(MsgId, usize)>, InvalidMessage> {
+) -> Result<Vec<(MsgId, usize)>, SignError> {
     let mut tags = vec![];
     let me = if p2p { Some(setup.party_idx()) } else { None };
 
@@ -79,10 +79,10 @@ async fn request_messages<R: Relay>(
 
         tags.push((msg_id, p));
 
-        relay.feed(msg).await?;
+        relay.feed(msg).await.map_err(|_| SignError::SendMessage)?;
     }
 
-    relay.flush().await?;
+    relay.flush().await.map_err(|_| SignError::SendMessage)?;
 
     Ok(tags)
 }
@@ -120,6 +120,17 @@ fn decode_encrypted_message<T: bincode::Decode>(
     )?;
 
     Ok((msg, party_id))
+}
+
+fn check_abort_message(tags: &[(MsgId, usize)], msg: &[u8]) -> Result<(), SignError> {
+    let hdr = MsgHdr::from(msg).ok_or_else(|| SignError::InvalidMessage)?;
+
+    let p = tags.iter().find(|(id, _)| *id == hdr.id).map(|(_, v)| v);
+
+    match p {
+        None => Ok(()),
+        Some(p) => Err(SignError::AbortProtocol(*p as u8)),
+    }
 }
 
 /// Result after pre-signature of party_i
@@ -170,8 +181,31 @@ pub struct PartialSignature {
 pub async fn pre_signature<R: Relay>(
     setup: &ValidatedSetup,
     seed: Seed,
-    relay: &mut R,
+    mut relay: R,
 ) -> Result<PreSignResult, SignError> {
+    let abort_msg = Builder::<Signed>::encode(
+        &setup.msg_id(None, ABORT_MESSAGE_TAG),
+        setup.ttl(),
+        setup.signing_key(),
+        &(), // emoty message
+    )?;
+
+    match pre_signature_inner(setup, seed, &mut relay).await {
+        Ok((pre, _)) => Ok(pre),
+        Err(SignError::AbortProtocol(p)) => Err(SignError::AbortProtocol(p)),
+        Err(SignError::SendMessage) => Err(SignError::SendMessage),
+        Err(err) => {
+            relay.send(abort_msg).await?;
+            Err(err)
+        }
+    }
+}
+
+async fn pre_signature_inner<R: Relay>(
+    setup: &ValidatedSetup,
+    seed: Seed,
+    relay: &mut R,
+) -> Result<(PreSignResult, Vec<(MsgId, usize)>), SignError> {
     let mut rng = ChaCha20Rng::from_seed(seed);
     let mut nonce_counter = NonceCounter::new();
 
@@ -198,7 +232,9 @@ pub async fn pre_signature<R: Relay>(
     let big_r_i = ProjectivePoint::GENERATOR * k_i;
     let commitment_r_i = hash_commitment_r_i(&session_id, &big_r_i, &blind_factor);
 
-    commitments.push((setup.party_idx(), (session_id, commitment_r_i)));
+    commitments.push((my_party_idx, (session_id, commitment_r_i)));
+
+    let abort_tags = request_messages(setup, ABORT_MESSAGE_TAG, relay, false).await?;
 
     relay
         .send(Builder::<Signed>::encode(
@@ -212,7 +248,8 @@ pub async fn pre_signature<R: Relay>(
                 enc_pk: Opaque::from(PublicKey::from(&enc_keys).to_bytes()),
             },
         )?)
-        .await?;
+        .await
+        .map_err(|_| SignError::SendMessage)?;
 
     // vector of pairs (party_idx, party_id)
     let mut party_idx_to_id_map = vec![(my_party_idx, my_party_id)];
@@ -220,6 +257,9 @@ pub async fn pre_signature<R: Relay>(
     let mut js = request_messages(setup, DSG_MSG_R1, relay, false).await?;
     while !js.is_empty() {
         let msg = relay.next().await.ok_or(SignError::MissingMessage)?;
+
+        check_abort_message(&abort_tags, &msg)?;
+
         let (msg, party_idx) = decode_signed_message::<SignMsg1>(&mut js, msg, setup)?;
 
         party_idx_to_id_map.push((party_idx, msg.party_id));
@@ -277,7 +317,7 @@ pub async fn pre_signature<R: Relay>(
         .collect::<Result<Vec<_>, SignError>>()?;
 
     for msg in to_send.into_iter() {
-        relay.send(msg).await?;
+        relay.send(msg).await.map_err(|_| SignError::SendMessage)?;
     }
 
     let mut mta_senders = setup
@@ -336,6 +376,9 @@ pub async fn pre_signature<R: Relay>(
     let mut js = request_messages(setup, DSG_MSG_R2, relay, true).await?;
     while !js.is_empty() {
         let msg = relay.next().await.ok_or(SignError::MissingMessage)?;
+
+        check_abort_message(&abort_tags, &msg)?;
+
         let (msg1, party_idx) =
             decode_encrypted_message::<Round1Output>(&mut js, msg, &enc_keys, &enc_pub_keys)?;
 
@@ -369,7 +412,8 @@ pub async fn pre_signature<R: Relay>(
                 &msg3,
                 nonce_counter.next_nonce(),
             )?)
-            .await?;
+            .await
+            .map_err(|_| SignError::SendMessage)?;
 
         sender_additive_shares.push(additive_shares);
     }
@@ -383,6 +427,9 @@ pub async fn pre_signature<R: Relay>(
     let mut js = request_messages(setup, DSG_MSG_R3, relay, true).await?;
     while !js.is_empty() {
         let msg = relay.next().await.ok_or(SignError::MissingMessage)?;
+
+        check_abort_message(&abort_tags, &msg)?;
+
         let (msg3, party_idx) =
             decode_encrypted_message::<SignMsg3>(&mut js, msg, &enc_keys, &enc_pub_keys)?;
 
@@ -460,7 +507,7 @@ pub async fn pre_signature<R: Relay>(
         r: Opaque::from(big_r),
     };
 
-    Ok(pre_sign_result)
+    Ok((pre_sign_result, abort_tags))
 }
 
 /// Locally create a partial signature from pre-signature and msg_hash
@@ -522,13 +569,36 @@ pub fn combine_partial_signature(
     Ok(sign)
 }
 
-///
+/// Execute DSG protocol.
 pub async fn run<R: Relay>(
     setup: ValidatedSetup,
     seed: Seed,
     mut relay: R,
 ) -> Result<Signature, SignError> {
-    let pre_signature_result = pre_signature(&setup, seed, &mut relay).await?;
+    let abort_msg = Builder::<Signed>::encode(
+        &setup.msg_id(None, ABORT_MESSAGE_TAG),
+        setup.ttl(),
+        setup.signing_key(),
+        &(), // emoty message
+    )?;
+
+    match run_inner(setup, seed, &mut relay).await {
+        Ok(sign) => Ok(sign),
+        Err(SignError::AbortProtocol(p)) => Err(SignError::AbortProtocol(p)),
+        Err(SignError::SendMessage) => Err(SignError::SendMessage),
+        Err(err) => {
+            relay.send(abort_msg).await?;
+            Err(err)
+        }
+    }
+}
+
+async fn run_inner<R: Relay>(
+    setup: ValidatedSetup,
+    seed: Seed,
+    relay: &mut R,
+) -> Result<Signature, SignError> {
+    let (pre_signature_result, abort_tags) = pre_signature_inner(&setup, seed, relay).await?;
     let final_session_id = pre_signature_result.final_session_id;
     let public_key = pre_signature_result.public_key;
     let r: Opaque<ProjectivePoint, GR> = pre_signature_result.r;
@@ -547,14 +617,18 @@ pub async fn run<R: Relay>(
                 s_1: partial_signature.s_1,
             },
         )?)
-        .await?;
+        .await
+        .map_err(|_| SignError::SendMessage)?;
 
     let mut partial_signatures: Vec<PartialSignature> = Vec::new();
     partial_signatures.push(partial_signature);
 
-    let mut js = request_messages(&setup, DSG_MSG_R4, &mut relay, false).await?;
+    let mut js = request_messages(&setup, DSG_MSG_R4, relay, false).await?;
     while !js.is_empty() {
         let msg = relay.next().await.ok_or(SignError::MissingMessage)?;
+
+        check_abort_message(&abort_tags, &msg)?;
+
         let (msg, _party_idx) = decode_signed_message::<SignMsg4>(&mut js, msg, &setup)?;
         let party_j_partial_sign = PartialSignature {
             final_session_id,
@@ -731,7 +805,7 @@ mod tests {
             .into_iter()
             .enumerate()
             .map(|(idx, party_sk)| {
-                ValidatedSetup::decode(&mut setup, &instance, &setup_vk, party_sk, |_, _| {
+                ValidatedSetup::decode(&mut setup, &instance, &setup_vk, party_sk, |_| {
                     Some(shares[idx].clone())
                 })
                 .unwrap()

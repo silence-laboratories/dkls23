@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::net::ToSocketAddrs;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use tokio::signal::unix::{signal, SignalKind};
@@ -69,7 +69,6 @@ struct Inner {
     mux: MsgRelayMux,
     setup_vk: VerifyingKey,
     party_key: SigningKey,
-    shares: Mutex<Vec<keygen::Keyshare>>,
     storage: PathBuf,
 }
 
@@ -85,7 +84,6 @@ impl Inner {
             setup_vk,
             party_key,
             storage,
-            shares: Mutex::new(vec![]),
         }
     }
 }
@@ -202,7 +200,7 @@ async fn handle_keygen(
         &instance,
         &state.setup_vk,
         state.party_key.clone(),
-        |_, _, _| true,
+        |_, _| true,
     )
     .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -309,7 +307,7 @@ async fn handle_sign(
         &instance,
         &state.setup_vk,
         state.party_key.clone(),
-        |setup, _| {
+        |setup| {
             let pk = hex::encode(setup.public_key().to_bytes());
             let path = state.storage.join(format!("{}.keyshare", &pk));
 
@@ -454,7 +452,7 @@ pub async fn run(opts: flags::Serve) -> anyhow::Result<()> {
         };
     }
 
-    return Ok(());
+    Ok(())
 }
 
 async fn health_check() -> &'static str {

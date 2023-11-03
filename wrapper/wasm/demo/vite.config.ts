@@ -1,7 +1,7 @@
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vitest/config';
 import { proxy } from './proxy';
-// import { proxy } from './proxy-local';
+import { proxy as dkls_local } from './proxy-local';
 
 export default defineConfig({
     plugins: [sveltekit()],
@@ -13,10 +13,12 @@ export default defineConfig({
     assetsInclude: ['**/*.wasm'],
 
     server: {
+        host: '0.0.0.0',
+
         fs: {
             allow: ['../pkg']
         },
 
-        proxy
+        proxy: process.env.DKLS_LOCAL ? dkls_local : proxy
     }
 });

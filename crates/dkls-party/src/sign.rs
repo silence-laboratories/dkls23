@@ -160,7 +160,7 @@ pub async fn run_sign(opts: flags::SignGen) -> anyhow::Result<()> {
                 &instance,
                 &setup_vk,
                 sk,
-                move |_, _| Some(keyshare),
+                move |_| Some(keyshare),
             )
             .ok_or(anyhow::Error::msg("cant parse setup message"))?;
 

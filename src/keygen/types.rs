@@ -73,6 +73,14 @@ pub enum KeygenError {
     ///
     #[error("Missing message")]
     MissingMessage,
+
+    /// We can't a send message
+    #[error("Send message")]
+    SendMessage,
+
+    /// Some party decided to not participate in the protocol.
+    #[error("Abort protocol by party {0}")]
+    AbortProtocol(u8),
 }
 
 impl From<InvalidMessage> for KeygenError {

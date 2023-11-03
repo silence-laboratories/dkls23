@@ -19,6 +19,21 @@ xflags::xflags! {
             optional --public
         }
 
+        /// Abort an MPC protocol
+        cmd abort {
+            /// Instance ID, hex
+            required --instance inst: String
+
+            /// Party signing key
+            required --party-key signing_key: PathBuf
+
+            /// Abort message TTL, ms
+            optional --ttl ttl: u64
+
+            /// Base of URL of the coordinator service
+            optional --coordinator url: Url
+        }
+
         /// Create and publish a DKG setup message.
         cmd keygen-setup {
             /// Instance ID, hex
@@ -53,7 +68,6 @@ xflags::xflags! {
             required --instance instance: String
 
             /// Party public key.
-            ///
             repeated --party party: String
 
             optional --prefix prefix: PathBuf
@@ -77,7 +91,7 @@ xflags::xflags! {
 
             /// Public key as hex string of distributed key to create a signature
             required --public-key public_key: String
-            
+
             /// Chain path as string like "m" for root public key and "m/0/1" for derived child key
             required --chain-path chain_path: String
 

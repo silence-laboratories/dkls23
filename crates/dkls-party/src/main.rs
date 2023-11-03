@@ -1,13 +1,15 @@
-#![allow(dead_code)]
-
 use std::str::FromStr;
+use std::time::Duration;
 
 use rand::prelude::*;
 
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use sl_mpc_mate::message::*;
+use msg_relay_client::MsgRelayClient;
+use sl_mpc_mate::{coord::*, message::*};
+
+use dkls23::proto::create_abort_message;
 
 mod flags;
 mod keygen;
@@ -94,6 +96,24 @@ fn load_party_keys(opts: flags::LoadPartyKeys) -> anyhow::Result<()> {
     Ok(())
 }
 
+async fn run_abort(opts: flags::Abort) -> anyhow::Result<()> {
+    let instance = utils::parse_instance_id(&opts.instance)?;
+    let singing_key = utils::load_signing_key(opts.party_key)?;
+    let ttl = Duration::from_millis(opts.ttl.unwrap_or(10000));
+
+    let abort_msg = create_abort_message(&instance, ttl, &singing_key);
+
+    let coord = opts.coordinator.unwrap_or_else(default_coord);
+    let mut msg_relay = MsgRelayClient::connect(&coord).await?;
+
+    msg_relay
+        .send(abort_msg)
+        .await
+        .map_err(|_| anyhow::Error::msg("send error"))?;
+
+    Ok(())
+}
+
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
@@ -111,5 +131,6 @@ async fn main() -> anyhow::Result<()> {
         Dkls23PartyCmd::SignSetup(opts) => sign::setup(opts).await,
         Dkls23PartyCmd::SignGen(opts) => sign::run_sign(opts).await,
         Dkls23PartyCmd::Serve(opts) => serve::run(opts).await,
+        Dkls23PartyCmd::Abort(opts) => run_abort(opts).await,
     }
 }
