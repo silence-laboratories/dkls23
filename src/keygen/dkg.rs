@@ -431,6 +431,15 @@ where
         relay.feed(msg).await.map_err(|_| KeygenError::SendMessage)?;
     }
 
+    // generate chain_code_sid for root_chain_code
+    let chain_code_sid = SessionId::new(rng.gen());
+    let r_i_2 = rng.gen();
+    let commitment_2 = hash_commitment_2(
+        &final_session_id,
+        &chain_code_sid,
+        &r_i_2,
+    );
+
     // send out our R2 broadcast message
     relay
         .send(Builder::<Signed>::encode(
@@ -442,12 +451,14 @@ where
                 big_f_i_vector: big_f_i_vec,
                 r_i: Opaque::from(r_i),
                 dlog_proofs_i: dlog_proofs,
+                commitment_2: Opaque::from(commitment_2)
             },
         )?)
         .await.map_err(|_| KeygenError::SendMessage)?;
 
     // ... and while we are receiving P2P messages,
     // receive and process broadcast messages from parties.
+    let mut commitment_list_2 = vec![(my_party_id, commitment_2)];
     let mut r2_msgs = request_messages(&setup, DKG_MSG_R2, relay, false).await?;
     while !r2_msgs.is_empty() {
         let msg = relay.next().await.ok_or(KeygenError::MissingMessage)?;
@@ -512,6 +523,7 @@ where
         )?;
 
         big_f_i_vecs.push((party_id, msg.big_f_i_vector));
+        commitment_list_2.push((party_id, *msg.commitment_2));
     }
 
     drop(r2_msgs);
@@ -581,6 +593,8 @@ where
             d_i: Opaque::from(d_i),
             session_id: Opaque::from(final_session_id),
             big_f_vec: big_f_vec.clone(),
+            chain_code_sid: Opaque::from(chain_code_sid),
+            r_i_2: Opaque::from(r_i_2)
         };
 
         relay
@@ -600,6 +614,7 @@ where
 
     let mut seed_ot_receivers = vec![];
     let mut rec_seed_list = vec![];
+    let mut chain_code_sids = vec![(my_party_id, chain_code_sid)];
     let mut r3_msgs = request_messages(&setup, DKG_MSG_R3, relay, true).await?;
     while !r3_msgs.is_empty() {
         let msg = relay.next().await.ok_or(KeygenError::MissingMessage)?;
@@ -632,9 +647,32 @@ where
         if let Some(seed_j_i) = msg3.seed_i_j {
             rec_seed_list.push((party_id, seed_j_i));
         }
+
+        // Verify commitments
+        let commitment_2 = find_pair(&commitment_list_2, party_id)?;
+        let commit_hash = hash_commitment_2(
+            &final_session_id,
+            &msg3.chain_code_sid,
+            &msg3.r_i_2,
+        );
+        bool::from(commit_hash.ct_eq(commitment_2))
+            .then_some(())
+            .ok_or(KeygenError::InvalidCommitmentHash)?;
+
+        chain_code_sids.push((party_id, *msg3.chain_code_sid))
     }
 
+    drop(commitment_list_2);
+
     // tracing::info!("R3 P2P done {}", setup.party_id());
+
+    // Generate common root_chain_code from chain_code_sids
+    chain_code_sids.sort_by_key(|(p, _)| *p);
+    let root_chain_code: [u8; 32] = sid_i_list
+            .iter()
+            .fold(Sha256::new(), |hash, (_, sid)| hash.chain_update(sid))
+            .finalize()
+            .into();
 
     d_i_list.sort_by_key(|(p, _)| *p);
     big_f_i_vecs.sort_by_key(|(p, _)| *p);
@@ -746,12 +784,6 @@ where
     // As we can get messages in any order
     // TODO: Verify that this is actually necessary
 
-    // Generate common root_chain_code from session_id
-    let mut root_chain_code = [0u8; 32];
-    let mut transcript = Transcript::new(b"root_chain_code");
-    transcript.append_message(b"session_id", &final_session_id);
-    transcript.challenge_bytes(b"root_chain_code_bytes", &mut root_chain_code);
-
     let share = Keyshare {
         magic: Keyshare::MAGIC, // marker of current version Keyshare
 
@@ -793,6 +825,21 @@ fn hash_commitment(
         hasher.update(point.to_bytes());
     }
 
+    hasher.update(r_i);
+
+    HashBytes::new(hasher.finalize().into())
+}
+
+fn hash_commitment_2(
+    session_id: &SessionId,
+    chain_code_sid: &SessionId,
+    r_i: &[u8; 32],
+) -> HashBytes {
+    let mut hasher = Sha256::new();
+
+    hasher.update(b"SL-ChainCodeSID-Commitment");
+    hasher.update(session_id);
+    hasher.update(chain_code_sid);
     hasher.update(r_i);
 
     HashBytes::new(hasher.finalize().into())

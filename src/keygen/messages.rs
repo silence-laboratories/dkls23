@@ -53,6 +53,9 @@ where
 
     /// Participants dlog proof
     pub dlog_proofs_i: Vec<DLogProof>,
+
+    /// Participants commitment
+    pub commitment_2: Opaque<HashBytes>,
 }
 
 /// Type for the key generation protocol's message 3.
@@ -75,6 +78,12 @@ pub struct KeygenMsg3 {
 
     /// seed_i_j values
     pub seed_i_j: Option<[u8; 32]>,
+
+    /// chain_code_sid
+    pub chain_code_sid: Opaque<SessionId>,
+
+    /// Random 32 bytes
+    pub r_i_2: Opaque<[u8; 32]>,
 }
 
 /// Type for the key generation protocol's message 4.
