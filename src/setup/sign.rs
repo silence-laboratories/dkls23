@@ -273,7 +273,6 @@ impl ValidatedSetup {
             .iter()
             .enumerate()
             .filter(|(idx, _)| *idx != self.party_idx)
-            .map(|(idx, vk)| (idx, vk))
     }
 
     /// Generate ID of a message from this party to some other (or broadcast)

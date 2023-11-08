@@ -63,3 +63,47 @@ pub struct SignMsg4 {
     /// s_1 Scalar
     pub s_1: Opaque<Scalar, PF>,
 }
+
+/// Result after pre-signature of party_i
+#[derive(Clone, bincode::Encode, bincode::Decode)]
+pub struct PreSignResult {
+    /// final_session_id
+    pub final_session_id: Opaque<SessionId>,
+
+    /// public_key
+    pub public_key: Opaque<ProjectivePoint, GR>,
+
+    /// s_0 Scalar
+    pub s_0: Opaque<Scalar, PF>,
+
+    /// s_1 Scalar
+    pub s_1: Opaque<Scalar, PF>,
+
+    /// R point
+    pub r: Opaque<ProjectivePoint, GR>,
+
+    /// phi_i Scalar
+    pub phi_i: Opaque<Scalar, PF>,
+}
+
+/// Partial signature of party_i
+#[derive(Clone, bincode::Encode, bincode::Decode)]
+pub struct PartialSignature {
+    /// final_session_id
+    pub final_session_id: Opaque<SessionId>,
+
+    /// public_key
+    pub public_key: Opaque<ProjectivePoint, GR>,
+
+    /// 32 bytes message_hash
+    pub message_hash: Opaque<HashBytes>,
+
+    /// s_0 Scalar
+    pub s_0: Opaque<Scalar, PF>,
+
+    /// s_1 Scalar
+    pub s_1: Opaque<Scalar, PF>,
+
+    /// R point
+    pub r: Opaque<ProjectivePoint, GR>,
+}

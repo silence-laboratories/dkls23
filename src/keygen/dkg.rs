@@ -1,10 +1,11 @@
 //! Distributed key generation protocol.
 //
+use std::collections::HashSet;
 
 use digest::Digest;
 use k256::{
     elliptic_curve::{group::GroupEncoding, subtle::ConstantTimeEq, Group},
-    NonZeroScalar, ProjectivePoint, Scalar, Secp256k1,
+    FieldBytes, NonZeroScalar, ProjectivePoint, Scalar, Secp256k1,
 };
 use merlin::Transcript;
 use rand::prelude::*;
@@ -34,7 +35,7 @@ use sl_mpc_mate::{
     coord::*,
     math::{feldman_verify, polynomial_coeff_multipliers, GroupPolynomial, Polynomial},
     message::*,
-    HashBytes, SessionId,
+    ByteArray, HashBytes, SessionId,
 };
 
 use crate::{
@@ -42,6 +43,8 @@ use crate::{
     proto::create_abort_message,
     setup::{keygen::ValidatedSetup, PartyInfo, ABORT_MESSAGE_TAG},
 };
+
+const ZEROS: HashBytes = ByteArray::<32>([0; 32]);
 
 /// Seed for our RNG
 pub type Seed = <ChaCha20Rng as SeedableRng>::Seed;
@@ -303,6 +306,7 @@ where
     let mut nonce_counter = NonceCounter::new();
 
     let t = setup.threshold();
+    let n = setup.participants();
     let my_party_id = setup.party_id();
 
     let session_id = SessionId::new(rng.gen());
@@ -335,12 +339,23 @@ where
 
     let d_i = block_in_place(|| polynomial.derivative_at(setup.rank() as usize, &x_i));
 
-    let mut commitment_list = Pairs::new_with_item(my_party_id, commitment);
-    let mut sid_i_list = Pairs::new_with_item(my_party_id, session_id);
-    let mut x_i_list = Pairs::new_with_item(my_party_id, x_i);
-    let mut d_i_list = Pairs::new_with_item(my_party_id, d_i);
+    let mut commitment_list = vec_init(n, my_party_id, commitment, ZEROS);
+    let mut sid_i_list = vec_init(n, my_party_id, session_id, ZEROS);
+    let mut x_i_list = vec_init(
+        n,
+        my_party_id,
+        x_i,
+        NonZeroScalar::new(Scalar::ONE).unwrap(),
+    );
+    let mut d_i_list = vec_init(n, my_party_id, d_i, Scalar::ZERO);
+    let mut big_f_i_vecs = vec_init(
+        n,
+        my_party_id,
+        big_f_i_vec.clone(),
+        GroupPolynomial::new(vec![]),
+    );
+
     let mut enc_pub_key = Pairs::new();
-    let mut big_f_i_vecs = Pairs::new_with_item(my_party_id, big_f_i_vec.clone());
 
     let abort_tags = request_messages(&setup, ABORT_MESSAGE_TAG, relay, false).await?;
 
@@ -358,9 +373,9 @@ where
         relay,
         DKG_MSG_R1,
         |msg: KeygenMsg1, party_id| {
-            sid_i_list.push(party_id, *msg.session_id);
-            commitment_list.push(party_id, *msg.commitment);
-            x_i_list.push(party_id, NonZeroScalar::new(*msg.x_i).unwrap()); // FIXME handle unwrap()!
+            sid_i_list[party_id as usize] = *msg.session_id;
+            commitment_list[party_id as usize] = *msg.commitment;
+            x_i_list[party_id as usize] = NonZeroScalar::new(*msg.x_i).unwrap(); // FIXME handle unwrap()!
             enc_pub_key.push(party_id, PublicKey::from(*msg.enc_pk));
 
             Ok(())
@@ -371,7 +386,9 @@ where
     // tracing::info!("R1 done {}", setup.party_id());
 
     // Check that x_i_list contains unique elements
-    if !x_i_list.no_dups_by(|a, b| a.ct_eq(b).into()) {
+    if HashSet::<FieldBytes>::from_iter(x_i_list.iter().map(|x| x.to_bytes())).len()
+        != x_i_list.len()
+    {
         return Err(KeygenError::NotUniqueXiValues);
     }
 
@@ -379,7 +396,7 @@ where
     let final_session_id = SessionId::new(
         sid_i_list
             .iter()
-            .fold(Sha256::new(), |hash, (_, sid)| hash.chain_update(sid))
+            .fold(Sha256::new(), |hash, sid| hash.chain_update(sid))
             .finalize()
             .into(),
     );
@@ -480,7 +497,7 @@ where
                 &mut dlog_transcript,
             )?;
 
-            big_f_i_vecs.push(party_id, msg.big_f_i_vector);
+            big_f_i_vecs[party_id as usize] = msg.big_f_i_vector;
 
             Ok(())
         },
@@ -490,16 +507,12 @@ where
     // tracing::info!("R2 broadcast done {}", setup.party_id());
 
     // 6.d
-    let mut big_f_vec = GroupPolynomial::new(
-        std::iter::repeat(Opaque::from(ProjectivePoint::IDENTITY))
-            .take(t as _)
-            .collect(),
-    );
-    for (_, v) in big_f_i_vecs.iter() {
+    let mut big_f_vec = GroupPolynomial::identity(t as usize);
+    for v in big_f_i_vecs.iter() {
         big_f_vec.add_mut(v);
     }
 
-    let public_key = *big_f_vec.get(0).unwrap();
+    let public_key = *big_f_vec.get_constant();
 
     if key_refresh {
         // check that public_key == IDENTITY
@@ -552,7 +565,7 @@ where
                 None
             };
 
-            let x_i = x_i_list.find_pair(party_id);
+            let x_i = &x_i_list[party_id as usize];
             let d_i = block_in_place(|| polynomial.derivative_at(rank as usize, x_i));
 
             let msg3 = KeygenMsg3 {
@@ -563,7 +576,6 @@ where
                 session_id: Opaque::from(final_session_id),
                 big_f_vec: big_f_vec.clone(),
             };
-
             Ok(Some(Builder::<Encrypted>::encode(
                 &setup.msg_id(Some(party_id), DKG_MSG_R3),
                 setup.ttl(),
@@ -593,7 +605,7 @@ where
                 return Err(KeygenError::BigFVecMismatch);
             }
 
-            d_i_list.push(party_id, *msg3.d_i);
+            d_i_list[party_id as usize] = *msg3.d_i;
 
             let receiver = base_ot_receivers.pop_pair(party_id);
             let receiver_output = block_in_place(|| receiver.process(msg3.base_ot_msg2));
@@ -618,11 +630,11 @@ where
 
     // tracing::info!("R3 P2P done {}", setup.party_id());
 
-    for ((_, big_f_i_vec), (_, f_i_val)) in big_f_i_vecs.iter().zip(d_i_list.iter()) {
+    for (big_f_i_vec, f_i_val) in big_f_i_vecs.iter().zip(d_i_list.iter()) {
         let coeffs = block_in_place(|| big_f_i_vec.derivative_coeffs(setup.rank() as usize));
         let valid = feldman_verify(
             &coeffs,
-            x_i_list.find_pair(my_party_id),
+            &x_i_list[my_party_id as usize],
             f_i_val,
             &ProjectivePoint::GENERATOR,
         )
@@ -633,7 +645,7 @@ where
         }
     }
 
-    let s_i: Scalar = d_i_list.iter().map(|(_, p)| p).sum();
+    let s_i: Scalar = d_i_list.iter().sum();
     let big_s_i = ProjectivePoint::GENERATOR * s_i;
 
     let mut transcript = Transcript::new_dlog_proof(
@@ -677,7 +689,7 @@ where
                 return Err(KeygenError::InvalidDLogProof);
             }
 
-            let x_i = x_i_list.find_pair(party_id);
+            let x_i = &x_i_list[party_id as usize];
             let party_rank = setup.party_rank(party_id).unwrap();
             let coeff_multipliers = polynomial_coeff_multipliers(
                 x_i,
@@ -705,7 +717,7 @@ where
 
     // TODO: Remove clone later, just for testing
     check_secret_recovery(
-        &x_i_list.remove_ids(),
+        &x_i_list,
         &rank_list.remove_ids(),
         &big_s_list.remove_ids(),
         &public_key,
@@ -724,7 +736,7 @@ where
         rank_list: Pairs::from(setup.all_party_ranks()).remove_ids(),
         public_key: Opaque::from(public_key),
         root_chain_code,
-        x_i_list: x_i_list.remove_ids_and_wrap(),
+        x_i_list: x_i_list.into_iter().map(Opaque::from).collect(), // FIXME
         big_s_list: big_s_list.remove_ids_and_wrap(),
         s_i: Opaque::from(s_i),
         sent_seed_list: seed_i_j_list.remove_ids(),
@@ -734,6 +746,14 @@ where
     };
 
     Ok(share)
+}
+
+fn vec_init<T: Clone>(size: u8, id: u8, init: T, d: T) -> Vec<T> {
+    let mut v = vec![d; size as usize];
+
+    v[id as usize] = init;
+
+    v
 }
 
 fn hash_commitment(
@@ -764,16 +784,16 @@ fn hash_commitment(
 fn verify_commitment(
     setup: &ValidatedSetup,
     party_id: u8,
-    x_i_list: &Pairs<NonZeroScalar>,
-    sid_i_list: &Pairs<SessionId>,
-    commitment_list: &Pairs<HashBytes>,
+    x_i_list: &[NonZeroScalar],
+    sid_i_list: &[SessionId],
+    commitment_list: &[HashBytes],
     msg: &KeygenMsg2,
 ) -> Result<(), KeygenError> {
     // Verify commitments.
     let rank = setup.party_rank(party_id).unwrap();
-    let x_i = x_i_list.find_pair(party_id);
-    let sid = sid_i_list.find_pair(party_id);
-    let commitment = commitment_list.find_pair(party_id);
+    let x_i = &x_i_list[party_id as usize];
+    let sid = &sid_i_list[party_id as usize];
+    let commitment = &commitment_list[party_id as usize];
 
     let commit_hash = hash_commitment(
         sid,
