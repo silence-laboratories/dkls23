@@ -135,20 +135,20 @@ pub struct Keyshare {
     pub root_chain_code: [u8; 32],
 
     ///
-    pub seed_ot_receivers: Vec<ReceiverOTSeed>,
+    pub seed_ot_receivers: Vec<ReceiverOTSeed>, // N-1
 
     ///
-    pub seed_ot_senders: Vec<SenderOTSeed>,
+    pub seed_ot_senders: Vec<SenderOTSeed>,     // N-1
 
     /// Seed values sent to the other parties
-    pub sent_seed_list: Vec<[u8; 32]>,
+    pub sent_seed_list: Vec<[u8; 32]>,          // [0..N-1]
 
     /// Seed values received from the other parties
-    pub rec_seed_list: Vec<[u8; 32]>,
+    pub rec_seed_list: Vec<[u8; 32]>,           // [0..N-1]
 
     pub(crate) s_i: Opaque<Scalar, PF>,
-    pub(crate) big_s_list: Vec<Opaque<ProjectivePoint, GR>>,
-    pub(crate) x_i_list: Vec<Opaque<NonZeroScalar, NZ>>,
+    pub(crate) big_s_list: Vec<Opaque<ProjectivePoint, GR>>, // N
+    pub(crate) x_i_list: Vec<Opaque<NonZeroScalar, NZ>>,     // N
 }
 
 impl Keyshare {
