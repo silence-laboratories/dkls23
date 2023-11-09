@@ -441,16 +441,28 @@ where
             .map_err(|_| KeygenError::SendMessage)?;
     }
 
+    // generate chain_code_sid for root_chain_code
+    let chain_code_sid = SessionId::new(rng.gen());
+    let r_i_2 = rng.gen();
+    let commitment_2 = hash_commitment_2(
+        &final_session_id,
+        &chain_code_sid,
+        &r_i_2,
+    );
+
     let msg2 = KeygenMsg2 {
         session_id: Opaque::from(final_session_id),
         big_f_i_vector: big_f_i_vec,
         r_i: Opaque::from(r_i),
         dlog_proofs_i: dlog_proofs,
+        commitment_2: Opaque::from(commitment_2),
     };
     send_broadcast(&setup, relay, DKG_MSG_R2, msg2).await?;
 
     // TODO possible optimization: we could receive P2P R2 messages
     // while waiting and processing broadcast R2 messages
+
+    let mut commitment_list_2 = Pairs::new_with_item(my_party_id, commitment_2);
 
     // handle broadcast R2 messages from other parties
     handle_signed_messages(
@@ -498,6 +510,7 @@ where
             )?;
 
             big_f_i_vecs[party_id as usize] = msg.big_f_i_vector;
+            commitment_list_2.push(party_id, *msg.commitment_2);
 
             Ok(())
         },
@@ -519,19 +532,6 @@ where
         if public_key != ProjectivePoint::IDENTITY {
             return Err(KeygenError::InvalidPolynomialPoint);
         }
-
-        // Verify commitments
-        let commitment_2 = find_pair(&commitment_list_2, party_id)?;
-        let commit_hash = hash_commitment_2(
-            &final_session_id,
-            &msg3.chain_code_sid,
-            &msg3.r_i_2,
-        );
-        bool::from(commit_hash.ct_eq(commitment_2))
-            .then_some(())
-            .ok_or(KeygenError::InvalidCommitmentHash)?;
-
-        chain_code_sids.push((party_id, *msg3.chain_code_sid))
     }
 
     recv_pk(public_key);
@@ -575,6 +575,8 @@ where
                 d_i: Opaque::from(d_i),
                 session_id: Opaque::from(final_session_id),
                 big_f_vec: big_f_vec.clone(),
+                chain_code_sid: Opaque::from(chain_code_sid),
+                r_i_2: Opaque::from(r_i_2)
             };
             Ok(Some(Builder::<Encrypted>::encode(
                 &setup.msg_id(Some(party_id), DKG_MSG_R3),
@@ -592,6 +594,7 @@ where
 
     let mut seed_ot_receivers = Pairs::new();
     let mut rec_seed_list = Pairs::new();
+    let mut chain_code_sids = Pairs::new_with_item(my_party_id, chain_code_sid);
 
     handle_encrypted_messages(
         &setup,
@@ -623,12 +626,33 @@ where
                 rec_seed_list.push(party_id, seed_j_i);
             }
 
+            // Verify commitments
+            let commitment_2 = commitment_list_2.find_pair(party_id);
+            let commit_hash = hash_commitment_2(
+                &final_session_id,
+                &msg3.chain_code_sid,
+                &msg3.r_i_2,
+            );
+            bool::from(commit_hash.ct_eq(commitment_2))
+                .then_some(())
+                .ok_or(KeygenError::InvalidCommitmentHash)?;
+
+            chain_code_sids.push(party_id, *msg3.chain_code_sid);
+
             Ok(None)
         },
     )
     .await?;
 
     // tracing::info!("R3 P2P done {}", setup.party_id());
+
+    // Generate common root_chain_code from chain_code_sids
+    // chain_code_sids.sort_by_key(|(p, _)| *p);
+    let root_chain_code: [u8; 32] = sid_i_list
+            .iter()
+            .fold(Sha256::new(), |hash, sid| hash.chain_update(sid))
+            .finalize()
+            .into();
 
     for (big_f_i_vec, f_i_val) in big_f_i_vecs.iter().zip(d_i_list.iter()) {
         let coeffs = block_in_place(|| big_f_i_vec.derivative_coeffs(setup.rank() as usize));
@@ -776,6 +800,20 @@ fn hash_commitment(
         hasher.update(point.to_bytes());
     }
 
+    hasher.update(r_i);
+
+    HashBytes::new(hasher.finalize().into())
+}
+
+fn hash_commitment_2(
+    session_id: &SessionId,
+    chain_code_sid: &SessionId,
+    r_i: &[u8; 32],
+) -> HashBytes {
+    let mut hasher = Sha256::new();
+    hasher.update(b"SL-ChainCodeSID-Commitment");
+    hasher.update(session_id);
+    hasher.update(chain_code_sid);
     hasher.update(r_i);
 
     HashBytes::new(hasher.finalize().into())
