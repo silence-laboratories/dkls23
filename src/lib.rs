@@ -53,3 +53,5 @@ pub type Seed = <ChaCha20Rng as SeedableRng>::Seed;
 ///
 #[derive(Debug)]
 pub struct BadPartyIndex;
+
+pub(crate) mod pairs;

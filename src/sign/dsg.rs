@@ -299,7 +299,7 @@ async fn pre_signature_inner<R: Relay>(
                 &setup.keyshare().seed_ot_senders[get_idx_from_id(my_party_id, sender_id) as usize];
 
             let mta_receiver = PairwiseMtaRec::new(sid, sender_ot_results, &mut rng);
-            
+
             let xi_i_j = Scalar::generate_biased(&mut rng);
             let (mta_receiver, mta_msg_1) = mta_receiver.process(&xi_i_j);
 
@@ -388,7 +388,7 @@ async fn pre_signature_inner<R: Relay>(
 
         let gamma0 = ProjectivePoint::GENERATOR * additive_shares[0];
         let gamma1 = ProjectivePoint::GENERATOR * additive_shares[1];
-        let (_mta_receiver, xi_i_j) = find_pair(&mut mta_receivers, party_idx as u8)?;
+        let (_mta_receiver, xi_i_j) = find_pair(&mta_receivers, party_idx as u8)?;
         let psi = phi_i - xi_i_j;
 
         let msg3 = SignMsg3 {
@@ -458,14 +458,14 @@ async fn pre_signature_inner<R: Relay>(
         sum_x_j += big_x_j;
         sum_psi_j_i += &*msg3.psi;
 
-        let cond1 = (big_r_j * &xi_i_j) == (ProjectivePoint::GENERATOR * &receiver_additive_shares_i[1] + &*msg3.gamma1);
+        let cond1 = (big_r_j * &xi_i_j) == (ProjectivePoint::GENERATOR * receiver_additive_shares_i[1] + *msg3.gamma1);
         if !cond1 {
             return Err(SignError::FailedCheck(
                 "Consistency check 1 failed",
             ));
         }
 
-        let cond2 = (big_x_j * &xi_i_j) == (ProjectivePoint::GENERATOR * &receiver_additive_shares_i[0] + &*msg3.gamma0);
+        let cond2 = (big_x_j * &xi_i_j) == (ProjectivePoint::GENERATOR * receiver_additive_shares_i[0] + *msg3.gamma0);
         if !cond2 {
             return Err(SignError::FailedCheck(
                 "Consistency check 2 failed",
@@ -494,8 +494,8 @@ async fn pre_signature_inner<R: Relay>(
     let r_point = big_r.to_affine();
     let r_x = Scalar::from_repr(r_point.x()).unwrap();
     //        let recid = r_point.y_is_odd().unwrap_u8();
-    let phi_plus_sum_psi = &phi_i + &sum_psi_j_i;
-    let s_0 = r_x * (x_i * &phi_plus_sum_psi + sum0);
+    let phi_plus_sum_psi = phi_i + sum_psi_j_i;
+    let s_0 = r_x * (x_i * phi_plus_sum_psi + sum0);
     let s_1 = k_i * phi_plus_sum_psi + sum1;
 
     let pre_sign_result = PreSignResult {

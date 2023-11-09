@@ -3,14 +3,13 @@
 
 use digest::Digest;
 use k256::{
-    elliptic_curve::{group::GroupEncoding, subtle::ConstantTimeEq},
+    elliptic_curve::{group::GroupEncoding, subtle::ConstantTimeEq, Group},
     NonZeroScalar, ProjectivePoint, Scalar, Secp256k1,
 };
 use merlin::Transcript;
 use rand::prelude::*;
 use rand_chacha::ChaCha20Rng;
 use sha2::Sha256;
-use std::collections::HashSet;
 
 #[cfg(feature = "milti-thread")]
 use tokio::task::{block_in_place, JoinHandle};
@@ -24,7 +23,7 @@ where
 }
 
 use sl_oblivious::{
-    endemic_ot::{EndemicOTReceiver, EndemicOTSender},
+    endemic_ot::{EndemicOTReceiver, EndemicOTSender, RecR1},
     soft_spoken::{build_pprf, eval_pprf},
     soft_spoken_mod::SOFT_SPOKEN_K,
     utils::TranscriptProtocol,
@@ -40,41 +39,14 @@ use sl_mpc_mate::{
 
 use crate::{
     keygen::{check_secret_recovery, constants::*, messages::*, KeygenError},
+    proto::create_abort_message,
     setup::{keygen::ValidatedSetup, PartyInfo, ABORT_MESSAGE_TAG},
-    proto::create_abort_message
 };
 
 /// Seed for our RNG
 pub type Seed = <ChaCha20Rng as SeedableRng>::Seed;
 
-type Pairs<T> = Vec<(u8, T)>;
-
-fn find_pair<T>(pairs: &[(u8, T)], party_id: u8) -> Result<&T, KeygenError> {
-    pairs
-        .iter()
-        .find(|(p, _)| *p == party_id)
-        .map(|(_, v)| v)
-        .ok_or(KeygenError::InvalidParty(party_id))
-}
-
-fn pop_pair<T>(pairs: &mut Pairs<T>, party_id: u8) -> Result<T, KeygenError> {
-    let pos = pairs
-        .iter()
-        .position(|(p, _)| *p == party_id)
-        .ok_or(KeygenError::InvalidParty(party_id))?;
-
-    Ok(pairs.remove(pos).1)
-}
-
-fn remove_ids<T>(mut pairs: Vec<(u8, T)>) -> Vec<T> {
-    pairs.sort_by_key(|(p, _)| *p);
-    pairs.into_iter().map(|(_, v)| v).collect()
-}
-
-fn remove_ids_and_wrap<T, K>(mut pairs: Vec<(u8, T)>) -> Vec<Opaque<T, K>> {
-    pairs.sort_by_key(|(p, _)| *p);
-    pairs.into_iter().map(|(_, v)| Opaque::from(v)).collect()
-}
+type Pairs<T> = crate::pairs::Pairs<T>;
 
 fn pop_tag<T>(msg_map: &mut Vec<(MsgId, T)>, id: &MsgId) -> Option<T> {
     if let Some(idx) = msg_map.iter().position(|prev| prev.0.eq(id)) {
@@ -87,6 +59,14 @@ fn pop_tag<T>(msg_map: &mut Vec<(MsgId, T)>, id: &MsgId) -> Option<T> {
     None
 }
 
+// Request broadcast or P2P message from other parties.
+//
+// We do not request messages directly from other parties; instead, we
+// inform a message relay to send us a message with the given message
+// ID when it get one.
+//
+// Return a vector of pairs (MsgId, party_id) so that when a message
+// arrives, we can process it appropriately.
 async fn request_messages<R: Relay>(
     setup: &ValidatedSetup,
     tag: MessageTag,
@@ -112,7 +92,10 @@ async fn request_messages<R: Relay>(
 
         tags.push((msg_id, p));
 
-        relay.feed(msg).await.map_err(|_| KeygenError::SendMessage)?;
+        relay
+            .feed(msg)
+            .await
+            .map_err(|_| KeygenError::SendMessage)?;
     }
 
     relay.flush().await.map_err(|_| KeygenError::SendMessage)?;
@@ -128,7 +111,7 @@ fn decode_signed_message<T: bincode::Decode>(
     let msg = Message::from_buffer(&mut msg)?;
     let mid = msg.id();
 
-    let party_id = pop_tag(tags, &mid).unwrap(); // ok_or(InvalidMessage::RecvError)?;
+    let party_id = pop_tag(tags, &mid).ok_or(InvalidMessage::RecvError)?;
 
     let msg = msg.verify_and_decode(setup.party_verifying_key(party_id).unwrap())?;
 
@@ -141,17 +124,17 @@ fn decode_encrypted_message<T: bincode::Decode>(
     tags: &mut Vec<(MsgId, u8)>,
     mut msg: Vec<u8>,
     secret: &ReusableSecret,
-    enc_pub_keys: &[(u8, PublicKey)],
+    enc_pub_keys: &Pairs<PublicKey>,
 ) -> Result<(T, u8), InvalidMessage> {
     let mut msg = Message::from_buffer(&mut msg)?;
     let mid = msg.id();
 
-    let party_id = pop_tag(tags, &mid).unwrap(); // .ok_or(InvalidMessage::RecvError)?;
+    let party_id = pop_tag(tags, &mid).ok_or(InvalidMessage::RecvError)?;
 
     let msg = msg.decrypt_and_decode(
         MESSAGE_HEADER_SIZE,
         secret,
-        find_pair(enc_pub_keys, party_id).map_err(|_| InvalidMessage::RecvError)?,
+        enc_pub_keys.find_pair_or_err(party_id, InvalidMessage::RecvError)?,
     )?;
 
     tracing::debug!("got msg {:X} p2p", mid);
@@ -162,12 +145,69 @@ fn decode_encrypted_message<T: bincode::Decode>(
 fn check_abort_message(tags: &[(MsgId, u8)], msg: &[u8]) -> Result<(), KeygenError> {
     let hdr = MsgHdr::from(msg).ok_or(KeygenError::InvalidMessage)?;
 
-    let p = tags.iter().find(|(id, _)| *id == hdr.id).map(|(_, v)| v);
-
-    match p {
+    match tags.iter().find(|(id, _)| *id == hdr.id).map(|(_, p)| p) {
         None => Ok(()),
         Some(p) => Err(KeygenError::AbortProtocol(*p)),
     }
+}
+
+async fn handle_signed_messages<T, R, F>(
+    setup: &ValidatedSetup,
+    abort_tags: &[(MsgId, u8)],
+    relay: &mut R,
+    tag: MessageTag,
+    mut handler: F,
+) -> Result<(), KeygenError>
+where
+    T: bincode::Decode,
+    R: Relay,
+    F: FnMut(T, u8) -> Result<(), KeygenError>,
+{
+    let mut tags = request_messages(setup, tag, relay, false).await?;
+    while !tags.is_empty() {
+        let msg = relay.next().await.ok_or(KeygenError::MissingMessage)?;
+
+        check_abort_message(abort_tags, &msg)?;
+
+        let (msg, party_id) = decode_signed_message::<T>(&mut tags, msg, setup)?;
+
+        handler(msg, party_id)?;
+    }
+
+    Ok(())
+}
+
+async fn handle_encrypted_messages<T, R, F>(
+    setup: &ValidatedSetup,
+    enc_key: &ReusableSecret,
+    enc_pub_key: &Pairs<PublicKey>,
+    abort_tags: &[(MsgId, u8)],
+    relay: &mut R,
+    tag: MessageTag,
+    mut handler: F,
+) -> Result<(), KeygenError>
+where
+    T: bincode::Decode,
+    R: Relay,
+    F: FnMut(T, u8) -> Result<Option<Vec<u8>>, KeygenError>,
+{
+    let mut tags = request_messages(setup, tag, relay, true).await?;
+    while !tags.is_empty() {
+        let msg = relay.next().await.ok_or(KeygenError::MissingMessage)?;
+
+        check_abort_message(abort_tags, &msg)?;
+
+        let (msg, party_id) = decode_encrypted_message(&mut tags, msg, enc_key, enc_pub_key)?;
+
+        if let Some(replay) = handler(msg, party_id)? {
+            relay
+                .send(replay)
+                .await
+                .map_err(|_| KeygenError::SendMessage)?;
+        }
+    }
+
+    Ok(())
 }
 
 /// Execute DKG protocol.
@@ -179,12 +219,9 @@ pub async fn run<R>(
 where
     R: Relay,
 {
-    // just some x_i value not used for key generation
-    let x_i = NonZeroScalar::new(Scalar::ONE).unwrap();
-
     let abort_msg = create_abort_message(setup.instance(), setup.ttl(), setup.signing_key());
 
-    match run_inner(setup, seed, |_| {}, &mut relay, x_i, false).await {
+    match run_inner(setup, seed, |_| {}, &mut relay, None).await {
         Ok(share) => Ok(share),
         Err(KeygenError::AbortProtocol(p)) => Err(KeygenError::AbortProtocol(p)),
         Err(KeygenError::SendMessage) => Err(KeygenError::SendMessage),
@@ -192,7 +229,7 @@ where
             tracing::debug!("sending abort message");
             relay.send(abort_msg).await?;
             Err(err)
-        },
+        }
     }
 }
 
@@ -223,9 +260,8 @@ where
 
     // just some x_i value not used for key generation
     let x_i = NonZeroScalar::new(Scalar::ONE).unwrap();
-    let handle = tokio::spawn(async move {
-        run_inner(setup, seed, recv_pk, &mut relay, x_i, false).await
-    });
+    let handle =
+        tokio::spawn(async move { run_inner(setup, seed, recv_pk, &mut relay, x_i, false).await });
 
     // If rx.await returns Err, then sender was dropped without sending
     // PK. This mean that run_inner() is finished at this point.
@@ -236,18 +272,33 @@ where
     Ok((pk, handle))
 }
 
+/// Implementation of DKG protocol.
+///
+/// `setup` contains all parameters, including verfication keys of all
+/// parties and our own signing key.
+///
+/// `seed` is used to initialize instance of ChaCha20Rng random number
+/// generator. This generator used to generate *ALL* random values for DKG.
+///
+/// `reck_pk` is a cloure that receives a newly generateed public key
+/// in the middle of execution of thr DKG protocol.
+///
+/// And optional `x_i` is allow to reused the function for key
+/// rotation protocol.
+///
 pub(crate) async fn run_inner<R, F>(
     setup: ValidatedSetup,
     seed: Seed,
     recv_pk: F,
     relay: &mut R,
-    party_x_i: NonZeroScalar,
-    for_key_refresh: bool,
+    x_i: Option<&NonZeroScalar>,
 ) -> Result<Keyshare, KeygenError>
 where
     R: Relay,
     F: FnOnce(ProjectivePoint),
 {
+    let key_refresh = x_i.is_some();
+
     let mut rng = ChaCha20Rng::from_seed(seed);
     let mut nonce_counter = NonceCounter::new();
 
@@ -260,17 +311,16 @@ where
     // u_i_k
     let mut polynomial = Polynomial::random(&mut rng, t as usize - 1);
 
-    if for_key_refresh {
+    if key_refresh {
         polynomial.coeffs[0] = Scalar::ZERO;
     }
 
-    let x_i = if for_key_refresh {
-        party_x_i
-    } else {
-        NonZeroScalar::random(&mut rng)
+    let x_i = match x_i {
+        Some(x_i) => *x_i,
+        None => NonZeroScalar::random(&mut rng),
     };
 
-    let enc_keys = ReusableSecret::random_from_rng(&mut rng);
+    let enc_key = ReusableSecret::random_from_rng(&mut rng);
 
     let big_f_i_vec = polynomial.commit(); // big_f_i_vector in dkg.py
 
@@ -285,70 +335,45 @@ where
 
     let d_i = block_in_place(|| polynomial.derivative_at(setup.rank() as usize, &x_i));
 
-    let mut commitment_list = vec![(my_party_id, commitment)];
-    let mut sid_i_list = vec![(my_party_id, session_id)];
-    let mut x_i_list = vec![(my_party_id, x_i)];
-    let mut d_i_list = vec![(my_party_id, d_i)];
-    let mut enc_pub_key = vec![];
-    let mut big_f_i_vecs = vec![(my_party_id, big_f_i_vec.clone())];
+    let mut commitment_list = Pairs::new_with_item(my_party_id, commitment);
+    let mut sid_i_list = Pairs::new_with_item(my_party_id, session_id);
+    let mut x_i_list = Pairs::new_with_item(my_party_id, x_i);
+    let mut d_i_list = Pairs::new_with_item(my_party_id, d_i);
+    let mut enc_pub_key = Pairs::new();
+    let mut big_f_i_vecs = Pairs::new_with_item(my_party_id, big_f_i_vec.clone());
 
     let abort_tags = request_messages(&setup, ABORT_MESSAGE_TAG, relay, false).await?;
 
-    // send out first message
-    relay
-        .send(Builder::<Signed>::encode(
-            &setup.msg_id(None, DKG_MSG_R1),
-            setup.ttl(),
-            setup.signing_key(),
-            &KeygenMsg1 {
-                session_id: Opaque::from(session_id),
-                commitment: Opaque::from(commitment),
-                x_i: Opaque::from(*x_i),
-                enc_pk: Opaque::from(PublicKey::from(&enc_keys).to_bytes()),
-            },
-        )?)
-        .await.map_err(|_| KeygenError::SendMessage)?;
+    let msg1 = KeygenMsg1 {
+        session_id: Opaque::from(session_id),
+        commitment: Opaque::from(commitment),
+        x_i: Opaque::from(*x_i),
+        enc_pk: Opaque::from(PublicKey::from(&enc_key).to_bytes()),
+    };
+    send_broadcast(&setup, relay, DKG_MSG_R1, msg1).await?;
 
-    let mut r1_tags = request_messages(&setup, DKG_MSG_R1, relay, false).await?;
-    while !r1_tags.is_empty() {
-        let msg = relay.next().await.ok_or(KeygenError::MissingMessage)?;
+    handle_signed_messages(
+        &setup,
+        &abort_tags,
+        relay,
+        DKG_MSG_R1,
+        |msg: KeygenMsg1, party_id| {
+            sid_i_list.push(party_id, *msg.session_id);
+            commitment_list.push(party_id, *msg.commitment);
+            x_i_list.push(party_id, NonZeroScalar::new(*msg.x_i).unwrap()); // FIXME handle unwrap()!
+            enc_pub_key.push(party_id, PublicKey::from(*msg.enc_pk));
 
-        check_abort_message(&abort_tags, &msg)?;
-
-        let (
-            KeygenMsg1 {
-                session_id,
-                x_i,
-                commitment,
-                enc_pk,
-            },
-            party_id,
-        ) = decode_signed_message(&mut r1_tags, msg, &setup)?;
-
-        sid_i_list.push((party_id, *session_id));
-        commitment_list.push((party_id, *commitment));
-        x_i_list.push((party_id, NonZeroScalar::new(*x_i).unwrap())); // FIXME handle unwrap()!
-        enc_pub_key.push((party_id, PublicKey::from(*enc_pk)));
-    }
+            Ok(())
+        },
+    )
+    .await?;
 
     // tracing::info!("R1 done {}", setup.party_id());
 
     // Check that x_i_list contains unique elements
-    let mut x_i_set = HashSet::new();
-    for (_party_id, x_i_value) in &x_i_list {
-        x_i_set.insert(x_i_value.to_bytes());
+    if !x_i_list.no_dups_by(|a, b| a.ct_eq(b).into()) {
+        return Err(KeygenError::NotUniqueXiValues);
     }
-    (x_i_list.len() == x_i_set.len())
-        .then_some(())
-        .ok_or(KeygenError::NotUniqueXiValues)?;
-
-    // Create a common session ID from pieces od random data that we received
-    // from other parties.
-    //
-    // Sort party's session-id by party id
-    sid_i_list.sort_by_key(|(p, _)| *p);
-    x_i_list.sort_by_key(|(p, _)| *p);
-    commitment_list.sort_by_key(|(p, _)| *p);
 
     // TODO: Should parties be initialized with rank_list and x_i_list? Ask Vlad.
     let final_session_id = SessionId::new(
@@ -379,273 +404,107 @@ where
         })
         .collect::<Vec<_>>();
 
-    let mut base_ot_senders = setup
-        .other_parties_iter()
-        .map(|(p, _)| {
-            (
-                p,
-                EndemicOTSender::new(
-                    get_base_ot_session_id(p as usize, my_party_id as usize, &final_session_id),
-                    &mut rng,
-                ),
-            )
-        })
-        .collect::<Vec<_>>();
+    let mut base_ot_senders = make_base_ot_senders(&setup, &final_session_id, &mut rng);
+    let (mut base_ot_receivers, to_send) = make_base_ot_receivers(
+        &setup,
+        &final_session_id,
+        &enc_pub_key,
+        &enc_key,
+        &mut nonce_counter,
+        &mut rng,
+    )?;
 
-    let mut to_send = vec![];
-    let mut base_ot_receivers = setup
-        .other_parties_iter()
-        .map(|(p, _vk)| {
-            (
-                p,
-                setup.msg_id_from(&setup.verifying_key(), Some(p), DKG_MSG_R2),
-                rng.gen(),
-                find_pair(&enc_pub_key, p).unwrap(),
-                nonce_counter.next_nonce(),
-            )
-        })
-        // .par_bridge()
-        .map(|(p, msg_id, seed, enc_pk, nonce)| {
-            let mut rng = ChaCha20Rng::from_seed(seed); // TODO check!!!
-
-            let base_ot_session_id =
-                get_base_ot_session_id(my_party_id as usize, p as usize, &final_session_id);
-
-            let (receiver, msg1) = EndemicOTReceiver::new(base_ot_session_id, &mut rng);
-
-            to_send.push(Builder::<Encrypted>::encode(
-                &msg_id,
-                setup.ttl(),
-                &enc_keys,
-                enc_pk,
-                &msg1,
-                nonce,
-            )?);
-
-            Ok((p, receiver))
-        })
-        .collect::<Result<Vec<_>, KeygenError>>()?;
-
-    // send out R2 P2P messages
+    // send out R2 P2P messages. We call feed() in the loop
+    // and following send_broadcast() will call .send() that
+    // implies feed() + flush()
     for msg in to_send.into_iter() {
-        relay.feed(msg).await.map_err(|_| KeygenError::SendMessage)?;
+        relay
+            .feed(msg)
+            .await
+            .map_err(|_| KeygenError::SendMessage)?;
     }
 
-    // generate chain_code_sid for root_chain_code
-    let chain_code_sid = SessionId::new(rng.gen());
-    let r_i_2 = rng.gen();
-    let commitment_2 = hash_commitment_2(
-        &final_session_id,
-        &chain_code_sid,
-        &r_i_2,
-    );
+    let msg2 = KeygenMsg2 {
+        session_id: Opaque::from(final_session_id),
+        big_f_i_vector: big_f_i_vec,
+        r_i: Opaque::from(r_i),
+        dlog_proofs_i: dlog_proofs,
+    };
+    send_broadcast(&setup, relay, DKG_MSG_R2, msg2).await?;
 
-    // send out our R2 broadcast message
-    relay
-        .send(Builder::<Signed>::encode(
-            &setup.msg_id(None, DKG_MSG_R2),
-            setup.ttl(),
-            setup.signing_key(),
-            &KeygenMsg2 {
-                session_id: Opaque::from(final_session_id),
-                big_f_i_vector: big_f_i_vec,
-                r_i: Opaque::from(r_i),
-                dlog_proofs_i: dlog_proofs,
-                commitment_2: Opaque::from(commitment_2)
-            },
-        )?)
-        .await.map_err(|_| KeygenError::SendMessage)?;
+    // TODO possible optimization: we could receive P2P R2 messages
+    // while waiting and processing broadcast R2 messages
 
-    // ... and while we are receiving P2P messages,
-    // receive and process broadcast messages from parties.
-    let mut commitment_list_2 = vec![(my_party_id, commitment_2)];
-    let mut r2_msgs = request_messages(&setup, DKG_MSG_R2, relay, false).await?;
-    while !r2_msgs.is_empty() {
-        let msg = relay.next().await.ok_or(KeygenError::MissingMessage)?;
+    // handle broadcast R2 messages from other parties
+    handle_signed_messages(
+        &setup,
+        &abort_tags,
+        relay,
+        DKG_MSG_R2,
+        |msg: KeygenMsg2, party_id| {
+            verify_commitment(
+                &setup,
+                party_id,
+                &x_i_list,
+                &sid_i_list,
+                &commitment_list,
+                &msg,
+            )?;
 
-        check_abort_message(&abort_tags, &msg)?;
-
-        let (msg, party_id) = decode_signed_message::<KeygenMsg2>(&mut r2_msgs, msg, &setup)?;
-
-        // Verify commitments.
-        let rank = setup.party_rank(party_id).unwrap();
-        let x_i = find_pair(&x_i_list, party_id)?;
-        let sid = find_pair(&sid_i_list, party_id)?;
-        let commitment = find_pair(&commitment_list, party_id)?;
-
-        let commit_hash = hash_commitment(
-            sid,
-            party_id as usize,
-            rank as usize,
-            x_i,
-            &msg.big_f_i_vector,
-            &msg.r_i,
-        );
-
-        bool::from(commit_hash.ct_eq(commitment))
-            .then_some(())
-            .ok_or(KeygenError::InvalidCommitmentHash)?;
-
-        // Check that msg.big_f_i_vector.points() != IDENTITY
-        // for key_refresh first point should be IDENTITY
-        if !for_key_refresh {
-            for point in msg.big_f_i_vector.points() {
-                (point != &ProjectivePoint::IDENTITY)
-                    .then_some(())
-                    .ok_or(KeygenError::InvalidPolynomialPoint)?;
-            }
-        } else {
-            for (i, point) in msg.big_f_i_vector.points().enumerate() {
-                if i != 0 {
-                    (point != &ProjectivePoint::IDENTITY)
-                        .then_some(())
-                        .ok_or(KeygenError::InvalidPolynomialPoint)?;
-                } else {
-                    (point == &ProjectivePoint::IDENTITY)
-                        .then_some(())
-                        .ok_or(KeygenError::InvalidPolynomialPoint)?;
+            // Check that msg.big_f_i_vector.points() != IDENTITY
+            // for key refresh first point should be IDENTITY
+            {
+                let mut points = msg.big_f_i_vector.points();
+                if key_refresh {
+                    // for key refresh first point should be IDENTITY
+                    if points.next() != Some(&ProjectivePoint::IDENTITY) {
+                        return Err(KeygenError::InvalidPolynomialPoint);
+                    }
+                }
+                if points.any(|p| p.is_identity().into()) {
+                    return Err(KeygenError::InvalidPolynomialPoint);
                 }
             }
-        }
 
-        // Verify DLog proofs.
-        let mut dlog_transcript = Transcript::new_dlog_proof(
-            &final_session_id,
-            party_id as usize,
-            DLOG_PROOF1_LABEL,
-            DKG_LABEL,
-        );
+            // Verify DLog proofs.
+            let mut dlog_transcript = Transcript::new_dlog_proof(
+                &final_session_id,
+                party_id as usize,
+                DLOG_PROOF1_LABEL,
+                DKG_LABEL,
+            );
 
-        verfiy_dlog_proofs(
-            &msg.dlog_proofs_i,
-            msg.big_f_i_vector.points(),
-            &mut dlog_transcript,
-        )?;
+            verfiy_dlog_proofs(
+                &msg.dlog_proofs_i,
+                msg.big_f_i_vector.points(),
+                &mut dlog_transcript,
+            )?;
 
-        big_f_i_vecs.push((party_id, msg.big_f_i_vector));
-        commitment_list_2.push((party_id, *msg.commitment_2));
-    }
+            big_f_i_vecs.push(party_id, msg.big_f_i_vector);
 
-    drop(r2_msgs);
+            Ok(())
+        },
+    )
+    .await?;
 
     // tracing::info!("R2 broadcast done {}", setup.party_id());
 
-    drop(commitment_list);
-
     // 6.d
     let mut big_f_vec = GroupPolynomial::new(
-        (0..setup.threshold())
-            .map(|_| ProjectivePoint::IDENTITY.into())
+        std::iter::repeat(Opaque::from(ProjectivePoint::IDENTITY))
+            .take(t as _)
             .collect(),
     );
-    for (_, v) in &big_f_i_vecs {
+    for (_, v) in big_f_i_vecs.iter() {
         big_f_vec.add_mut(v);
     }
 
-    let public_key = *big_f_vec.get(0).unwrap(); // FIXME dup data
+    let public_key = *big_f_vec.get(0).unwrap();
 
-    if for_key_refresh {
+    if key_refresh {
         // check that public_key == IDENTITY
-        (public_key == ProjectivePoint::IDENTITY)
-            .then_some(())
-            .ok_or(KeygenError::InvalidPolynomialPoint)?;
-    }
-    recv_pk(public_key);
-
-    // start receiving P2P messages
-    let mut r2_p2p = request_messages(&setup, DKG_MSG_R2, relay, true).await?;
-    let mut seed_ot_senders = vec![];
-    let mut seed_i_j_list = vec![];
-    while !r2_p2p.is_empty() {
-        let msg = relay.next().await.ok_or(KeygenError::MissingMessage)?;
-
-        check_abort_message(&abort_tags, &msg)?;
-
-        let (base_ot_msg1, party_id) =
-            decode_encrypted_message(&mut r2_p2p, msg, &enc_keys, &enc_pub_key)?;
-
-        let rank = setup.party_rank(party_id).unwrap();
-
-        let sender = pop_pair(&mut base_ot_senders, party_id)?;
-
-        let (sender_output, base_ot_msg2) = block_in_place(|| sender.process(base_ot_msg1));
-
-        let (all_but_one_sender_seed, pprf_output) =
-            build_pprf(&final_session_id, &sender_output, 256, SOFT_SPOKEN_K as u8);
-
-        seed_ot_senders.push((party_id, all_but_one_sender_seed));
-
-        let seed_i_j = if party_id > my_party_id {
-            let seed_i_j = rng.gen();
-            seed_i_j_list.push((party_id, seed_i_j));
-            Some(seed_i_j)
-        } else {
-            None
-        };
-
-        let x_i = find_pair(&x_i_list, party_id)?;
-        let d_i = block_in_place(|| polynomial.derivative_at(rank as usize, x_i));
-
-        let msg3 = KeygenMsg3 {
-            base_ot_msg2,
-            pprf_output,
-            seed_i_j,
-            d_i: Opaque::from(d_i),
-            session_id: Opaque::from(final_session_id),
-            big_f_vec: big_f_vec.clone(),
-            chain_code_sid: Opaque::from(chain_code_sid),
-            r_i_2: Opaque::from(r_i_2)
-        };
-
-        relay
-            .send(Builder::<Encrypted>::encode(
-                &setup.msg_id(Some(party_id), DKG_MSG_R3),
-                setup.ttl(),
-                &enc_keys,
-                find_pair(&enc_pub_key, party_id)?,
-                &msg3,
-                nonce_counter.next_nonce(),
-            )?)
-            .await.map_err(|_| KeygenError::SendMessage)?;
-    }
-    drop(r2_p2p);
-
-    // tracing::info!("R2 P2P done {}", setup.party_id());
-
-    let mut seed_ot_receivers = vec![];
-    let mut rec_seed_list = vec![];
-    let mut chain_code_sids = vec![(my_party_id, chain_code_sid)];
-    let mut r3_msgs = request_messages(&setup, DKG_MSG_R3, relay, true).await?;
-    while !r3_msgs.is_empty() {
-        let msg = relay.next().await.ok_or(KeygenError::MissingMessage)?;
-
-        check_abort_message(&abort_tags, &msg)?;
-
-        let (msg3, party_id) =
-            decode_encrypted_message::<KeygenMsg3>(&mut r3_msgs, msg, &enc_keys, &enc_pub_key)?;
-
-        (msg3.big_f_vec == big_f_vec)
-            .then_some(())
-            .ok_or(KeygenError::BigFVecMismatch)?;
-
-        d_i_list.push((party_id, *msg3.d_i));
-
-        let receiver = pop_pair(&mut base_ot_receivers, party_id)?;
-
-        let receiver_output = block_in_place(|| receiver.process(msg3.base_ot_msg2));
-
-        let all_but_one_receiver_seed = eval_pprf(
-            &final_session_id,
-            &receiver_output,
-            256,
-            SOFT_SPOKEN_K as u8,
-            msg3.pprf_output,
-        )
-        .map_err(KeygenError::PPRFError)?;
-
-        seed_ot_receivers.push((party_id, all_but_one_receiver_seed));
-        if let Some(seed_j_i) = msg3.seed_i_j {
-            rec_seed_list.push((party_id, seed_j_i));
+        if public_key != ProjectivePoint::IDENTITY {
+            return Err(KeygenError::InvalidPolynomialPoint);
         }
 
         // Verify commitments
@@ -662,27 +521,108 @@ where
         chain_code_sids.push((party_id, *msg3.chain_code_sid))
     }
 
-    drop(commitment_list_2);
+    recv_pk(public_key);
+
+    let mut seed_ot_senders = Pairs::new();
+    let mut seed_i_j_list = Pairs::new();
+
+    handle_encrypted_messages(
+        &setup,
+        &enc_key,
+        &enc_pub_key,
+        &abort_tags,
+        relay,
+        DKG_MSG_R2,
+        |base_ot_msg1, party_id| {
+            let rank = setup.party_rank(party_id).unwrap();
+            let sender = base_ot_senders.pop_pair(party_id);
+
+            let (sender_output, base_ot_msg2) = block_in_place(|| sender.process(base_ot_msg1));
+
+            let (all_but_one_sender_seed, pprf_output) =
+                build_pprf(&final_session_id, &sender_output, 256, SOFT_SPOKEN_K as u8);
+
+            seed_ot_senders.push(party_id, all_but_one_sender_seed);
+
+            let seed_i_j = if party_id > my_party_id {
+                let seed_i_j = rng.gen();
+                seed_i_j_list.push(party_id, seed_i_j);
+                Some(seed_i_j)
+            } else {
+                None
+            };
+
+            let x_i = x_i_list.find_pair(party_id);
+            let d_i = block_in_place(|| polynomial.derivative_at(rank as usize, x_i));
+
+            let msg3 = KeygenMsg3 {
+                base_ot_msg2,
+                pprf_output,
+                seed_i_j,
+                d_i: Opaque::from(d_i),
+                session_id: Opaque::from(final_session_id),
+                big_f_vec: big_f_vec.clone(),
+            };
+
+            Ok(Some(Builder::<Encrypted>::encode(
+                &setup.msg_id(Some(party_id), DKG_MSG_R3),
+                setup.ttl(),
+                &enc_key,
+                enc_pub_key.find_pair(party_id),
+                &msg3,
+                nonce_counter.next_nonce(),
+            )?))
+        },
+    )
+    .await?;
+
+    // tracing::info!("R2 P2P done {}", setup.party_id());
+
+    let mut seed_ot_receivers = Pairs::new();
+    let mut rec_seed_list = Pairs::new();
+
+    handle_encrypted_messages(
+        &setup,
+        &enc_key,
+        &enc_pub_key,
+        &abort_tags,
+        relay,
+        DKG_MSG_R3,
+        |msg3: KeygenMsg3, party_id| {
+            if msg3.big_f_vec != big_f_vec {
+                return Err(KeygenError::BigFVecMismatch);
+            }
+
+            d_i_list.push(party_id, *msg3.d_i);
+
+            let receiver = base_ot_receivers.pop_pair(party_id);
+            let receiver_output = block_in_place(|| receiver.process(msg3.base_ot_msg2));
+            let all_but_one_receiver_seed = eval_pprf(
+                &final_session_id,
+                &receiver_output,
+                256,
+                SOFT_SPOKEN_K as u8,
+                msg3.pprf_output,
+            )
+            .map_err(KeygenError::PPRFError)?;
+
+            seed_ot_receivers.push(party_id, all_but_one_receiver_seed);
+            if let Some(seed_j_i) = msg3.seed_i_j {
+                rec_seed_list.push(party_id, seed_j_i);
+            }
+
+            Ok(None)
+        },
+    )
+    .await?;
 
     // tracing::info!("R3 P2P done {}", setup.party_id());
 
-    // Generate common root_chain_code from chain_code_sids
-    chain_code_sids.sort_by_key(|(p, _)| *p);
-    let root_chain_code: [u8; 32] = sid_i_list
-            .iter()
-            .fold(Sha256::new(), |hash, (_, sid)| hash.chain_update(sid))
-            .finalize()
-            .into();
-
-    d_i_list.sort_by_key(|(p, _)| *p);
-    big_f_i_vecs.sort_by_key(|(p, _)| *p);
-
-    for ((_, big_f_i_vec), (_, f_i_val)) in big_f_i_vecs.iter().zip(&d_i_list) {
+    for ((_, big_f_i_vec), (_, f_i_val)) in big_f_i_vecs.iter().zip(d_i_list.iter()) {
         let coeffs = block_in_place(|| big_f_i_vec.derivative_coeffs(setup.rank() as usize));
-
         let valid = feldman_verify(
             &coeffs,
-            find_pair(&x_i_list, setup.party_id())?,
+            x_i_list.find_pair(my_party_id),
             f_i_val,
             &ProjectivePoint::GENERATOR,
         )
@@ -702,7 +642,6 @@ where
         DLOG_PROOF2_LABEL,
         DKG_LABEL,
     );
-
     let proof = DLogProof::prove(&s_i, &ProjectivePoint::GENERATOR, &mut transcript, &mut rng);
 
     let msg4 = KeygenMsg4 {
@@ -711,72 +650,64 @@ where
         big_s_i: Opaque::from(big_s_i),
         dlog_proof: proof,
     };
+    send_broadcast(&setup, relay, DKG_MSG_R4, msg4).await?;
 
-    relay
-        .send(Builder::<Signed>::encode(
-            &setup.msg_id(None, DKG_MSG_R4),
-            setup.ttl(),
-            setup.signing_key(),
-            &msg4,
-        )?)
-        .await.map_err(|_| KeygenError::SendMessage)?;
+    let mut big_s_list = Pairs::new_with_item(my_party_id, big_s_i);
 
-    let mut big_s_list = vec![(my_party_id, big_s_i)];
+    handle_signed_messages(
+        &setup,
+        &abort_tags,
+        relay,
+        DKG_MSG_R4,
+        |msg: KeygenMsg4, party_id| {
+            if public_key != *msg.public_key {
+                return Err(KeygenError::PublicKeyMismatch);
+            }
 
-    let mut r4_msgs = request_messages(&setup, DKG_MSG_R4, relay, false).await?;
-    while !r4_msgs.is_empty() {
-        let msg = relay.next().await.ok_or(KeygenError::MissingMessage)?;
+            let mut transcript = Transcript::new_dlog_proof(
+                &final_session_id,
+                party_id as usize,
+                DLOG_PROOF2_LABEL,
+                DKG_LABEL,
+            );
+            if !msg
+                .dlog_proof
+                .verify(&msg.big_s_i, &ProjectivePoint::GENERATOR, &mut transcript)
+            {
+                return Err(KeygenError::InvalidDLogProof);
+            }
 
-        check_abort_message(&abort_tags, &msg)?;
+            let x_i = x_i_list.find_pair(party_id);
+            let party_rank = setup.party_rank(party_id).unwrap();
+            let coeff_multipliers = polynomial_coeff_multipliers(
+                x_i,
+                party_rank as usize,
+                setup.participants() as usize,
+            );
+            let mut expected_point = ProjectivePoint::IDENTITY;
+            for (point, coeff) in big_f_vec.points().zip(coeff_multipliers) {
+                expected_point += point * &coeff;
+            }
 
-        let (msg, party_id) = decode_signed_message::<KeygenMsg4>(&mut r4_msgs, msg, &setup)?;
+            if expected_point != *msg.big_s_i {
+                return Err(KeygenError::BigSMismatch);
+            }
 
-        if public_key != *msg.public_key {
-            return Err(KeygenError::PublicKeyMismatch);
-        }
+            big_s_list.push(party_id, *msg.big_s_i);
 
-        let big_s_i = &*msg.big_s_i;
-        let dlog_proof = &msg.dlog_proof;
-
-        let mut transcript = Transcript::new_dlog_proof(
-            &final_session_id,
-            party_id as usize,
-            DLOG_PROOF2_LABEL,
-            DKG_LABEL,
-        );
-
-        dlog_proof
-            .verify(big_s_i, &ProjectivePoint::GENERATOR, &mut transcript)
-            .then_some(())
-            .ok_or(KeygenError::InvalidDLogProof)?;
-
-        let x_i = find_pair(&x_i_list, party_id)?;
-        // TODO: Handle unwrap
-        let party_rank = setup.party_rank(party_id).unwrap();
-        let coeff_multipliers =
-            polynomial_coeff_multipliers(x_i, party_rank as usize, setup.participants() as usize);
-        let mut expected_point = ProjectivePoint::IDENTITY;
-        for (point, coeff) in big_f_vec.points().zip(coeff_multipliers) {
-            expected_point += point * &coeff;
-        }
-
-        (expected_point == *msg.big_s_i)
-            .then_some(())
-            .ok_or(KeygenError::BigSMismatch)?;
-
-        big_s_list.push((party_id, *msg.big_s_i));
-    }
-
-    big_s_list.sort_by_key(|(p, _)| *p);
+            Ok(())
+        },
+    )
+    .await?;
 
     // TODO:(sushi) Only for birkhoff now (with ranks), support lagrange later.
-    let rank_list = setup.all_party_ranks();
+    let rank_list = Pairs::from(setup.all_party_ranks());
 
     // TODO: Remove clone later, just for testing
     check_secret_recovery(
-        &remove_ids(x_i_list.clone()),
-        &remove_ids(rank_list),
-        &remove_ids(big_s_list.clone()),
+        &x_i_list.remove_ids(),
+        &rank_list.remove_ids(),
+        &big_s_list.remove_ids(),
         &public_key,
     )?;
 
@@ -790,16 +721,16 @@ where
         total_parties: setup.participants(),
         threshold: setup.threshold(),
         party_id: my_party_id,
-        rank_list: remove_ids(setup.all_party_ranks()),
+        rank_list: Pairs::from(setup.all_party_ranks()).remove_ids(),
         public_key: Opaque::from(public_key),
         root_chain_code,
-        x_i_list: remove_ids_and_wrap(x_i_list),
-        big_s_list: remove_ids_and_wrap(big_s_list),
+        x_i_list: x_i_list.remove_ids_and_wrap(),
+        big_s_list: big_s_list.remove_ids_and_wrap(),
         s_i: Opaque::from(s_i),
-        sent_seed_list: remove_ids(seed_i_j_list),
-        seed_ot_receivers: remove_ids(seed_ot_receivers),
-        seed_ot_senders: remove_ids(seed_ot_senders),
-        rec_seed_list: remove_ids(rec_seed_list),
+        sent_seed_list: seed_i_j_list.remove_ids(),
+        seed_ot_receivers: seed_ot_receivers.remove_ids(),
+        seed_ot_senders: seed_ot_senders.remove_ids(),
+        rec_seed_list: rec_seed_list.remove_ids(),
     };
 
     Ok(share)
@@ -830,19 +761,123 @@ fn hash_commitment(
     HashBytes::new(hasher.finalize().into())
 }
 
-fn hash_commitment_2(
-    session_id: &SessionId,
-    chain_code_sid: &SessionId,
-    r_i: &[u8; 32],
-) -> HashBytes {
-    let mut hasher = Sha256::new();
+fn verify_commitment(
+    setup: &ValidatedSetup,
+    party_id: u8,
+    x_i_list: &Pairs<NonZeroScalar>,
+    sid_i_list: &Pairs<SessionId>,
+    commitment_list: &Pairs<HashBytes>,
+    msg: &KeygenMsg2,
+) -> Result<(), KeygenError> {
+    // Verify commitments.
+    let rank = setup.party_rank(party_id).unwrap();
+    let x_i = x_i_list.find_pair(party_id);
+    let sid = sid_i_list.find_pair(party_id);
+    let commitment = commitment_list.find_pair(party_id);
 
-    hasher.update(b"SL-ChainCodeSID-Commitment");
-    hasher.update(session_id);
-    hasher.update(chain_code_sid);
-    hasher.update(r_i);
+    let commit_hash = hash_commitment(
+        sid,
+        party_id as usize,
+        rank as usize,
+        x_i,
+        &msg.big_f_i_vector,
+        &msg.r_i,
+    );
 
-    HashBytes::new(hasher.finalize().into())
+    if commit_hash.ct_ne(commitment).into() {
+        return Err(KeygenError::InvalidCommitmentHash);
+    }
+
+    Ok(())
+}
+
+async fn send_broadcast<T, R>(
+    setup: &ValidatedSetup,
+    relay: &mut R,
+    tag: MessageTag,
+    msg: T,
+) -> Result<(), KeygenError>
+where
+    T: bincode::Encode,
+    R: Relay,
+{
+    relay
+        .send(Builder::<Signed>::encode(
+            &setup.msg_id(None, tag),
+            setup.ttl(),
+            setup.signing_key(),
+            &msg,
+        )?)
+        .await
+        .map_err(|_| KeygenError::SendMessage)?;
+
+    Ok(())
+}
+
+fn make_base_ot_senders<R: RngCore + CryptoRng + Clone>(
+    setup: &ValidatedSetup,
+    final_session_id: &SessionId,
+    rng: &mut R,
+) -> Pairs<EndemicOTSender> {
+    setup
+        .other_parties_iter()
+        .map(|(p, _)| {
+            (
+                p,
+                EndemicOTSender::new(
+                    get_base_ot_session_id(p as usize, setup.party_id() as usize, final_session_id),
+                    rng,
+                ),
+            )
+        })
+        .collect::<Vec<_>>()
+        .into()
+}
+
+#[allow(clippy::type_complexity)]
+fn make_base_ot_receivers<R: RngCore + CryptoRng + Clone>(
+    setup: &ValidatedSetup,
+    final_session_id: &SessionId,
+    enc_pub_key: &Pairs<PublicKey>,
+    enc_keys: &ReusableSecret,
+    nonce_counter: &mut NonceCounter,
+    rng: &mut R,
+) -> Result<(Pairs<EndemicOTReceiver<RecR1>>, Vec<Vec<u8>>), KeygenError> {
+    let mut to_send = vec![];
+    let base_ot_receivers: Pairs<EndemicOTReceiver<RecR1>> = setup
+        .other_parties_iter()
+        .map(|(p, _vk)| {
+            (
+                p,
+                setup.msg_id_from(&setup.verifying_key(), Some(p), DKG_MSG_R2),
+                rng.gen(),
+                enc_pub_key.find_pair(p),
+                nonce_counter.next_nonce(),
+            )
+        })
+        .map(|(p, msg_id, seed, enc_pk, nonce)| {
+            let mut rng = ChaCha20Rng::from_seed(seed); // TODO check!!!
+
+            let base_ot_session_id =
+                get_base_ot_session_id(setup.party_id() as usize, p as usize, final_session_id);
+
+            let (receiver, msg1) = EndemicOTReceiver::new(base_ot_session_id, &mut rng);
+
+            to_send.push(Builder::<Encrypted>::encode(
+                &msg_id,
+                setup.ttl(),
+                enc_keys,
+                enc_pk,
+                &msg1,
+                nonce,
+            )?);
+
+            Ok((p, receiver))
+        })
+        .collect::<Result<Vec<_>, KeygenError>>()?
+        .into();
+
+    Ok((base_ot_receivers, to_send))
 }
 
 fn get_base_ot_session_id(

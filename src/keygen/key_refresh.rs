@@ -6,7 +6,8 @@ use rand::prelude::*;
 use sl_mpc_mate::{coord::*, message::*};
 
 use crate::{
-    keygen::{check_secret_recovery, run_inner, KeygenError, Keyshare, Seed},
+    Seed,
+    keygen::{check_secret_recovery, run_inner, KeygenError, Keyshare},
     setup::{keygen::SetupBuilder, keygen::ValidatedSetup, PartyInfo, SETUP_MESSAGE_TAG},
 };
 
@@ -62,7 +63,7 @@ where
 {
     let x_i = &old_keyshare.x_i_list[setup.party_id() as usize] as &NonZeroScalar;
     let result: Result<Keyshare, KeygenError> =
-        run_inner(setup, seed, |_| {}, &mut relay, *x_i, true).await;
+        run_inner(setup, seed, |_| {}, &mut relay, Some(x_i)).await;
     let mut new_keyshare = match result {
         Ok(eph_keyshare) => eph_keyshare,
         Err(err_message) => return Err(err_message),

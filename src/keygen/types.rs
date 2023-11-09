@@ -68,7 +68,7 @@ pub enum KeygenError {
     /// This error is returned when we unable to find a datum
     /// corresponding to the party-id
     #[error("Missing piece of state")]
-    InvalidParty(u8),
+    InvalidParty,
 
     ///
     #[error("Missing message")]
