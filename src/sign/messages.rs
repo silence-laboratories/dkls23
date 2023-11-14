@@ -20,12 +20,9 @@ pub struct SignMsg1 {
     pub party_id: u8,
 }
 
-/// Type for the sign gen message 3.
+/// Type for the sign gen message 3. P2P
 #[derive(Debug, bincode::Encode, bincode::Decode)]
 pub struct SignMsg3 {
-    /// Sesssion id
-    pub session_id: Opaque<SessionId>,
-
     /// encrypted data
     pub mta_msg2: MtaRound2Output,
 
@@ -87,23 +84,22 @@ pub struct PreSignResult {
 }
 
 /// Partial signature of party_i
-#[derive(Clone, bincode::Encode, bincode::Decode)]
 pub struct PartialSignature {
     /// final_session_id
-    pub final_session_id: Opaque<SessionId>,
+    pub final_session_id: SessionId,
 
     /// public_key
-    pub public_key: Opaque<ProjectivePoint, GR>,
+    pub public_key: ProjectivePoint,
 
     /// 32 bytes message_hash
-    pub message_hash: Opaque<HashBytes>,
+    pub message_hash: HashBytes,
 
     /// s_0 Scalar
-    pub s_0: Opaque<Scalar, PF>,
+    pub s_0: Scalar,
 
     /// s_1 Scalar
-    pub s_1: Opaque<Scalar, PF>,
+    pub s_1: Scalar,
 
     /// R point
-    pub r: Opaque<ProjectivePoint, GR>,
+    pub r: ProjectivePoint,
 }

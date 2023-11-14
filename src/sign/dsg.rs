@@ -143,7 +143,7 @@ pub async fn pre_signature<R: Relay>(
         &setup.msg_id(None, ABORT_MESSAGE_TAG),
         setup.ttl(),
         setup.signing_key(),
-        &(), // emoty message
+        &(), // empty message
     )?;
 
     match pre_signature_inner(setup, seed, &mut relay).await {
@@ -266,7 +266,7 @@ async fn pre_signature_inner<R: Relay>(
         .collect::<Result<Vec<_>, SignError>>()?;
 
     for msg in to_send.into_iter() {
-        relay.send(msg).await.map_err(|_| SignError::SendMessage)?;
+        relay.feed(msg).await.map_err(|_| SignError::SendMessage)?;
     }
 
     let mut mta_senders = setup
@@ -296,25 +296,26 @@ async fn pre_signature_inner<R: Relay>(
         HashBytes::new(h.finalize().into())
     };
 
-    let mu_i = get_mu_i(setup.keyshare(), &party_idx_to_id_map, digest_i);
+    let mu_i = get_mu_i(setup.keyshare(), &party_idx_to_id_map, &digest_i);
 
     let coeff = if setup.keyshare().rank_list.iter().all(|&r| r == 0) {
         get_lagrange_coeff(setup.keyshare(), &party_idx_to_id_map)
     } else {
         let betta_coeffs = get_birkhoff_coefficients(setup.keyshare(), &party_idx_to_id_map);
 
-        *betta_coeffs
+        betta_coeffs
             .get(&(my_party_id as usize))
-            .expect("betta_i not found")
+            .expect("betta_i not found")  // FIXME
+            .clone()
     };
 
     let (additive_offset, derived_public_key) = setup
         .keyshare()
         .derive_with_offset(setup.chain_path())
-        .unwrap();
+        .unwrap(); // FIXME: report error
     let threshold_inv = Scalar::from(setup.keyshare().threshold as u32)
         .invert()
-        .unwrap();
+        .unwrap(); // FIXME: report error
     let additive_offset = additive_offset * threshold_inv;
 
     let x_i = coeff * *setup.keyshare().s_i + additive_offset + mu_i;
@@ -322,14 +323,14 @@ async fn pre_signature_inner<R: Relay>(
 
     let mut sender_additive_shares = vec![];
 
-    let mut js = request_messages(setup, DSG_MSG_R2, relay, true).await?;
-    while !js.is_empty() {
+    let mut tags = request_messages(setup, DSG_MSG_R2, relay, true).await?;
+    while !tags.is_empty() {
         let msg = relay.next().await.ok_or(SignError::MissingMessage)?;
 
         check_abort_message(&abort_tags, &msg)?;
 
         let (msg1, party_idx) =
-            decode_encrypted_message::<Round1Output>(&mut js, msg, &enc_key, &enc_pub_key)?;
+            decode_encrypted_message::<Round1Output>(&mut tags, msg, &enc_key, &enc_pub_key)?;
 
         let mta_sender = pop_pair(&mut mta_senders, party_idx as u8)?;
 
@@ -341,7 +342,6 @@ async fn pre_signature_inner<R: Relay>(
         let psi = phi_i - xi_i_j;
 
         let msg3 = SignMsg3 {
-            session_id: Opaque::from(final_session_id),
             mta_msg2,
             digest_i: Opaque::from(digest_i),
             big_x_i: Opaque::from(big_x_i),
@@ -373,14 +373,14 @@ async fn pre_signature_inner<R: Relay>(
 
     let mut receiver_additive_shares = vec![];
 
-    let mut js = request_messages(setup, DSG_MSG_R3, relay, true).await?;
-    while !js.is_empty() {
+    let mut tags = request_messages(setup, DSG_MSG_R3, relay, true).await?;
+    while !tags.is_empty() {
         let msg = relay.next().await.ok_or(SignError::MissingMessage)?;
 
         check_abort_message(&abort_tags, &msg)?;
 
         let (msg3, party_idx) =
-            decode_encrypted_message::<SignMsg3>(&mut js, msg, &enc_key, &enc_pub_key)?;
+            decode_encrypted_message::<SignMsg3>(&mut tags, msg, &enc_key, &enc_pub_key)?;
 
         let (mta_receiver, xi_i_j) = pop_pair(&mut mta_receivers, party_idx as u8)?;
 
@@ -467,12 +467,12 @@ fn create_partial_signature(
     let s_0 = m * pre_sign_result.phi_i.0 + pre_sign_result.s_0.0;
 
     PartialSignature {
-        final_session_id: pre_sign_result.final_session_id,
-        public_key: pre_sign_result.public_key,
-        message_hash: Opaque::from(msg_hash),
-        s_0: Opaque::from(s_0),
-        s_1: pre_sign_result.s_1,
-        r: pre_sign_result.r,
+        final_session_id: pre_sign_result.final_session_id.0,
+        public_key: pre_sign_result.public_key.0,
+        message_hash: msg_hash,
+        s_0,
+        s_1: pre_sign_result.s_1.0,
+        r: pre_sign_result.r.0,
     }
 }
 
@@ -502,17 +502,17 @@ pub fn combine_partial_signature(
         if cond {
             return Err(SignError::FailedCheck("Invalid list of partial signatures"));
         }
-        sum_s_0 += partial_sign.s_0.0;
-        sum_s_1 += partial_sign.s_1.0;
+        sum_s_0 += partial_sign.s_0;
+        sum_s_1 += partial_sign.s_1;
     }
 
-    let r = r.0.to_affine().x();
+    let r = r.to_affine().x();
     let sum_s_1_inv = sum_s_1.invert().unwrap();
     let sig = sum_s_0 * sum_s_1_inv;
 
     let sign = parse_raw_sign(&r, &sig.to_bytes())?;
 
-    verify_final_signature(&message_hash.0, &sign, &public_key.0.to_bytes())?;
+    verify_final_signature(&message_hash.0, &sign, &public_key.to_bytes())?;
 
     Ok(sign)
 }
@@ -558,9 +558,9 @@ async fn run_inner<R: Relay>(
     let partial_signature = create_partial_signature(pre_signature_result, msg_hash);
 
     let msg4 = SignMsg4 {
-        session_id: partial_signature.final_session_id,
-        s_0: partial_signature.s_0,
-        s_1: partial_signature.s_1,
+        session_id: Opaque::from(partial_signature.final_session_id),
+        s_0: Opaque::from(partial_signature.s_0),
+        s_1: Opaque::from(partial_signature.s_1),
     };
     send_broadcast(&setup, relay, DSG_MSG_R4, msg4).await?;
 
@@ -577,12 +577,12 @@ async fn run_inner<R: Relay>(
         let (msg, _party_idx) = decode_signed_message::<SignMsg4>(&mut tags, msg, &setup)?;
 
         partial_signatures.push(PartialSignature {
-            final_session_id: msg.session_id,
-            public_key,
-            message_hash: Opaque::from(msg_hash),
-            s_0: msg.s_0,
-            s_1: msg.s_1,
-            r,
+            final_session_id: msg.session_id.0,
+            public_key: public_key.0,
+            message_hash: msg_hash,
+            s_0: msg.s_0.0,
+            s_1: msg.s_1.0,
+            r: r.0,
         });
     }
 
@@ -601,7 +601,7 @@ fn hash_commitment_r_i(
     HashBytes::new(hasher.finalize().into())
 }
 
-fn get_mu_i(keyshare: &Keyshare, party_id_list: &[(usize, u8)], sig_id: HashBytes) -> Scalar {
+fn get_mu_i(keyshare: &Keyshare, party_id_list: &[(usize, u8)], sig_id: &HashBytes) -> Scalar {
     let mut p_0_list = Vec::new();
     let mut p_1_list = Vec::new();
 
@@ -630,7 +630,7 @@ fn get_mu_i(keyshare: &Keyshare, party_id_list: &[(usize, u8)], sig_id: HashByte
             keyshare.sent_seed_list[*p_1_party as usize - keyshare.party_id as usize - 1];
         let mut hasher = Sha256::new();
         hasher.update(seed_i_j);
-        hasher.update(sig_id.as_ref());
+        hasher.update(sig_id);
         let value = Scalar::reduce(U256::from_be_slice(&hasher.finalize()));
         sum_p_1 += value;
     }
@@ -665,11 +665,11 @@ fn get_lagrange_coeff(keyshare: &Keyshare, sign_party_ids: &[(usize, u8)]) -> Sc
     let mut coeff = Scalar::from(1u64);
     let pid = keyshare.party_id;
     let x_i = &*keyshare.x_i_list[pid as usize] as &Scalar;
-    for (_, index) in sign_party_ids {
-        let x_j = &*keyshare.x_i_list[*index as usize] as &Scalar;
+    for (_, party_id) in sign_party_ids {
+        let x_j = &*keyshare.x_i_list[*party_id as usize] as &Scalar;
         if x_i.ct_ne(x_j).into() {
             let sub = x_j - x_i;
-            coeff *= *x_j * sub.invert().unwrap();
+            coeff *= x_j * &sub.invert().unwrap();
         }
     }
     coeff
