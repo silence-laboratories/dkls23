@@ -485,7 +485,7 @@ where
             let (all_but_one_sender_seed, pprf_output) = build_pprf(
                 &final_session_id,
                 &sender_output,
-                BATCH_SIZE,
+                BATCH_SIZE as u32,
                 SOFT_SPOKEN_K as u8,
             );
 
