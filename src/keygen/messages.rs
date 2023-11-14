@@ -1,71 +1,23 @@
-use k256::{
-    elliptic_curve::{group::GroupEncoding, CurveArithmetic},
-    AffinePoint, NonZeroScalar, ProjectivePoint, Scalar, Secp256k1,
-};
+use k256::{NonZeroScalar, ProjectivePoint, Scalar, Secp256k1};
 
-use sl_mpc_mate::{math::GroupPolynomial, message::*, HashBytes, SessionId};
+use sl_mpc_mate::{math::GroupPolynomial, message::*, SessionId};
 
 use sl_oblivious::{
-    soft_spoken::{PPRFOutput, ReceiverOTSeed, SenderOTSeed},
     endemic_ot::EndemicOTMsg2,
-    zkproofs::DLogProof,
+    soft_spoken::{PPRFOutput, ReceiverOTSeed, SenderOTSeed},
 };
 
-use sl_mpc_mate::bip32::{BIP32Error, derive_child_pubkey, derive_xpub, get_finger_print, KeyFingerPrint, Prefix, XPubKey};
+use sl_mpc_mate::bip32::{
+    derive_child_pubkey, derive_xpub, get_finger_print, BIP32Error, KeyFingerPrint, Prefix, XPubKey,
+};
 
 use derivation_path::DerivationPath;
 
-/// Type for the key generation protocol's message 1.
-#[derive(bincode::Encode, bincode::Decode)]
-pub struct KeygenMsg1 {
-    /// Sesssion id
-    pub session_id: Opaque<SessionId>,
-
-    /// Participant point x_i
-    pub x_i: Opaque<Scalar, PF>, // FIXME: NonZeroScalar,
-
-    /// Participants commitment
-    pub commitment: Opaque<HashBytes>,
-
-    /// Participant encryption public key
-    pub enc_pk: Opaque<[u8; 32]>,
-}
-
-/// Type for the key generation protocol's message 2.
-#[derive(bincode::Encode, bincode::Decode)]
-#[bincode(
-    bounds = "C: CurveArithmetic, C::ProjectivePoint: GroupEncoding",
-    // borrow_decode_bounds = "'__de: 'a, C: CurveArithmetic, C::ProjectivePoint: GroupEncoding"
-)]
-pub struct KeygenMsg2<C = Secp256k1>
-where
-    C: CurveArithmetic,
-    C::ProjectivePoint: GroupEncoding,
-{
-    /// Sesssion id
-    pub session_id: Opaque<SessionId>,
-
-    /// Random 32 bytes
-    pub r_i: Opaque<[u8; 32]>,
-
-    /// Participants Fik values
-    pub big_f_i_vector: GroupPolynomial<C>,
-
-    /// Participants dlog proof
-    pub dlog_proofs_i: Vec<DLogProof>,
-
-    /// Participants commitment
-    pub commitment_2: Opaque<HashBytes>,
-}
-
-/// Type for the key generation protocol's message 3.
+/// Type for the key generation protocol's message 3. P2P
 #[derive(Clone, Debug, bincode::Encode, bincode::Decode)]
 pub struct KeygenMsg3 {
-    /// Session id
-    pub session_id: Opaque<SessionId>,
-
     /// Participants Fi values
-    pub big_f_vec: GroupPolynomial<Secp256k1>,
+    pub big_f_vec: GroupPolynomial<Secp256k1>, // == t-1
 
     ///
     pub d_i: Opaque<Scalar, PF>,
@@ -74,7 +26,7 @@ pub struct KeygenMsg3 {
     pub base_ot_msg2: EndemicOTMsg2,
 
     /// pprf outputs
-    pub pprf_output: Vec<PPRFOutput>,
+    pub pprf_output: Vec<PPRFOutput>, // 256 / SOFT_SPOKEN_K
 
     /// seed_i_j values
     pub seed_i_j: Option<[u8; 32]>,
@@ -84,29 +36,6 @@ pub struct KeygenMsg3 {
 
     /// Random 32 bytes
     pub r_i_2: Opaque<[u8; 32]>,
-}
-
-/// Type for the key generation protocol's message 4.
-#[derive(Clone, Debug, bincode::Encode, bincode::Decode)]
-pub struct KeygenMsg4 {
-    /// Session id
-    pub session_id: Opaque<SessionId>,
-
-    /// Big s_i value
-    pub big_s_i: Opaque<ProjectivePoint, GR>,
-
-    /// Public key
-    pub public_key: Opaque<ProjectivePoint, GR>,
-
-    /// dlog proof
-    pub dlog_proof: DLogProof,
-}
-
-#[derive(Clone, bincode::Encode, bincode::Decode)]
-/// Final message of the key generation protocol.
-pub struct KeyGenCompleteMsg {
-    /// Public key of the generated key.
-    pub public_key: Opaque<AffinePoint, GR>,
 }
 
 /// Keyshare of a party.
@@ -138,13 +67,13 @@ pub struct Keyshare {
     pub seed_ot_receivers: Vec<ReceiverOTSeed>, // N-1
 
     ///
-    pub seed_ot_senders: Vec<SenderOTSeed>,     // N-1
+    pub seed_ot_senders: Vec<SenderOTSeed>, // N-1
 
     /// Seed values sent to the other parties
-    pub sent_seed_list: Vec<[u8; 32]>,          // [0..N-1]
+    pub sent_seed_list: Vec<[u8; 32]>, // [0..N-1]
 
     /// Seed values received from the other parties
-    pub rec_seed_list: Vec<[u8; 32]>,           // [0..N-1]
+    pub rec_seed_list: Vec<[u8; 32]>, // [0..N-1]
 
     pub(crate) s_i: Opaque<Scalar, PF>,
     pub(crate) big_s_list: Vec<Opaque<ProjectivePoint, GR>>, // N
@@ -205,11 +134,6 @@ impl Keyshare {
         prefix: Prefix,
         chain_path: DerivationPath,
     ) -> Result<XPubKey, BIP32Error> {
-        derive_xpub(
-            prefix,
-            &self.public_key,
-            self.root_chain_code,
-            chain_path,
-        )
+        derive_xpub(prefix, &self.public_key, self.root_chain_code, chain_path)
     }
 }
