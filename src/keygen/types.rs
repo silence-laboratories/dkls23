@@ -176,14 +176,14 @@ mod tests {
 
         // f''(x) = 6 + 24x
         let n = 2;
-        let coeffs = poly.derivative_coeffs(n);
+        let coeffs = poly.derivative_coeffs(n).collect::<Vec<_>>();
 
         assert_eq!(coeffs.len(), 2);
         assert_eq!(coeffs[0], g * Scalar::from(6_u64));
         assert_eq!(coeffs[1], g * Scalar::from(24_u64));
 
         // f'(x) = 2 + 6x + 12x^2
-        let coeffs = poly.derivative_coeffs(1);
+        let coeffs = poly.derivative_coeffs(1).collect::<Vec<_>>();
 
         assert_eq!(coeffs.len(), 3);
         assert_eq!(coeffs[0], g * Scalar::from(2_u64));

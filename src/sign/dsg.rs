@@ -227,8 +227,6 @@ async fn pre_signature_inner<R: Relay>(
             .map(|(_, p)| *p)
     };
 
-    // commitments.sort_by_key(|(idx, _)| *idx);
-
     let final_session_id = SessionId::new(
         commitments
             .iter()
