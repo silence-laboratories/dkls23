@@ -80,11 +80,6 @@ impl<T, I: Ord> Pairs<T, I> {
     pub fn iter(&self) -> impl Iterator<Item = &'_ (I, T)> {
         self.0.iter()
     }
-
-    ///
-    pub fn into_removed_ids(self) -> Vec<T> {
-        self.0.into_iter().map(|(_, v)| v).collect()
-    }
 }
 
 impl<T, I: Ord> Pairs<T, I> {

@@ -485,8 +485,8 @@ where
             let (all_but_one_sender_seed, pprf_output) = build_pprf(
                 &final_session_id,
                 &sender_output,
-                BATCH_SIZE as u32,
-                SOFT_SPOKEN_K as u8,
+                BATCH_SIZE,
+                SOFT_SPOKEN_K,
             );
 
             seed_ot_senders.push(party_id, all_but_one_sender_seed);
@@ -549,7 +549,7 @@ where
                 &final_session_id,
                 &receiver_output,
                 256,
-                SOFT_SPOKEN_K as u8,
+                SOFT_SPOKEN_K,
                 msg3.pprf_output,
             )
             .map_err(KeygenError::PPRFError)?;
@@ -586,7 +586,7 @@ where
     for (big_f_i_vec, f_i_val) in big_f_i_vecs.iter().zip(d_i_list.iter()) {
         let coeffs = block_in_place(|| big_f_i_vec.derivative_coeffs(setup.rank() as usize));
         let valid = feldman_verify(
-            &coeffs,
+            coeffs,
             &x_i_list[my_party_id as usize],
             f_i_val,
             &ProjectivePoint::GENERATOR,
@@ -642,7 +642,6 @@ where
     for (party_id, x_i) in x_i_list.iter().enumerate() {
         let party_rank = setup.party_rank(party_id as u8).unwrap();
 
-        // TODO: polynomial_coeff_multipliers() should return iterator
         let coeff_multipliers = polynomial_coeff_multipliers(x_i, party_rank as usize, N);
 
         let expected_point: ProjectivePoint = big_f_vec
@@ -902,12 +901,7 @@ where
         p3.push(party_id, unwrap(msg.3));
     }
 
-    Ok((
-        p0.into_removed_ids(),
-        p1.into_removed_ids(),
-        p2.into_removed_ids(),
-        p3.into_removed_ids(),
-    ))
+    Ok((p0.into(), p1.into(), p2.into(), p3.into()))
 }
 
 #[cfg(test)]

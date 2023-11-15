@@ -56,8 +56,8 @@ tokio = "1.33"
 futures-util = "0.3.0"
 anyhow = "1"
 derivation-path = "0.2.0"
-sl-mpc-mate  = { git = "https://gitlab.com/com.silencelaboratories/sl-crypto.git", rev = "msg-relay/v0.5" }
-sl-oblivious = { git = "https://gitlab.com/com.silencelaboratories/sl-crypto.git", rev = "msg-relay/v0.5" }
+sl-mpc-mate  = { git = "https://gitlab.com/com.silencelaboratories/sl-crypto.git", rev = "msg-relay/v0.6" }
+sl-oblivious = { git = "https://gitlab.com/com.silencelaboratories/sl-crypto.git", rev = "msg-relay/v0.6" }
 
 [profile.release]
 # lto = true
