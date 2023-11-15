@@ -305,7 +305,7 @@ async fn pre_signature_inner<R: Relay>(
 
         betta_coeffs
             .get(&(my_party_id as usize))
-            .expect("betta_i not found")  // FIXME
+            .expect("betta_i not found") // FIXME
             .clone()
     };
 
@@ -749,17 +749,17 @@ where
 
 #[cfg(test)]
 mod tests {
-    use tokio::task::JoinSet;
-
     use super::*;
+
+    use derivation_path::DerivationPath;
     use k256::AffinePoint;
-    use std::array;
+    use rand::seq::SliceRandom;
+    use tokio::task::JoinSet;
 
     use sl_mpc_mate::coord::SimpleMessageRelay;
 
     use crate::keygen::gen_keyshares;
     use crate::setup::{sign::*, SETUP_MESSAGE_TAG};
-    use derivation_path::DerivationPath;
 
     fn setup_dsg(
         pk: &AffinePoint,
@@ -777,18 +777,26 @@ mod tests {
 
         let setup_msg_id = MsgId::new(&instance, &setup_pk, None, SETUP_MESSAGE_TAG);
 
-        const T: usize = 2;
+        let t = shares[0].threshold as usize;
+
+        // make sure that first share has rank 0
+        assert_eq!(shares[0].rank_list[0], 0);
+
+        let mut shares = shares.to_vec();
+
+        // Always use the first share with rank 0, and shuffle the rest.
+        shares[1..].shuffle(&mut rng);
 
         // a signing key for each party.
-        let party_sk: [SigningKey; T] = array::from_fn(|_| SigningKey::from_bytes(&rng.gen()));
+        let party_sk: Vec<SigningKey> =
+            std::iter::repeat_with(|| SigningKey::from_bytes(&rng.gen()))
+                .take(t)
+                .collect();
 
-        let mut setup = (0..T)
+        let mut setup = (0..t)
             .fold(
                 SetupBuilder::new(pk).chain_path(Some(chain_path)),
-                |setup, p| {
-                    let vk = party_sk[p].verifying_key();
-                    setup.add_party(vk)
-                },
+                |setup, p| setup.add_party(party_sk[p].verifying_key()),
             )
             .with_hash(HashBytes::new([1; 32]))
             .build(&setup_msg_id, 100, &setup_sk)
@@ -796,12 +804,10 @@ mod tests {
 
         party_sk
             .into_iter()
-            .enumerate()
-            .map(|(idx, party_sk)| {
-                ValidatedSetup::decode(&mut setup, &instance, &setup_vk, party_sk, |_| {
-                    Some(shares[idx].clone())
-                })
-                .unwrap()
+            .zip(shares)
+            .map(|(party_sk, share)| {
+                ValidatedSetup::decode(&mut setup, &instance, &setup_vk, party_sk, |_| Some(share))
+                    .unwrap()
             })
             .map(|setup| (setup, rng.gen()))
             .collect::<Vec<_>>()
@@ -833,10 +839,35 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn s1() {
+    async fn s2x3() {
         let coord = SimpleMessageRelay::new();
 
         let shares = gen_keyshares(2, 3, Some(&[0, 1, 1])).await;
+
+        let pk = shares[0].public_key.to_affine();
+        let chain_path = "m".parse().unwrap();
+
+        let mut parties = JoinSet::new();
+        for (setup, seed) in setup_dsg(&pk, &shares, &chain_path).into_iter() {
+            parties.spawn(run(setup, seed, coord.connect()));
+        }
+
+        while let Some(fini) = parties.join_next().await {
+            let fini = fini.unwrap();
+
+            if let Err(ref err) = fini {
+                println!("error {err:?}");
+            }
+
+            let _fini = fini.unwrap();
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn s3x5() {
+        let coord = SimpleMessageRelay::new();
+
+        let shares = gen_keyshares(3, 5, Some(&[0, 1, 1, 1, 1])).await;
 
         let pk = shares[0].public_key.to_affine();
         let chain_path = "m".parse().unwrap();

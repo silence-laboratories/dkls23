@@ -642,7 +642,6 @@ where
     for (party_id, x_i) in x_i_list.iter().enumerate() {
         let party_rank = setup.party_rank(party_id as u8).unwrap();
 
-        // TODO: polynomial_coeff_multipliers() should return iterator
         let coeff_multipliers = polynomial_coeff_multipliers(x_i, party_rank as usize, N);
 
         let expected_point: ProjectivePoint = big_f_vec
