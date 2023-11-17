@@ -3,11 +3,13 @@ use k256::{
         bigint::Encoding,
         generic_array::GenericArray,
         ops::Reduce,
-        subtle::{Choice, ConditionallySelectable, ConstantTimeEq}
+        subtle::{Choice, ConditionallySelectable, ConstantTimeEq},
     },
     schnorr::CryptoRngCore,
     Scalar, U256,
 };
+
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use sl_mpc_mate::{message::*, SessionId};
 
@@ -159,7 +161,7 @@ impl PairwiseMtaRec<MtaRecR0> {
 
 impl PairwiseMtaRec<MtaRecR1> {
     ///
-    pub fn process(self, round2_output: MtaRound2Output) -> Result<[Scalar; 2], &'static str> {
+    pub fn process(self, round2_output: &MtaRound2Output) -> Result<[Scalar; 2], &'static str> {
         let cot_additive_shares = self
             .state
             .cot_receiver
@@ -259,7 +261,9 @@ impl PairwiseMtaSender<MtaSendR0> {
     ///
     pub fn process(
         self,
-        (alpha1, alpha2, round1_output): (Scalar, Scalar, Round1Output),
+        alpha1: Scalar,
+        alpha2: Scalar,
+        round1_output: &Round1Output,
     ) -> ([Scalar; 2], MtaRound2Output) {
         let mut alice_input = [[Scalar::ZERO; 3]; ETA];
 
@@ -342,7 +346,7 @@ impl PairwiseMtaSender<MtaSendR0> {
 }
 
 /// Round 2 output in Pairwise Mta protocol
-#[derive(Debug, bincode::Encode, bincode::Decode)]
+#[derive(Debug, bincode::Encode, bincode::Decode, Zeroize, ZeroizeOnDrop)]
 pub struct MtaRound2Output {
     cot_round_2_output: Box<Round2Output>,
     r: [u8; 32],
@@ -378,9 +382,9 @@ mod tests {
 
         let (receiver, round1_output) = receiver.process(&beta);
 
-        let (sender_shares, round2_output) = sender.process((alpha1, alpha2, round1_output));
+        let (sender_shares, round2_output) = sender.process(alpha1, alpha2, &round1_output);
 
-        let receiver_shares = receiver.process(round2_output).unwrap();
+        let receiver_shares = receiver.process(&round2_output).unwrap();
 
         let t_0 = receiver_shares[0] + sender_shares[0];
         let t_1 = receiver_shares[1] + sender_shares[1];

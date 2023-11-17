@@ -6,9 +6,10 @@ use rand::prelude::*;
 use sl_mpc_mate::{coord::*, message::*};
 
 use crate::{
-    Seed,
     keygen::{check_secret_recovery, run_inner, KeygenError, Keyshare},
+    proto::create_abort_message,
     setup::{keygen::SetupBuilder, keygen::ValidatedSetup, PartyInfo, SETUP_MESSAGE_TAG},
+    Seed,
 };
 
 /// Keyshare for refresh of a party.
@@ -61,12 +62,20 @@ pub async fn run<R>(
 where
     R: Relay,
 {
+    let abort_msg = create_abort_message(setup.instance(), setup.ttl(), setup.signing_key());
+
     let x_i = &old_keyshare.x_i_list[setup.party_id() as usize] as &NonZeroScalar;
     let result: Result<Keyshare, KeygenError> =
         run_inner(setup, seed, |_| {}, &mut relay, Some(x_i)).await;
     let mut new_keyshare = match result {
         Ok(eph_keyshare) => eph_keyshare,
-        Err(err_message) => return Err(err_message),
+        Err(KeygenError::AbortProtocol(p)) => return Err(KeygenError::AbortProtocol(p)),
+        Err(KeygenError::SendMessage) => return Err(KeygenError::SendMessage),
+        Err(err_message) => {
+            tracing::debug!("sending abort message");
+            relay.send(abort_msg).await?;
+            return Err(err_message);
+        }
     };
 
     // checks for new_keyshare
@@ -90,12 +99,13 @@ where
     new_keyshare.public_key = old_keyshare.public_key;
     new_keyshare.root_chain_code = old_keyshare.root_chain_code;
     new_keyshare.s_i = Opaque::from(&new_keyshare.s_i as &Scalar + &old_keyshare.s_i as &Scalar);
-    let mut new_big_s_list: Vec<ProjectivePoint> = vec![];
-    for i in 0..old_keyshare.big_s_list.len() {
-        let point = &new_keyshare.big_s_list[i] as &ProjectivePoint
-            + &old_keyshare.big_s_list[i] as &ProjectivePoint;
-        new_big_s_list.push(point)
-    }
+
+    let new_big_s_list = old_keyshare
+        .big_s_list
+        .iter()
+        .zip(&new_keyshare.big_s_list)
+        .map(|(p1, p2)| p1 as &ProjectivePoint + p2 as &ProjectivePoint)
+        .collect::<Vec<_>>();
 
     // check secret recovery
     let x_i_list: Vec<NonZeroScalar> = new_keyshare.x_i_list.iter().map(|v| v.0).collect();
@@ -106,10 +116,7 @@ where
         &new_keyshare.public_key as &ProjectivePoint,
     )?;
 
-    new_keyshare.big_s_list = new_big_s_list
-        .into_iter()
-        .map(Opaque::from)
-        .collect();
+    new_keyshare.big_s_list = new_big_s_list.into_iter().map(Opaque::from).collect();
 
     Ok(new_keyshare)
 }

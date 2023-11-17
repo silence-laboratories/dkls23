@@ -11,13 +11,17 @@ use sl_mpc_mate::bip32::{
     derive_child_pubkey, derive_xpub, get_finger_print, BIP32Error, KeyFingerPrint, Prefix, XPubKey,
 };
 
+use zeroize::{Zeroize, ZeroizeOnDrop};
+
 use derivation_path::DerivationPath;
 
 /// Type for the key generation protocol's message 3. P2P
-#[derive(Clone, Debug, bincode::Encode, bincode::Decode)]
+#[derive(Debug, bincode::Encode, bincode::Decode)]
+#[derive(Zeroize, ZeroizeOnDrop)]
 pub struct KeygenMsg3 {
     /// Participants Fi values
-    pub big_f_vec: GroupPolynomial<Secp256k1>, // == t-1
+    #[zeroize(skip)]
+    pub big_f_vec: GroupPolynomial<Secp256k1>, // == t-1, FIXME:
 
     ///
     pub d_i: Opaque<Scalar, PF>,
@@ -39,8 +43,8 @@ pub struct KeygenMsg3 {
 }
 
 /// Keyshare of a party.
-#[allow(unused)]
 #[derive(Clone, bincode::Encode, bincode::Decode)]
+#[derive(Zeroize, ZeroizeOnDrop)]
 pub struct Keyshare {
     /// A marker
     pub magic: u32,

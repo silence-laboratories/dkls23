@@ -26,6 +26,7 @@ use crate::{
         pairwise_mta::{PairwiseMtaRec, PairwiseMtaSender},
     },
     utils::{parse_raw_sign, verify_final_signature},
+    proto::create_abort_message,
     BadPartyIndex, Seed,
 };
 
@@ -139,12 +140,7 @@ pub async fn pre_signature<R: Relay>(
     seed: Seed,
     mut relay: R,
 ) -> Result<PreSignResult, SignError> {
-    let abort_msg = Builder::<Signed>::encode(
-        &setup.msg_id(None, ABORT_MESSAGE_TAG),
-        setup.ttl(),
-        setup.signing_key(),
-        &(), // empty message
-    )?;
+    let abort_msg = create_abort_message(setup.instance(), setup.ttl(), setup.signing_key());
 
     match pre_signature_inner(setup, seed, &mut relay).await {
         Ok((pre, _)) => Ok(pre),
@@ -303,10 +299,9 @@ async fn pre_signature_inner<R: Relay>(
     } else {
         let betta_coeffs = get_birkhoff_coefficients(setup.keyshare(), &party_idx_to_id_map);
 
-        betta_coeffs
+        *betta_coeffs
             .get(&(my_party_id as usize))
             .expect("betta_i not found") // FIXME
-            .clone()
     };
 
     let (additive_offset, derived_public_key) = setup
@@ -334,7 +329,7 @@ async fn pre_signature_inner<R: Relay>(
 
         let mta_sender = pop_pair(&mut mta_senders, party_idx as u8)?;
 
-        let (additive_shares, mta_msg2) = mta_sender.process((x_i, k_i, msg1));
+        let (additive_shares, mta_msg2) = mta_sender.process(x_i, k_i, &msg1);
 
         let gamma0 = ProjectivePoint::GENERATOR * additive_shares[0];
         let gamma1 = ProjectivePoint::GENERATOR * additive_shares[1];
@@ -385,7 +380,7 @@ async fn pre_signature_inner<R: Relay>(
         let (mta_receiver, xi_i_j) = pop_pair(&mut mta_receivers, party_idx as u8)?;
 
         let receiver_additive_shares_i = mta_receiver
-            .process(msg3.mta_msg2)
+            .process(&msg3.mta_msg2)
             .map_err(SignError::MtaError)?;
 
         receiver_additive_shares.push(receiver_additive_shares_i);
@@ -494,7 +489,7 @@ pub fn combine_partial_signature(
 
     let mut sum_s_0 = Scalar::ZERO;
     let mut sum_s_1 = Scalar::ZERO;
-    for partial_sign in partial_signatures.iter() {
+    for partial_sign in partial_signatures.into_iter() {
         let cond = (partial_sign.final_session_id != final_session_id)
             || (partial_sign.public_key != public_key)
             || (partial_sign.r != r)
@@ -511,6 +506,7 @@ pub fn combine_partial_signature(
     let sig = sum_s_0 * sum_s_1_inv;
 
     let sign = parse_raw_sign(&r, &sig.to_bytes())?;
+    let sign = sign.normalize_s().unwrap_or(sign);
 
     verify_final_signature(&message_hash.0, &sign, &public_key.to_bytes())?;
 
