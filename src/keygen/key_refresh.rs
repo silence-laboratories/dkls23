@@ -6,9 +6,10 @@ use rand::prelude::*;
 use sl_mpc_mate::{coord::*, message::*};
 
 use crate::{
-    Seed,
     keygen::{check_secret_recovery, run_inner, KeygenError, Keyshare},
+    proto::create_abort_message,
     setup::{keygen::SetupBuilder, keygen::ValidatedSetup, PartyInfo, SETUP_MESSAGE_TAG},
+    Seed,
 };
 
 /// Keyshare for refresh of a party.
@@ -61,12 +62,20 @@ pub async fn run<R>(
 where
     R: Relay,
 {
+    let abort_msg = create_abort_message(setup.instance(), setup.ttl(), setup.signing_key());
+
     let x_i = &old_keyshare.x_i_list[setup.party_id() as usize] as &NonZeroScalar;
     let result: Result<Keyshare, KeygenError> =
         run_inner(setup, seed, |_| {}, &mut relay, Some(x_i)).await;
     let mut new_keyshare = match result {
         Ok(eph_keyshare) => eph_keyshare,
-        Err(err_message) => return Err(err_message),
+        Err(KeygenError::AbortProtocol(p)) => return Err(KeygenError::AbortProtocol(p)),
+        Err(KeygenError::SendMessage) => return Err(KeygenError::SendMessage),
+        Err(err_message) => {
+            tracing::debug!("sending abort message");
+            relay.send(abort_msg).await?;
+            return Err(err_message);
+        }
     };
 
     // checks for new_keyshare
