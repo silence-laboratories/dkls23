@@ -1,5 +1,6 @@
 //! Distributed key generation protocol.
-//
+//! Based on Protocol 6.1 https://eprint.iacr.org/2022/374.pdf
+
 use std::collections::HashSet;
 
 use digest::Digest;

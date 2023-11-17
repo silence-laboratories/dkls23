@@ -12,6 +12,18 @@ TSS consists of three stages:
 
 These functions involve cryptographic computing at the participating nodes of the MPC quorum and exchanges of rounds of messages which ultimately lead to the generation of a valid signature at the requested node. These computing nodes can be any device with sufficient computational and memory capability, including but not limited to smartphones, server nodes, and edge devices. The basic philosophy behind Silent Shard remains that no single device holding the private key can be used to generate signatures and move digital assets. The private key is shared among multiple computing nodes so that no party has any information about the key. Then, in order to generate a signature, the threshold number of devices run a secure two-party computation protocol that generates the signature without revealing anything about the parties' key shares to each other. These devices may or may not be associated with the same person or organization and can be any form factor. Thus, one could use this to create a wallet, sharing the private key between one's mobile and one's laptop, between one's mobile and a VM in the cloud, and so on.
 
+
+# Articles and links
+ - DKLs23 https://eprint.iacr.org/2023/765.pdf
+ - DKG based on Protocol 6.1 https://eprint.iacr.org/2022/374.pdf
+ - 1 out of 2 Endemic OT Fig.8 https://eprint.iacr.org/2019/706.pdf
+ - All-but-one OTs from based OTs: Fig.13 and Fig.14 https://eprint.iacr.org/2022/192.pdf
+ - Generation of *sent_seed_list* and *rec_seed_list* values ​​based on Protocol 2.2 Pairwise Randomization [dkls23_preprint.pdf](docs/dkls23_preprint.pdf)
+ - SoftSpokenOT protocol https://eprint.iacr.org/2022/192.pdf
+ - Instantiation of SoftSpokenOT based on Fig.10 https://eprint.iacr.org/2015/546.pdf
+ - Pairwise Multiplication based on Protocol 2.5 [dkls23_preprint.pdf](docs/dkls23_preprint.pdf)
+
+
 # Protocol
 
 Please note that the latest library of Silent Shard is based on DKLs23 TSS protocol.

@@ -1,3 +1,5 @@
+//! Based on Protocol 2.5 docs/dkls23_preprint.pdf
+
 use k256::{
     elliptic_curve::{
         bigint::Encoding,

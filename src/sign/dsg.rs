@@ -1,4 +1,5 @@
 //! Distributed sign generation protocol.
+//! Based on https://eprint.iacr.org/2023/765.pdf
 
 use std::collections::HashMap;
 
