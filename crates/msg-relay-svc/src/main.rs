@@ -3,6 +3,7 @@ use std::net::ToSocketAddrs;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+#[cfg(unix)]
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::{sync::broadcast, task::JoinSet};
 
@@ -31,7 +32,7 @@ async fn run_peer<F: FnMut(Vec<u8>) + Send + 'static>(
                 Ok((ws, _)) => {
                     tracing::info!("connected to {}", peer);
                     break ws;
-                },
+                }
 
                 Err(err) => {
                     tracing::error!("connection error {:?}", err);
@@ -153,24 +154,32 @@ async fn main() -> anyhow::Result<()> {
     let mut sigint = signal(SignalKind::interrupt())?;
     let mut sigterm = signal(SignalKind::terminate())?;
 
-    loop {
-        tokio::select! {
-            _ = sigint.recv() => {
-                tracing::info!("got SIGINT, exiting");
-                break;
-            }
-
-            _ = sigterm.recv() => {
-                tracing::info!("got SIGTERM, exiting");
-                break;
-            }
-
-            listener = servers.join_next() => {
-                if listener.is_none() {
+    #[cfg(unix)]
+    {
+        loop {
+            tokio::select! {
+                _ = sigint.recv() => {
+                    tracing::info!("got SIGINT, exiting");
                     break;
                 }
-            }
-        };
+
+                _ = sigterm.recv() => {
+                    tracing::info!("got SIGTERM, exiting");
+                    break;
+                }
+
+                listener = servers.join_next() => {
+                    if listener.is_none() {
+                        break;
+                    }
+                }
+            };
+        }
+    }
+
+    #[cfg(not(unix))]
+    {
+        while let Some(_) = servers.join_next().await {}
     }
 
     Ok(())
