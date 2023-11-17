@@ -2,6 +2,8 @@ use k256::{ProjectivePoint, Scalar};
 
 use sl_mpc_mate::{message::*, HashBytes, SessionId};
 
+use zeroize::{Zeroize, ZeroizeOnDrop};
+
 use super::pairwise_mta::MtaRound2Output;
 
 /// Type for the sign gen message 1.
@@ -22,6 +24,7 @@ pub struct SignMsg1 {
 
 /// Type for the sign gen message 3. P2P
 #[derive(Debug, bincode::Encode, bincode::Decode)]
+#[derive(Zeroize, ZeroizeOnDrop)]
 pub struct SignMsg3 {
     /// encrypted data
     pub mta_msg2: MtaRound2Output,
@@ -49,7 +52,7 @@ pub struct SignMsg3 {
 }
 
 /// Type for the sign gen message 4.
-#[derive(Clone, Debug, bincode::Encode, bincode::Decode)]
+#[derive(Debug, bincode::Encode, bincode::Decode)]
 pub struct SignMsg4 {
     /// Sesssion id
     pub session_id: Opaque<SessionId>,
@@ -62,7 +65,8 @@ pub struct SignMsg4 {
 }
 
 /// Result after pre-signature of party_i
-#[derive(Clone, bincode::Encode, bincode::Decode)]
+#[derive(bincode::Encode, bincode::Decode)]
+#[derive(Zeroize, ZeroizeOnDrop)]
 pub struct PreSignResult {
     /// final_session_id
     pub final_session_id: Opaque<SessionId>,
@@ -84,6 +88,7 @@ pub struct PreSignResult {
 }
 
 /// Partial signature of party_i
+#[derive(Zeroize, ZeroizeOnDrop)]
 pub struct PartialSignature {
     /// final_session_id
     pub final_session_id: SessionId,

@@ -291,7 +291,7 @@ where
     let mut polynomial = Polynomial::random(&mut rng, T - 1);
 
     if key_refresh {
-        polynomial.coeffs[0] = Scalar::ZERO;
+        polynomial.reset_contant();
     }
 
     let x_i = match x_i {
@@ -328,8 +328,6 @@ where
         (session_id, commitment, x_i, PublicKey::from(&enc_key)),
     )
     .await?;
-
-    // tracing::info!("R1 done {}", setup.party_id());
 
     // Check that x_i_list contains unique elements
     if HashSet::<FieldBytes>::from_iter(x_i_list.iter().map(|x| x.to_bytes())).len()
@@ -447,7 +445,6 @@ where
             big_f_i_vector.points(),
         )?;
     }
-    // tracing::info!("R2 broadcast done {}", setup.party_id());
 
     // 6.d
     let mut big_f_vec = GroupPolynomial::identity(T);
@@ -455,7 +452,7 @@ where
         big_f_vec.add_mut(v); // big_f_vec += v; big_vec +
     }
 
-    let public_key = *big_f_vec.get_constant();
+    let public_key = big_f_vec.get_constant();
 
     if key_refresh {
         // check that public_key == IDENTITY
@@ -482,12 +479,8 @@ where
 
             let (sender_output, base_ot_msg2) = block_in_place(|| sender.process(base_ot_msg1));
 
-            let (all_but_one_sender_seed, pprf_output) = build_pprf(
-                &final_session_id,
-                &sender_output,
-                BATCH_SIZE,
-                SOFT_SPOKEN_K,
-            );
+            let (all_but_one_sender_seed, pprf_output) =
+                build_pprf(&final_session_id, &sender_output, BATCH_SIZE, SOFT_SPOKEN_K);
 
             seed_ot_senders.push(party_id, all_but_one_sender_seed);
 
@@ -523,8 +516,6 @@ where
     )
     .await?;
 
-    // tracing::info!("R2 P2P done {}", setup.party_id());
-
     let mut seed_ot_receivers = Pairs::new();
     let mut rec_seed_list = Pairs::new();
     let mut chain_code_sids = Pairs::new_with_item(my_party_id, chain_code_sid);
@@ -544,13 +535,13 @@ where
             d_i_list[party_id as usize] = *msg3.d_i;
 
             let receiver = base_ot_receivers.pop_pair(party_id);
-            let receiver_output = block_in_place(|| receiver.process(msg3.base_ot_msg2));
+            let receiver_output = block_in_place(|| receiver.process(&msg3.base_ot_msg2));
             let all_but_one_receiver_seed = eval_pprf(
                 &final_session_id,
                 &receiver_output,
                 256,
                 SOFT_SPOKEN_K,
-                msg3.pprf_output,
+                &msg3.pprf_output,
             )
             .map_err(KeygenError::PPRFError)?;
 
@@ -574,8 +565,6 @@ where
     )
     .await?;
 
-    // tracing::info!("R3 P2P done {}", setup.party_id());
-
     // Generate common root_chain_code from chain_code_sids
     let root_chain_code: [u8; 32] = chain_code_sids
         .iter()
@@ -583,7 +572,7 @@ where
         .finalize()
         .into();
 
-    for (big_f_i_vec, f_i_val) in big_f_i_vecs.iter().zip(d_i_list.iter()) {
+    for (big_f_i_vec, f_i_val) in big_f_i_vecs.into_iter().zip(d_i_list.iter()) {
         let coeffs = block_in_place(|| big_f_i_vec.derivative_coeffs(setup.rank() as usize));
         let valid = feldman_verify(
             coeffs,
@@ -706,7 +695,7 @@ fn hash_commitment(
     hasher.update((rank as u64).to_be_bytes());
     hasher.update(x_i.to_bytes());
 
-    for point in &big_f_i_vec.coeffs {
+    for point in big_f_i_vec.points() {
         hasher.update(point.to_bytes());
     }
 

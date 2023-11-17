@@ -299,10 +299,9 @@ async fn pre_signature_inner<R: Relay>(
     } else {
         let betta_coeffs = get_birkhoff_coefficients(setup.keyshare(), &party_idx_to_id_map);
 
-        betta_coeffs
+        *betta_coeffs
             .get(&(my_party_id as usize))
             .expect("betta_i not found") // FIXME
-            .clone()
     };
 
     let (additive_offset, derived_public_key) = setup
@@ -330,7 +329,7 @@ async fn pre_signature_inner<R: Relay>(
 
         let mta_sender = pop_pair(&mut mta_senders, party_idx as u8)?;
 
-        let (additive_shares, mta_msg2) = mta_sender.process((x_i, k_i, msg1));
+        let (additive_shares, mta_msg2) = mta_sender.process(x_i, k_i, &msg1);
 
         let gamma0 = ProjectivePoint::GENERATOR * additive_shares[0];
         let gamma1 = ProjectivePoint::GENERATOR * additive_shares[1];
@@ -381,7 +380,7 @@ async fn pre_signature_inner<R: Relay>(
         let (mta_receiver, xi_i_j) = pop_pair(&mut mta_receivers, party_idx as u8)?;
 
         let receiver_additive_shares_i = mta_receiver
-            .process(msg3.mta_msg2)
+            .process(&msg3.mta_msg2)
             .map_err(SignError::MtaError)?;
 
         receiver_additive_shares.push(receiver_additive_shares_i);

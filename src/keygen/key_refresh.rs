@@ -99,12 +99,13 @@ where
     new_keyshare.public_key = old_keyshare.public_key;
     new_keyshare.root_chain_code = old_keyshare.root_chain_code;
     new_keyshare.s_i = Opaque::from(&new_keyshare.s_i as &Scalar + &old_keyshare.s_i as &Scalar);
-    let mut new_big_s_list: Vec<ProjectivePoint> = vec![];
-    for i in 0..old_keyshare.big_s_list.len() {
-        let point = &new_keyshare.big_s_list[i] as &ProjectivePoint
-            + &old_keyshare.big_s_list[i] as &ProjectivePoint;
-        new_big_s_list.push(point)
-    }
+
+    let new_big_s_list = old_keyshare
+        .big_s_list
+        .iter()
+        .zip(&new_keyshare.big_s_list)
+        .map(|(p1, p2)| p1 as &ProjectivePoint + p2 as &ProjectivePoint)
+        .collect::<Vec<_>>();
 
     // check secret recovery
     let x_i_list: Vec<NonZeroScalar> = new_keyshare.x_i_list.iter().map(|v| v.0).collect();
@@ -115,10 +116,7 @@ where
         &new_keyshare.public_key as &ProjectivePoint,
     )?;
 
-    new_keyshare.big_s_list = new_big_s_list
-        .into_iter()
-        .map(Opaque::from)
-        .collect();
+    new_keyshare.big_s_list = new_big_s_list.into_iter().map(Opaque::from).collect();
 
     Ok(new_keyshare)
 }
