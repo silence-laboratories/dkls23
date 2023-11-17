@@ -5,8 +5,6 @@ use sl_mpc_mate::{
     message::InvalidMessage,
 };
 
-use sl_oblivious::vsot;
-
 use crate::BadPartyIndex;
 
 #[derive(Debug, Error)]
@@ -15,10 +13,6 @@ pub enum KeygenError {
     /// error while serializing or deserializing
     #[error("Error while deserializing message")]
     InvalidMessage,
-
-    /// VSOT errors
-    #[error("VSOT error: {0}")]
-    VSOTError(#[from] vsot::VSOTError),
 
     /// Invalid commitment hash
     #[error("Invalid commitment hash")]

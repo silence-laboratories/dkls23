@@ -25,8 +25,7 @@ where
 
 use sl_oblivious::{
     endemic_ot::{EndemicOTReceiver, EndemicOTSender, RecR1, BATCH_SIZE},
-    soft_spoken::{build_pprf, eval_pprf},
-    soft_spoken_mod::SOFT_SPOKEN_K,
+    soft_spoken::{build_pprf, eval_pprf, SOFT_SPOKEN_K},
     utils::TranscriptProtocol,
     zkproofs::DLogProof,
 };

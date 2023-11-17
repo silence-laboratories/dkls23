@@ -14,8 +14,8 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 use sl_mpc_mate::{message::*, SessionId};
 
 use sl_oblivious::{
-    soft_spoken::{ReceiverOTSeed, SenderOTSeed},
-    soft_spoken_mod::{
+    soft_spoken::{
+        ReceiverOTSeed, SenderOTSeed,
         RecR0, RecR1, Round1Output, Round2Output, SoftSpokenOTRec, SoftSpokenOTSender,
         COT_BLOCK_SIZE_BYTES, ETA, KAPPA, KAPPA_BYTES, KAPPA_DIV_SOFT_SPOKEN_K, L,
     },
@@ -358,7 +358,7 @@ mod tests {
     use super::*;
 
     use sl_mpc_mate::SessionId;
-    use sl_oblivious::soft_spoken_mod::generate_all_but_one_seed_ot;
+    use sl_oblivious::soft_spoken::generate_all_but_one_seed_ot;
 
     use super::{PairwiseMtaRec, PairwiseMtaSender};
 

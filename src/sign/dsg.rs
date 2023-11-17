@@ -16,7 +16,7 @@ use rand_chacha::ChaCha20Rng;
 
 use sl_mpc_mate::{coord::*, math::birkhoff_coeffs, message::*, HashBytes, SessionId};
 
-use sl_oblivious::soft_spoken_mod::Round1Output;
+use sl_oblivious::soft_spoken::Round1Output;
 
 use crate::{
     keygen::{get_idx_from_id, messages::Keyshare},
