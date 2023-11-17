@@ -17,7 +17,7 @@ These functions involve cryptographic computing at the participating nodes of th
  - DKLs23 https://eprint.iacr.org/2023/765.pdf
  - DKG based on Protocol 6.1 https://eprint.iacr.org/2022/374.pdf
  - 1 out of 2 Endemic OT Fig.8 https://eprint.iacr.org/2019/706.pdf
- - All-but-one OTs from based OTs: Fig.13 and Fig.14 https://eprint.iacr.org/2022/192.pdf
+ - All-but-one OTs from base OTs: Fig.13 and Fig.14 https://eprint.iacr.org/2022/192.pdf
  - Generation of *sent_seed_list* and *rec_seed_list* values ​​based on Protocol 2.2 Pairwise Randomization [dkls23_preprint.pdf](docs/dkls23_preprint.pdf)
  - SoftSpokenOT protocol https://eprint.iacr.org/2022/192.pdf
  - Instantiation of SoftSpokenOT based on Fig.10 https://eprint.iacr.org/2015/546.pdf
