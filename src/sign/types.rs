@@ -22,6 +22,10 @@ pub enum SignError {
     #[error("Invalid digest")]
     InvalidDigest,
 
+    /// Invalid final_session_id
+    #[error("Invalid final_session_id")]
+    InvalidFinalSessionID,
+
     #[error("Failed check: {0}")]
     /// Failed check
     FailedCheck(&'static str),

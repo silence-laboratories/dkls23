@@ -1,6 +1,7 @@
 use k256::{ProjectivePoint, Scalar};
 
 use sl_mpc_mate::{message::*, HashBytes, SessionId};
+use sl_oblivious::soft_spoken::Round1Output;
 
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -9,7 +10,7 @@ use super::pairwise_mta::MtaRound2Output;
 /// Type for the sign gen message 1.
 #[derive(bincode::Encode, bincode::Decode)]
 pub struct SignMsg1 {
-    /// Sesssion id
+    /// Session id
     pub session_id: Opaque<SessionId>,
 
     /// Commitment hash
@@ -22,10 +23,24 @@ pub struct SignMsg1 {
     pub party_id: u8,
 }
 
+/// Type for the sign gen message 2. P2P
+#[derive(Debug, bincode::Encode, bincode::Decode)]
+#[derive(Zeroize, ZeroizeOnDrop)]
+pub struct SignMsg2 {
+    /// final_session_id
+    pub final_session_id: Opaque<SessionId>,
+
+    /// encrypted data
+    pub mta_msg1: Round1Output,
+}
+
 /// Type for the sign gen message 3. P2P
 #[derive(Debug, bincode::Encode, bincode::Decode)]
 #[derive(Zeroize, ZeroizeOnDrop)]
 pub struct SignMsg3 {
+    /// final_session_id
+    pub final_session_id: Opaque<SessionId>,
+
     /// encrypted data
     pub mta_msg2: MtaRound2Output,
 
@@ -54,7 +69,7 @@ pub struct SignMsg3 {
 /// Type for the sign gen message 4.
 #[derive(Debug, bincode::Encode, bincode::Decode)]
 pub struct SignMsg4 {
-    /// Sesssion id
+    /// Session id
     pub session_id: Opaque<SessionId>,
 
     /// s_0 Scalar

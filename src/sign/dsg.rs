@@ -17,13 +17,11 @@ use rand_chacha::ChaCha20Rng;
 
 use sl_mpc_mate::{coord::*, math::birkhoff_coeffs, message::*, HashBytes, SessionId};
 
-use sl_oblivious::soft_spoken::Round1Output;
-
 use crate::{
     keygen::{get_idx_from_id, messages::Keyshare},
     setup::{sign::ValidatedSetup, ABORT_MESSAGE_TAG},
     sign::{
-        messages::{PartialSignature, PreSignResult, SignMsg1, SignMsg3, SignMsg4},
+        messages::{PartialSignature, PreSignResult, SignMsg1, SignMsg2, SignMsg3, SignMsg4},
         pairwise_mta::{PairwiseMtaRec, PairwiseMtaSender},
     },
     utils::{parse_raw_sign, verify_final_signature},
@@ -249,12 +247,17 @@ async fn pre_signature_inner<R: Relay>(
             let xi_i_j = Scalar::generate_biased(&mut rng);
             let (mta_receiver, mta_msg_1) = mta_receiver.process(&xi_i_j);
 
+            let msg2 = SignMsg2 {
+                final_session_id: Opaque::from(final_session_id),
+                mta_msg1: mta_msg_1
+            };
+
             to_send.push(Builder::<Encrypted>::encode(
                 &setup.msg_id(Some(party_idx), DSG_MSG_R2),
                 setup.ttl(),
                 &enc_key,
                 find_pair(&enc_pub_key, party_idx)?,
-                &mta_msg_1,
+                &msg2,
                 nonce_counter.next_nonce(),
             )?);
 
@@ -325,12 +328,17 @@ async fn pre_signature_inner<R: Relay>(
 
         check_abort_message(&abort_tags, &msg)?;
 
-        let (msg1, party_idx) =
-            decode_encrypted_message::<Round1Output>(&mut tags, msg, &enc_key, &enc_pub_key)?;
+        let (msg2, party_idx) =
+            decode_encrypted_message::<SignMsg2>(&mut tags, msg, &enc_key, &enc_pub_key)?;
+
+        // Check final_session_id
+        if *msg2.final_session_id != final_session_id {
+            return Err(SignError::InvalidFinalSessionID);
+        }
 
         let mta_sender = pop_pair(&mut mta_senders, party_idx as u8)?;
 
-        let (additive_shares, mta_msg2) = mta_sender.process(x_i, k_i, &msg1);
+        let (additive_shares, mta_msg2) = mta_sender.process(x_i, k_i, &msg2.mta_msg1);
 
         let gamma0 = ProjectivePoint::GENERATOR * additive_shares[0];
         let gamma1 = ProjectivePoint::GENERATOR * additive_shares[1];
@@ -338,6 +346,7 @@ async fn pre_signature_inner<R: Relay>(
         let psi = phi_i - xi_i_j;
 
         let msg3 = SignMsg3 {
+            final_session_id: Opaque::from(final_session_id),
             mta_msg2,
             digest_i: Opaque::from(digest_i),
             big_x_i: Opaque::from(big_x_i),
@@ -377,6 +386,11 @@ async fn pre_signature_inner<R: Relay>(
 
         let (msg3, party_idx) =
             decode_encrypted_message::<SignMsg3>(&mut tags, msg, &enc_key, &enc_pub_key)?;
+
+        // Check final_session_id
+        if *msg3.final_session_id != final_session_id {
+            return Err(SignError::InvalidFinalSessionID);
+        }
 
         let (mta_receiver, xi_i_j) = pop_pair(&mut mta_receivers, party_idx as u8)?;
 
