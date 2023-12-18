@@ -6,8 +6,8 @@ use k256::{
         generic_array::GenericArray,
         ops::Reduce,
         subtle::{Choice, ConditionallySelectable, ConstantTimeEq},
+        rand_core::CryptoRngCore,
     },
-    schnorr::CryptoRngCore,
     Scalar, U256,
 };
 

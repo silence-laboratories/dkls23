@@ -91,26 +91,33 @@ async fn request_messages<R: Relay>(
 
 fn decode_signed_message<T: bincode::Decode>(
     tags: &mut Vec<(MsgId, usize)>,
-    mut msg: Vec<u8>,
+    msg: Message,
     setup: &ValidatedSetup,
 ) -> Result<(T, usize), InvalidMessage> {
-    let msg = Message::from_buffer(&mut msg)?;
     let mid = msg.id();
 
     let party_id = pop_tag(tags, &mid).ok_or(InvalidMessage::RecvError)? as _;
 
-    let msg = msg.verify_and_decode(setup.party_verifying_key(party_id).unwrap())?;
+    match msg.verify_and_decode(setup.party_verifying_key(party_id).unwrap()) {
+        Ok(msg) => Ok((msg, party_id)),
 
-    Ok((msg, party_id))
+        Err(err) => {
+            // Someone tries to send us an invalid message
+            if matches!(err, InvalidMessage::InvalidSignature) {
+                tags.push((mid, party_id));
+            }
+
+            Err(err)
+        },
+    }
 }
 
 fn decode_encrypted_message<T: bincode::Decode>(
     tags: &mut Vec<(MsgId, usize)>,
-    mut msg: Vec<u8>,
+    mut msg: Message,
     secret: &ReusableSecret,
     enc_pub_keys: &[(usize, PublicKey)],
 ) -> Result<(T, usize), InvalidMessage> {
-    let mut msg = Message::from_buffer(&mut msg)?;
     let mid = msg.id();
 
     let party_id = pop_tag(tags, &mid).ok_or(InvalidMessage::RecvError)? as _;
@@ -124,12 +131,18 @@ fn decode_encrypted_message<T: bincode::Decode>(
     Ok((msg, party_id))
 }
 
-fn check_abort_message(tags: &[(MsgId, usize)], msg: &[u8]) -> Result<(), SignError> {
-    let hdr = MsgHdr::from(msg).ok_or_else(|| SignError::InvalidMessage)?;
+fn check_abort_message(setup: &ValidatedSetup, tags: &[(MsgId, usize)], msg: &Message) -> Result<(), SignError> {
+    let id = msg.id();
 
-    match tags.iter().find(|(id, _)| *id == hdr.id).map(|(_, v)| v) {
+    match tags.iter().find(|(m, _)| m == &id).map(|(_, p)| *p) {
         None => Ok(()),
-        Some(p) => Err(SignError::AbortProtocol(*p as u8)),
+        Some(p) => {
+            if msg.verify(setup.party_verifying_key(p).unwrap()).is_ok() {
+                Err(SignError::AbortProtocol(p as _))
+            } else {
+                Ok(())
+            }
+        },
     }
 }
 
@@ -324,9 +337,13 @@ async fn pre_signature_inner<R: Relay>(
 
     let mut tags = request_messages(setup, DSG_MSG_R2, relay, true).await?;
     while !tags.is_empty() {
-        let msg = relay.next().await.ok_or(SignError::MissingMessage)?;
+        let mut msg = relay.next().await.ok_or(SignError::MissingMessage)?;
+        let msg = match Message::from_buffer(&mut msg) {
+            Ok(msg) => msg,
+            Err(_) => continue,
+        };
 
-        check_abort_message(&abort_tags, &msg)?;
+        check_abort_message(setup, &abort_tags, &msg)?;
 
         let (msg2, party_idx) =
             decode_encrypted_message::<SignMsg2>(&mut tags, msg, &enc_key, &enc_pub_key)?;
@@ -380,9 +397,13 @@ async fn pre_signature_inner<R: Relay>(
 
     let mut tags = request_messages(setup, DSG_MSG_R3, relay, true).await?;
     while !tags.is_empty() {
-        let msg = relay.next().await.ok_or(SignError::MissingMessage)?;
+        let mut msg = relay.next().await.ok_or(SignError::MissingMessage)?;
+        let msg = match Message::from_buffer(&mut msg) {
+            Ok(msg) => msg,
+            _ => continue,
+        };
 
-        check_abort_message(&abort_tags, &msg)?;
+        check_abort_message(setup, &abort_tags, &msg)?;
 
         let (msg3, party_idx) =
             decode_encrypted_message::<SignMsg3>(&mut tags, msg, &enc_key, &enc_pub_key)?;
@@ -581,9 +602,13 @@ async fn run_inner<R: Relay>(
 
     let mut tags = request_messages(&setup, DSG_MSG_R4, relay, false).await?;
     while !tags.is_empty() {
-        let msg = relay.next().await.ok_or(SignError::MissingMessage)?;
+        let mut msg = relay.next().await.ok_or(SignError::MissingMessage)?;
+        let msg = match Message::from_buffer(&mut msg) {
+            Ok(msg) => msg,
+            _ => continue,
+        };
 
-        check_abort_message(&abort_tags, &msg)?;
+        check_abort_message(&setup, &abort_tags, &msg)?;
 
         let (msg, _party_idx) = decode_signed_message::<SignMsg4>(&mut tags, msg, &setup)?;
 
@@ -746,11 +771,20 @@ where
 {
     let mut tags = request_messages(setup, tag, relay, false).await?;
     while !tags.is_empty() {
-        let msg = relay.next().await.ok_or(SignError::MissingMessage)?;
+        let mut msg = relay.next().await.ok_or(SignError::MissingMessage)?;
+        let msg = match Message::from_buffer(&mut msg) {
+            Ok(msg) => msg,
+            _ => continue,
+        };
 
-        check_abort_message(abort_tags, &msg)?;
+        check_abort_message(setup, abort_tags, &msg)?;
 
-        let (msg, party_id) = decode_signed_message::<T>(&mut tags, msg, setup)?;
+        let (msg, party_id) = match decode_signed_message::<T>(&mut tags, msg, setup) {
+            Ok((msg, party_id)) => (msg, party_id),
+            Err(InvalidMessage::RecvError) => continue,
+            Err(InvalidMessage::InvalidSignature) => continue,
+            _ => todo!(),
+        };
 
         handler(msg, party_id)?;
     }
