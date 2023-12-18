@@ -11,6 +11,10 @@ pub const DLOG_PROOF1_LABEL: &[u8] = b"SilenceLaboratories-DKG-DLOG-PROOF1";
 /// LABEL for the DLOG proof 2
 pub const DLOG_PROOF2_LABEL: &[u8] = b"SilenceLaboratories-DKG-DLOG-PROOF2";
 
+/// LABEL to create dlog sessionID from final_session_id and root_chain_code
+pub const DLOG_SESSION_ID_WITH_CHAIN_CODE: &[u8] = b"SilenceLaboratories-DKG-SESSION-ID-WITH-CHAIN-CODE";
+
+
 /// Broadcast message KeygenMsg1
 pub const DKG_MSG_R1: MessageTag = MessageTag::tag(1);
 

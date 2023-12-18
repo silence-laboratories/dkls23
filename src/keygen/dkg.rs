@@ -590,9 +590,19 @@ where
     let s_i: Scalar = d_i_list.iter().sum();
     let big_s_i = ProjectivePoint::GENERATOR * s_i;
 
+    // Use the root_chain_code in the final dlog proof
+    // so that all parties are sure they generated the same root_chain_code
+    let final_session_id_with_root_chain_code = {
+        let mut buf = [0u8; 32];
+        let mut transcript = Transcript::new(DKG_LABEL);
+        transcript.append_message(b"final_session_id", final_session_id.as_ref());
+        transcript.append_message(b"root_chain_code", root_chain_code.as_ref());
+        transcript.challenge_bytes(DLOG_SESSION_ID_WITH_CHAIN_CODE, &mut buf);
+        SessionId::new(buf)
+    };
     let proof = {
         let mut transcript = Transcript::new_dlog_proof(
-            &final_session_id,
+            &final_session_id_with_root_chain_code,
             setup.party_id() as usize,
             DLOG_PROOF2_LABEL,
             DKG_LABEL,
@@ -621,8 +631,12 @@ where
             continue;
         }
 
-        let mut transcript =
-            Transcript::new_dlog_proof(&final_session_id, party_id, DLOG_PROOF2_LABEL, DKG_LABEL);
+        let mut transcript = Transcript::new_dlog_proof(
+            &final_session_id_with_root_chain_code,
+            party_id,
+            DLOG_PROOF2_LABEL,
+            DKG_LABEL
+        );
         if !dlog_proof.verify(big_s_i, &ProjectivePoint::GENERATOR, &mut transcript) {
             return Err(KeygenError::InvalidDLogProof);
         }
