@@ -479,8 +479,11 @@ where
 
             let (sender_output, base_ot_msg2) = block_in_place(|| sender.process(base_ot_msg1));
 
+            let all_but_one_session_id = get_all_but_one_session_id(
+                setup.party_id() as usize, party_id as usize, &final_session_id
+            );
             let (all_but_one_sender_seed, pprf_output) =
-                build_pprf(&final_session_id, &sender_output, BATCH_SIZE, SOFT_SPOKEN_K);
+                build_pprf(&all_but_one_session_id, &sender_output, BATCH_SIZE, SOFT_SPOKEN_K);
 
             seed_ot_senders.push(party_id, all_but_one_sender_seed);
 
@@ -536,8 +539,11 @@ where
 
             let receiver = base_ot_receivers.pop_pair(party_id);
             let receiver_output = block_in_place(|| receiver.process(&msg3.base_ot_msg2));
+            let all_but_one_session_id = get_all_but_one_session_id(
+                party_id as usize, setup.party_id() as usize, &final_session_id
+            );
             let all_but_one_receiver_seed = eval_pprf(
-                &final_session_id,
+                &all_but_one_session_id,
                 &receiver_output,
                 256,
                 SOFT_SPOKEN_K,
@@ -835,6 +841,25 @@ fn get_base_ot_session_id(
             .chain_update(b"receiver_id")
             .chain_update((receiver_id as u64).to_be_bytes())
             .chain_update(b"base_ot_session_id")
+            .finalize()
+            .into(),
+    )
+}
+
+fn get_all_but_one_session_id(
+    sender_id: usize,
+    receiver_id: usize,
+    session_id: &SessionId,
+) -> SessionId {
+    SessionId::new(
+        Sha256::new()
+            .chain_update(DKG_LABEL)
+            .chain_update(session_id)
+            .chain_update(b"sender_id")
+            .chain_update((sender_id as u64).to_be_bytes())
+            .chain_update(b"receiver_id")
+            .chain_update((receiver_id as u64).to_be_bytes())
+            .chain_update(b"all_but_one_session_id")
             .finalize()
             .into(),
     )
