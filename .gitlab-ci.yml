@@ -1,0 +1,73 @@
+variables:
+  CARGO_INCREMENTAL: 0
+
+workflow:
+  rules:
+    # For merge requests, create a pipeline.
+    - if: '$CI_MERGE_REQUEST_IID'
+    # For `master` branch, create a pipeline (this includes on schedules, pushes, merges, etc.).
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    # For tags, create a pipeline.
+    - if: '$CI_COMMIT_TAG'
+
+default:
+  image:
+    name: "rust-ci"
+    pull_policy: if-not-present
+
+  before_script:
+    - git config --global credential.helper store
+    - echo "https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.com" > ~/.git-credentials
+    - export CARGO_HOME="${PWD}/.cargo"
+    - export PATH="${CARGO_HOME}/bin:${PATH}"
+
+  tags:
+    - hetzner
+
+cache:
+  key:
+    files:
+      - Cargo.lock
+      - .gitlab-ci.yml
+  paths:
+    - .cargo
+
+stages:
+  - test
+  - build
+
+lint:
+  stage: test
+  script:
+    - "cargo fmt --all -- --check || :"
+    - cargo clippy --all -- -D warnings
+    - cargo audit
+
+test:
+  stage: test
+  needs: [ "lint" ]
+  script:
+    - cargo test
+
+test-wasm:
+  stage: test
+  needs: [ "lint" ]
+  script:
+    - wasm-pack build -t web wrapper/wasm
+
+  artifacts:
+    paths:
+      - wrapper/wasm/pkg
+    expire_in: 12h
+
+test-wasm-ll:
+  stage: test
+  needs: [ "lint" ]
+  script:
+    - wasm-pack build -t web wrapper/wasm-ll
+    - cd wrapper/wasm-ll; deno test -A tests/keygen.ts
+
+  artifacts:
+    paths:
+      - wrapper/wasm-ll/pkg
+    expire_in: 12h
