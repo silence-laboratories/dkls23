@@ -11,7 +11,7 @@ tokio-tungstenite = { version = "0.20" }
 anyhow = { workspace = true }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "signal"] }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
+tracing-subscriber = { workspace = true }
 
 axum = { version = "0.6" }
 tower-http = { version = "0.3.0", features = ["trace", "cors"] }

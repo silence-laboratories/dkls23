@@ -17,7 +17,7 @@ k256 = { workspace = true, features= ["ecdsa", "serde"]}
 tokio = { workspace = true, features = [ "net", "macros", "fs", "rt-multi-thread", "signal" ] }
 sha2 = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
+tracing-subscriber = { workspace = true }
 
 xflags = "0.3"
 url = "2.3"

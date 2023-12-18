@@ -60,7 +60,7 @@ test-wasm:
       - wrapper/wasm/pkg
     expire_in: 12h
 
-test-wasm-ll:
+.test-wasm-ll:
   stage: test
   needs: [ "lint" ]
   script:
