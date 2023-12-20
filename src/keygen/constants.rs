@@ -3,7 +3,13 @@
 use sl_mpc_mate::message::MessageTag;
 
 /// LABEL for the keygen protocol
-pub const DKG_LABEL: &[u8] = b"SilenceLaboratories-DKG-DKLS";
+pub const DKG_LABEL: &[u8] = b"SilenceLaboratories-DKG-DKLS-v1.0";
+
+/// LABEL for the commitment 1
+pub const COMMITMENT_1_LABEL: &[u8] = b"SilenceLaboratories-DKG-COMMITMENT-1";
+
+/// LABEL for the commitment 2
+pub const COMMITMENT_2_LABEL: &[u8] = b"SilenceLaboratories-DKG-COMMITMENT-2";
 
 /// LABEL for the DLOG proof 1
 pub const DLOG_PROOF1_LABEL: &[u8] = b"SilenceLaboratories-DKG-DLOG-PROOF1";

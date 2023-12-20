@@ -504,7 +504,7 @@ where
             }
         }
 
-        verfiy_dlog_proofs(
+        verify_dlog_proofs(
             &final_session_id,
             party_id,
             &dlog_proofs_i_list[party_id],
@@ -804,19 +804,16 @@ fn hash_commitment(
     r_i: &[u8; 32],
 ) -> HashBytes {
     let mut hasher = Sha256::new();
-
-    hasher.update(b"SL-Keygen-Commitment");
+    hasher.update(DKG_LABEL);
     hasher.update(session_id);
     hasher.update((party_id as u64).to_be_bytes());
     hasher.update((rank as u64).to_be_bytes());
     hasher.update(x_i.to_bytes());
-
     for point in big_f_i_vec.points() {
         hasher.update(point.to_bytes());
     }
-
     hasher.update(r_i);
-
+    hasher.update(COMMITMENT_1_LABEL);
     HashBytes::new(hasher.finalize().into())
 }
 
@@ -826,11 +823,11 @@ fn hash_commitment_2(
     r_i: &[u8; 32],
 ) -> HashBytes {
     let mut hasher = Sha256::new();
-    hasher.update(b"SL-ChainCodeSID-Commitment");
+    hasher.update(DKG_LABEL);
     hasher.update(session_id);
     hasher.update(chain_code_sid);
     hasher.update(r_i);
-
+    hasher.update(COMMITMENT_2_LABEL);
     HashBytes::new(hasher.finalize().into())
 }
 
@@ -973,7 +970,7 @@ fn get_all_but_one_session_id(
     )
 }
 
-fn verfiy_dlog_proofs<'a>(
+fn verify_dlog_proofs<'a>(
     final_session_id: &SessionId,
     party_id: usize,
     proofs: &[DLogProof],

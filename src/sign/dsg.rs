@@ -28,13 +28,14 @@ use crate::{
     proto::create_abort_message,
     BadPartyIndex, Seed,
 };
+use crate::sign::constants::{
+    COMMITMENT_LABEL, DIGEST_I_LABEL, DSG_LABEL,
+    DSG_MSG_R1, DSG_MSG_R2, DSG_MSG_R3, DSG_MSG_R4,
+    PAIRWISE_MTA_LABEL, PAIRWISE_RANDOMIZATION_LABEL
+};
 
 use super::SignError;
 
-const DSG_MSG_R1: MessageTag = MessageTag::tag(1);
-const DSG_MSG_R2: MessageTag = MessageTag::tag(2);
-const DSG_MSG_R3: MessageTag = MessageTag::tag(3);
-const DSG_MSG_R4: MessageTag = MessageTag::tag(4);
 
 type Pairs<T> = crate::pairs::Pairs<T, usize>;
 
@@ -300,12 +301,13 @@ async fn pre_signature_inner<R: Relay>(
 
     let digest_i = {
         let mut h = Sha256::new();
+        h.update(DSG_LABEL);
         for (key, (sid_i, commitment_i)) in commitments.iter() {
             h.update((*key as u32).to_be_bytes());
             h.update(sid_i);
             h.update(commitment_i);
         }
-
+        h.update(DIGEST_I_LABEL);
         HashBytes::new(h.finalize().into())
     };
 
@@ -631,9 +633,11 @@ fn hash_commitment_r_i(
     blind_factor: &[u8; 32],
 ) -> HashBytes {
     let mut hasher = Sha256::new();
+    hasher.update(DSG_LABEL);
     hasher.update(session_id.as_ref());
     hasher.update(big_r_i.to_bytes());
     hasher.update(blind_factor);
+    hasher.update(COMMITMENT_LABEL);
     HashBytes::new(hasher.finalize().into())
 }
 
@@ -654,8 +658,10 @@ fn get_mu_i(keyshare: &Keyshare, party_id_list: &[(usize, u8)], sig_id: &HashByt
     for p_0_party in &p_0_list {
         let seed_j_i = keyshare.rec_seed_list[*p_0_party as usize];
         let mut hasher = Sha256::new();
+        hasher.update(DSG_LABEL);
         hasher.update(seed_j_i);
         hasher.update(sig_id);
+        hasher.update(PAIRWISE_RANDOMIZATION_LABEL);
         let value = Scalar::reduce(U256::from_be_slice(&hasher.finalize()));
         sum_p_0 += value;
     }
@@ -665,8 +671,10 @@ fn get_mu_i(keyshare: &Keyshare, party_id_list: &[(usize, u8)], sig_id: &HashByt
         let seed_i_j =
             keyshare.sent_seed_list[*p_1_party as usize - keyshare.party_id as usize - 1];
         let mut hasher = Sha256::new();
+        hasher.update(DSG_LABEL);
         hasher.update(seed_i_j);
         hasher.update(sig_id);
+        hasher.update(PAIRWISE_RANDOMIZATION_LABEL);
         let value = Scalar::reduce(U256::from_be_slice(&hasher.finalize()));
         sum_p_1 += value;
     }
@@ -724,13 +732,13 @@ fn verify_commitment_r_i(
 
 fn mta_session_id(final_session_id: &SessionId, sender_id: u8, receiver_id: u8) -> SessionId {
     let mut h = Sha256::new();
-    h.update(b"SL-DKLS-PAIRWISE-MTA");
+    h.update(DSG_LABEL);
     h.update(final_session_id);
     h.update(b"sender");
     h.update([sender_id]);
     h.update(b"receiver");
     h.update([receiver_id]);
-
+    h.update(PAIRWISE_MTA_LABEL);
     SessionId::new(h.finalize().into())
 }
 
