@@ -16,6 +16,7 @@ use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 
 use sl_mpc_mate::{coord::*, math::birkhoff_coeffs, message::*, HashBytes, SessionId};
+use sl_oblivious::soft_spoken::SoftSpokenOTError;
 
 use crate::{
     keygen::{get_idx_from_id, messages::Keyshare},
@@ -357,7 +358,14 @@ async fn pre_signature_inner<R: Relay>(
 
         let mta_sender = pop_pair(&mut mta_senders, party_idx as u8)?;
 
-        let (additive_shares, mta_msg2) = mta_sender.process(x_i, k_i, &msg2.mta_msg1);
+        let (additive_shares, mta_msg2) = match mta_sender.process(
+            x_i, k_i, &msg2.mta_msg1
+        ) {
+            Ok(v) => {v}
+            Err(SoftSpokenOTError::AbortProtocolAndBanReceiver) => {
+                return Err(SignError::AbortProtocolAndBanParty(party_idx as u8));
+            }
+        };
 
         let gamma0 = ProjectivePoint::GENERATOR * additive_shares[0];
         let gamma1 = ProjectivePoint::GENERATOR * additive_shares[1];
@@ -417,9 +425,13 @@ async fn pre_signature_inner<R: Relay>(
 
         let (mta_receiver, xi_i_j) = pop_pair(&mut mta_receivers, party_idx as u8)?;
 
-        let receiver_additive_shares_i = mta_receiver
-            .process(&msg3.mta_msg2)
-            .map_err(SignError::MtaError)?;
+        let receiver_additive_shares_i = match mta_receiver
+            .process(&msg3.mta_msg2) {
+            Ok(v) => {v}
+            Err(_) => {
+                return Err(SignError::AbortProtocolAndBanParty(party_idx as u8));
+            }
+        };
 
         receiver_additive_shares.push(receiver_additive_shares_i);
 
@@ -443,13 +455,13 @@ async fn pre_signature_inner<R: Relay>(
         let cond1 = (big_r_j * &xi_i_j)
             == (ProjectivePoint::GENERATOR * receiver_additive_shares_i[1] + *msg3.gamma1);
         if !cond1 {
-            return Err(SignError::FailedCheck("Consistency check 1 failed"));
+            return Err(SignError::AbortProtocolAndBanParty(party_idx as u8));
         }
 
         let cond2 = (big_x_j * &xi_i_j)
             == (ProjectivePoint::GENERATOR * receiver_additive_shares_i[0] + *msg3.gamma0);
         if !cond2 {
-            return Err(SignError::FailedCheck("Consistency check 2 failed"));
+            return Err(SignError::AbortProtocolAndBanParty(party_idx as u8));
         }
     }
 

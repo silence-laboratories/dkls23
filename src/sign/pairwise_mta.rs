@@ -20,6 +20,7 @@ use sl_oblivious::{
         ReceiverOTSeed, SenderOTSeed,
         RecR0, RecR1, Round1Output, Round2Output, SoftSpokenOTRec, SoftSpokenOTSender,
         COT_BLOCK_SIZE_BYTES, ETA, KAPPA, KAPPA_BYTES, KAPPA_DIV_SOFT_SPOKEN_K, L,
+        SoftSpokenOTError
     },
     utils::{ExtractBit, Hasher},
 };
@@ -266,7 +267,7 @@ impl PairwiseMtaSender<MtaSendR0> {
         alpha1: Scalar,
         alpha2: Scalar,
         round1_output: &Round1Output,
-    ) -> ([Scalar; 2], MtaRound2Output) {
+    ) -> Result<([Scalar; 2], MtaRound2Output), SoftSpokenOTError> {
         let mut alice_input = [[Scalar::ZERO; 3]; ETA];
 
         alice_input.iter_mut().for_each(|input| {
@@ -278,8 +279,7 @@ impl PairwiseMtaSender<MtaSendR0> {
         let (cot_sender_shares, round2_output) = self
             .state
             .cot_sender
-            .process((&round1_output, &alice_input))
-            .expect("error while processing soft_spoken ot message round 1");
+            .process((&round1_output, &alice_input))?;
 
         let mut hasher = Hasher::new();
         hasher.update(b"SL-DKLS-MTA");
@@ -343,7 +343,7 @@ impl PairwiseMtaSender<MtaSendR0> {
             u: Opaque::from(u),
         };
 
-        (sender_additive_shares, output)
+        Ok((sender_additive_shares, output))
     }
 }
 
@@ -384,7 +384,7 @@ mod tests {
 
         let (receiver, round1_output) = receiver.process(&beta);
 
-        let (sender_shares, round2_output) = sender.process(alpha1, alpha2, &round1_output);
+        let (sender_shares, round2_output) = sender.process(alpha1, alpha2, &round1_output).unwrap();
 
         let receiver_shares = receiver.process(&round2_output).unwrap();
 
