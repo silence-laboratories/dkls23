@@ -278,7 +278,7 @@ impl PairwiseMtaSender<MtaSendR0> {
         let (cot_sender_shares, round2_output) = self
             .state
             .cot_sender
-            .process((&round1_output, &alice_input))?;
+            .process((round1_output, &alice_input))?;
 
         let mut hasher = Hasher::new();
         hasher.update(b"SL-DKLS-MTA");
