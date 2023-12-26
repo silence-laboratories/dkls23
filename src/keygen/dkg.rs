@@ -702,9 +702,7 @@ where
             &x_i_list[my_party_id as usize],
             f_i_val,
             &ProjectivePoint::GENERATOR,
-        )
-        .expect("u_i_k cannot be empty");
-
+        );
         if !valid {
             return Err(KeygenError::FailedFelmanVerify);
         }
