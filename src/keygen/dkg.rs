@@ -133,7 +133,7 @@ fn decode_signed_message<T: bincode::Decode>(
             }
 
             Err(err)
-        },
+        }
     }
 }
 
@@ -157,7 +157,10 @@ fn decode_encrypted_message<T: bincode::Decode + Zeroize>(
         Ok(msg) => Ok((msg, party_id)),
 
         Err(err) => {
-            if matches!(err, InvalidMessage::InvalidTag|InvalidMessage::MessageTooShort) {
+            if matches!(
+                err,
+                InvalidMessage::InvalidTag | InvalidMessage::MessageTooShort
+            ) {
                 tags.push((mid, party_id));
             }
 
@@ -166,7 +169,11 @@ fn decode_encrypted_message<T: bincode::Decode + Zeroize>(
     }
 }
 
-fn check_abort_message(setup: &ValidatedSetup, tags: &[(MsgId, u8)], msg: &Message) -> Result<(), KeygenError> {
+fn check_abort_message(
+    setup: &ValidatedSetup,
+    tags: &[(MsgId, u8)],
+    msg: &Message,
+) -> Result<(), KeygenError> {
     let id = msg.id();
 
     match tags.iter().find(|(m, _)| m == &id).map(|(_, p)| *p) {
@@ -177,7 +184,7 @@ fn check_abort_message(setup: &ValidatedSetup, tags: &[(MsgId, u8)], msg: &Messa
             } else {
                 Ok(())
             }
-        },
+        }
     }
 }
 
@@ -550,10 +557,16 @@ where
                 block_in_place(|| sender.process(base_ot_msg1));
 
             let all_but_one_session_id = get_all_but_one_session_id(
-                setup.party_id() as usize, party_id as usize, &final_session_id
+                setup.party_id() as usize,
+                party_id as usize,
+                &final_session_id,
             );
-            let (all_but_one_sender_seed, pprf_output) =
-                build_pprf(&all_but_one_session_id, &sender_output, BATCH_SIZE, SOFT_SPOKEN_K);
+            let (all_but_one_sender_seed, pprf_output) = build_pprf(
+                &all_but_one_session_id,
+                &sender_output,
+                BATCH_SIZE,
+                SOFT_SPOKEN_K,
+            );
 
             seed_ot_senders.push(party_id, all_but_one_sender_seed);
 
@@ -614,7 +627,9 @@ where
             let receiver_output =
                 block_in_place(|| receiver.process(&msg3.base_ot_msg2));
             let all_but_one_session_id = get_all_but_one_session_id(
-                party_id as usize, setup.party_id() as usize, &final_session_id
+                party_id as usize,
+                setup.party_id() as usize,
+                &final_session_id,
             );
             let all_but_one_receiver_seed = eval_pprf(
                 &all_but_one_session_id,
@@ -732,7 +747,7 @@ where
             &final_session_id_with_root_chain_code,
             party_id,
             DLOG_PROOF2_LABEL,
-            DKG_LABEL
+            DKG_LABEL,
         );
         if !dlog_proof.verify(
             big_s_i,
@@ -1026,7 +1041,7 @@ where
             relay.next().await.ok_or(KeygenError::MissingMessage)?;
         let msg = match Message::from_buffer(&mut msg) {
             Ok(msg) => msg,
-            _ => continue
+            _ => continue,
         };
 
         check_abort_message(setup, abort_tags, &msg)?;

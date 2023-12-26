@@ -150,5 +150,4 @@ pub fn dsg_setup_inner(
 pub fn dsg_setup_msg(opts: JsValue) -> Result<Uint8Array, JsError> {
     let (msg, _, _, _) = dsg_setup_inner(opts)?;
     Ok(Uint8Array::from(msg.as_ref()))
-
 }

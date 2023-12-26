@@ -24,8 +24,7 @@ pub struct SignMsg1 {
 }
 
 /// Type for the sign gen message 2. P2P
-#[derive(Debug, bincode::Encode, bincode::Decode)]
-#[derive(Zeroize, ZeroizeOnDrop)]
+#[derive(Debug, bincode::Encode, bincode::Decode, Zeroize, ZeroizeOnDrop)]
 pub struct SignMsg2 {
     /// final_session_id
     pub final_session_id: Opaque<SessionId>,
@@ -35,8 +34,7 @@ pub struct SignMsg2 {
 }
 
 /// Type for the sign gen message 3. P2P
-#[derive(Debug, bincode::Encode, bincode::Decode)]
-#[derive(Zeroize, ZeroizeOnDrop)]
+#[derive(Debug, bincode::Encode, bincode::Decode, Zeroize, ZeroizeOnDrop)]
 pub struct SignMsg3 {
     /// final_session_id
     pub final_session_id: Opaque<SessionId>,
@@ -80,8 +78,7 @@ pub struct SignMsg4 {
 }
 
 /// Result after pre-signature of party_i
-#[derive(bincode::Encode, bincode::Decode)]
-#[derive(Zeroize, ZeroizeOnDrop)]
+#[derive(bincode::Encode, bincode::Decode, Zeroize, ZeroizeOnDrop)]
 pub struct PreSignResult {
     /// final_session_id
     pub final_session_id: Opaque<SessionId>,

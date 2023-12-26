@@ -1,12 +1,8 @@
 use dkls23::keygen::{
-    gen_keyshares,
-    key_refresh::setup_key_refresh,
-    key_refresh::run as run_key_refresh,
-    KeygenError
+    gen_keyshares, key_refresh::run as run_key_refresh, key_refresh::setup_key_refresh, KeygenError,
 };
 use sl_mpc_mate::coord::SimpleMessageRelay;
 use tokio::task::JoinSet;
-
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), KeygenError> {
@@ -24,7 +20,9 @@ async fn main() -> Result<(), KeygenError> {
         let coord = SimpleMessageRelay::new();
 
         let mut parties = JoinSet::new();
-        for (setup, seed, share) in setup_key_refresh(2, 3, Some(&[0, 1, 1]), &old_shares).into_iter() {
+        for (setup, seed, share) in
+            setup_key_refresh(2, 3, Some(&[0, 1, 1]), &old_shares).into_iter()
+        {
             parties.spawn(run_key_refresh(setup, seed, coord.connect(), share));
         }
 

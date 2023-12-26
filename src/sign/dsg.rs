@@ -18,25 +18,23 @@ use rand_chacha::ChaCha20Rng;
 use sl_mpc_mate::{coord::*, math::birkhoff_coeffs, message::*, HashBytes, SessionId};
 use sl_oblivious::soft_spoken::SoftSpokenOTError;
 
+use crate::sign::constants::{
+    COMMITMENT_LABEL, DIGEST_I_LABEL, DSG_LABEL, DSG_MSG_R1, DSG_MSG_R2, DSG_MSG_R3, DSG_MSG_R4,
+    PAIRWISE_MTA_LABEL, PAIRWISE_RANDOMIZATION_LABEL,
+};
 use crate::{
     keygen::{get_idx_from_id, messages::Keyshare},
+    proto::create_abort_message,
     setup::{sign::ValidatedSetup, ABORT_MESSAGE_TAG},
     sign::{
         messages::{PartialSignature, PreSignResult, SignMsg1, SignMsg2, SignMsg3, SignMsg4},
         pairwise_mta::{PairwiseMtaRec, PairwiseMtaSender},
     },
     utils::{parse_raw_sign, verify_final_signature},
-    proto::create_abort_message,
     BadPartyIndex, Seed,
-};
-use crate::sign::constants::{
-    COMMITMENT_LABEL, DIGEST_I_LABEL, DSG_LABEL,
-    DSG_MSG_R1, DSG_MSG_R2, DSG_MSG_R3, DSG_MSG_R4,
-    PAIRWISE_MTA_LABEL, PAIRWISE_RANDOMIZATION_LABEL
 };
 
 use super::SignError;
-
 
 type Pairs<T> = crate::pairs::Pairs<T, usize>;
 
@@ -264,7 +262,7 @@ async fn pre_signature_inner<R: Relay>(
 
             let msg2 = SignMsg2 {
                 final_session_id: Opaque::from(final_session_id),
-                mta_msg1: mta_msg_1
+                mta_msg1: mta_msg_1,
             };
 
             to_send.push(Builder::<Encrypted>::encode(
@@ -358,10 +356,8 @@ async fn pre_signature_inner<R: Relay>(
 
         let mta_sender = pop_pair(&mut mta_senders, party_idx as u8)?;
 
-        let (additive_shares, mta_msg2) = match mta_sender.process(
-            x_i, k_i, &msg2.mta_msg1
-        ) {
-            Ok(v) => {v}
+        let (additive_shares, mta_msg2) = match mta_sender.process(x_i, k_i, &msg2.mta_msg1) {
+            Ok(v) => v,
             Err(SoftSpokenOTError::AbortProtocolAndBanReceiver) => {
                 return Err(SignError::AbortProtocolAndBanParty(party_idx as u8));
             }
@@ -425,9 +421,8 @@ async fn pre_signature_inner<R: Relay>(
 
         let (mta_receiver, xi_i_j) = pop_pair(&mut mta_receivers, party_idx as u8)?;
 
-        let receiver_additive_shares_i = match mta_receiver
-            .process(&msg3.mta_msg2) {
-            Ok(v) => {v}
+        let receiver_additive_shares_i = match mta_receiver.process(&msg3.mta_msg2) {
+            Ok(v) => v,
             Err(_) => {
                 return Err(SignError::AbortProtocolAndBanParty(party_idx as u8));
             }

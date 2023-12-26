@@ -17,10 +17,9 @@ use sl_mpc_mate::{message::*, SessionId};
 
 use sl_oblivious::{
     soft_spoken::{
-        ReceiverOTSeed, SenderOTSeed,
-        RecR0, RecR1, Round1Output, Round2Output, SoftSpokenOTRec, SoftSpokenOTSender,
-        COT_BLOCK_SIZE_BYTES, ETA, KAPPA, KAPPA_BYTES, KAPPA_DIV_SOFT_SPOKEN_K, L,
-        SoftSpokenOTError
+        RecR0, RecR1, ReceiverOTSeed, Round1Output, Round2Output, SenderOTSeed, SoftSpokenOTError,
+        SoftSpokenOTRec, SoftSpokenOTSender, COT_BLOCK_SIZE_BYTES, ETA, KAPPA, KAPPA_BYTES,
+        KAPPA_DIV_SOFT_SPOKEN_K, L,
     },
     utils::{ExtractBit, Hasher},
 };
@@ -384,7 +383,8 @@ mod tests {
 
         let (receiver, round1_output) = receiver.process(&beta);
 
-        let (sender_shares, round2_output) = sender.process(alpha1, alpha2, &round1_output).unwrap();
+        let (sender_shares, round2_output) =
+            sender.process(alpha1, alpha2, &round1_output).unwrap();
 
         let receiver_shares = receiver.process(&round2_output).unwrap();
 
