@@ -4,7 +4,7 @@
  import { default as Intro }            from '$lib/components/Intro.svelte';
  import { default as TimeMetrics }      from '$lib/components/TimeMetrics.svelte';
  import { default as SummaryTimes }     from '$lib/components/SummaryTimes.svelte';
- import { configs, wsUrl }              from '$lib/config';
+ import { clusterConfig, wsUrl }        from '$lib/config';
  import { decodeBase64, encodeBase64 }  from '$lib/base64';
  import { encodeHex }                   from '$lib/hex';
 
@@ -61,31 +61,29 @@
 
      generatingKeys = true;
 
-     let cluster = await configs();
-
-     cluster = cluster[1]; // TODO provide UI to select a cluster
+     let loadedConfig = await clusterConfig();
 
      try {
-         let opts = await createKeygenSetupOpts(cluster, threshold);
+         let opts = await createKeygenSetupOpts(loadedConfig, partiesNumber, threshold);
 
          let setupGen = Date.now();
 
          console.log('DKG setup gen', setupGen - startTime);
 
-         let msgRelayUrl = wsUrl(cluster.setup.relay);
+         let msgRelayUrl = wsUrl(loadedConfig.setup.relay);
 
          let genStart = Date.now();
 
          let web_party = init_dkg(
              opts,
-             encodeHex(cluster.nodes[0].secretKey),
+             encodeHex(loadConfig.nodes[0].secretKey),
              msgRelayUrl,
              encodeHex(genInstanceId()) // seed
          );
 
          let resp = await Promise.all([
              web_party,
-             ...cluster.nodes.slice(1).map((n) => startDkg(n.endpoint, opts.instance))
+             ...loadedConfig.nodes.slice(1).map((n) => startDkg(n.endpoint, opts.instance))
          ]);
 
          let genEnd = Date.now();
@@ -110,23 +108,21 @@
      let startTime = Date.now();
      generatingKeys = true;
 
-     let cluster = await configs();
+     let loadedConfig = await clusterConfig();
 
-     cluster = cluster[1]; // TODO provide UI to select a cluster
-
-     let opts = await createKeygenSetupOpts(cluster, threshold, 1000);
+     let opts = await createKeygenSetupOpts(loadedConfig, threshold, 1000);
 
      let setupGen = Date.now();
 
      console.log('DKG setup gen', setupGen - startTime);
 
-     let msgRelayUrl = wsUrl(cluster.setup.relay);
+     let msgRelayUrl = wsUrl(loadedConfig.setup.relay);
 
      let genStart = Date.now();
 
      let web_party = init_dkg(
          opts,
-         encodeHex(cluster.nodes[0].secretKey),
+         encodeHex(loadedConfig.nodes[0].secretKey),
          msgRelayUrl,
          encodeHex(genInstanceId()) // seed
      );
@@ -150,18 +146,16 @@
      let startTime = Date.now();
      generatingKeys = true;
 
-     let cluster = await configs();
+     let loadedConfig = await clusterConfig();
 
-     cluster = cluster[1]; // TODO provide UI to select a cluster
-
-     let msgRelayUrl = wsUrl(cluster.setup.relay);
+     let msgRelayUrl = wsUrl(loadedConfig.setup.relay);
 
      let genStart = Date.now();
 
      let web_party = join_dkg(
          joinInstanceId,
-         encodeHex(cluster.setup.publicKey),
-         encodeHex(cluster.nodes[+joinPartyId].secretKey),
+         encodeHex(loadedConfig.setup.publicKey),
+         encodeHex(loadedConfig.nodes[+joinPartyId].secretKey),
          msgRelayUrl,
          encodeHex(genInstanceId()) // seed
      );
@@ -180,18 +174,16 @@
  const handleKeygenAbort = async () => {
      console.log('abort keygen');
 
-     let cluster = await configs();
-
-     cluster = cluster[1]; // TODO provide UI to select a cluster
+     let loadedConfig = await clusterConfig();
 
      let abort_msg = createAbortMessage(
          joinInstanceId,
          10000,
-         encodeHex(cluster.nodes[+joinPartyId].secretKey)
+         encodeHex(loadedConfig.nodes[+joinPartyId].secretKey)
      );
 
      let abort = new AbortController();
-     let ws = await msg_relay_connect(wsUrl(cluster.setup.relay), abort.signal);
+     let ws = await msg_relay_connect(wsUrl(loadedConfig.setup.relay), abort.signal);
 
      let relayConnTime = Date.now();
 
@@ -203,6 +195,7 @@
 
 <Intro />
 
+<!--
 <details>
     <summary>
         <strong>Key generation with a web party + rest of cloud nodes</strong>
@@ -351,3 +344,4 @@
         </div>
     {/if}
 </details>
+-->

@@ -5,6 +5,10 @@ import init, {
     verifyingKey,
 } from 'dkls-wasm';
 
+import type {
+    ClusterDef
+} from './config.ts';
+
 const start = async (endpoint: string, instance: Uint8Array): Promise<any> => {
     let resp = await fetch(endpoint, {
         method: 'POST',
@@ -36,40 +40,47 @@ export async function startDsg(endpoint: string, instance: Uint8Array): Promise<
     return resp;
 }
 
-export function createKeygenSetupOpts(cluster, threshold, ttl = 10) {
+export function createKeygenSetupOpts(cluster: ClusterDef, participants: number, threshold: number, ttl: number = 10) {
     let instance = genInstanceId();
     return {
         instance,
-        signing_key: cluster.setup.secretKey,
+        signingKey: cluster.setup.secretKey,
         threshold,
         ttl,
-        parties: cluster.nodes.map((n) => {
-            return { rank: 0, publicKey: n.publicKey }
+        parties: cluster.nodes.slice(0, participants).map(({ publicKey }) => {
+            return { rank: 0, publicKey }
         })
     };
 }
 
-export function createKeygenSetup(cluster, threshold) {
-    let opts = createKeygenSetupOpts(cluster, threshold, 10);
+export function createKeygenSetup(cluster: ClusterDef, participants: number, threshold: number, ttl: number = 10) {
+    let opts = createKeygenSetupOpts(cluster, participants, threshold, ttl);
     let setup = dkgSetupMessage(opts);
 
     return { setup, instance: opts.instance };
 }
 
-export function createSignSetup(cluster, publicKey: Uin8Array, message: Uint8Array, threshold: number) {
+export function createSignSetupOpts(cluster: ClusterDef, publicKey: Uint8Array, message: Uint8Array, threshold: number) {
     let instance = genInstanceId();
-    let opts = {
+    return {
         instance,
         message,
-        public_key: publicKey,
-        signing_key: cluster.setup.secretKey,
+        publicKey,
+        signingKey: cluster.setup.secretKey,
         parties: cluster.nodes.slice(0, threshold).map((n) => {
-            return { rank: 0, public_key: n.publicKey }
+            return { rank: 0, publicKey: n.publicKey }
         }),
         ttl: 10
     };
+}
 
+export function createSignSetup(cluster: ClusterDef, publicKey: Uint8Array, message: Uint8Array, threshold: number) {
+    let opts = createSignSetupOpts(cluster, publicKey, message, threshold);
     let setup = dsgSetupMessage(opts);
 
-    return { setup, instance };
+    return { setup, instance: opts.instance };
+}
+
+export function randomSeed(count: number = 32): Uint8Array {
+    return window.crypto.getRandomValues(new Uint8Array(count));
 }

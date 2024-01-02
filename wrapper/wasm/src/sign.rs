@@ -103,6 +103,10 @@ async fn validate_setup<R: Relay>(
     (t.unwrap_throw(), share.clone_inner())
 }
 
+/// Begin execution of DSG protocol
+///   - create a setup message based on passed opts
+///   - send the setup message to all other parties
+///   - start execution of the DSG at one of parties
 #[wasm_bindgen]
 pub async fn init_dsg(
     opts: JsValue,

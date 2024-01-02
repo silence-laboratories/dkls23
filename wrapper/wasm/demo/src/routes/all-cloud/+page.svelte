@@ -1,7 +1,7 @@
 <script lang="ts">
  import { default as TimeMetrics }      from '$lib/components/TimeMetrics.svelte';
  import { default as SummaryTimes }     from '$lib/components/SummaryTimes.svelte';
- import { configs, wsUrl }              from '$lib/config';
+ import { clusterConfig, wsUrl }        from '$lib/config';
  import { decodeBase64, encodeBase64 }  from '$lib/base64';
  import { encodeHex }                   from '$lib/hex';
  import { cloudPublicKeys }             from '$lib/stores';
@@ -29,26 +29,24 @@
  let signStats = null;
  let signTimes = {};
 
- let selectedPk = $cloudPublicKeys[0] || null;
+ let selectedPk = null;
 
  let selectPk = false;
 
  $: validPartiesNum =
-        +partiesNumber && partiesNumber > 2 && partiesNumber <= 5;
+        +partiesNumber && partiesNumber >= 2 && partiesNumber <= 3;
  $: validThreshold =
-        +threshold && threshold > 1 && threshold < partiesNumber;
+        +threshold && threshold > 1 && threshold <= partiesNumber;
 
  const handleGenKeys = async () => {
      let startTime = Date.now();
 
      generatingKeys = true;
 
-     let cluster = await configs();
-
-     cluster = cluster[1]; // TODO provide UI to select a cluster
+     let loadedConfig = await clusterConfig();
 
      try {
-         let { setup, instance } = await createKeygenSetup(cluster, threshold);
+         let { setup, instance } = await createKeygenSetup(loadedConfig, partiesNumber, threshold);
 
          let setupGen = Date.now();
 
@@ -56,7 +54,7 @@
 
          let abort = new AbortController();
 
-         let ws = await msg_relay_connect(wsUrl(cluster.setup.relay), abort.signal);
+         let ws = await msg_relay_connect(wsUrl(loadedConfig.setup.relay), abort.signal);
 
          let relayConnTime = Date.now();
 
@@ -65,7 +63,12 @@
 
          let genStart = Date.now();
 
-         let resp = await Promise.all(cluster.nodes.map((n) => startDkg(n.endpoint, instance)));
+         let resp = await Promise.all(
+             loadedConfig
+                 .nodes
+                 .slice(0, partiesNumber)
+                 .map((n) => startDkg(n.endpoint, instance))
+         );
 
          let genEnd = Date.now();
 
@@ -80,14 +83,16 @@
 
          console.log('resp[0]', resp[0]);
 
-         cloudPublicKeys.update((keys) => [...keys, resp[0].public_key]);
+         cloudPublicKeys.update((keys) => {
+             return {...keys, [resp[0].public_key]: { n: partiesNumber, t: threshold }}
+         });
 
          if (selectedPk === null) {
              selectedPk = resp[0].public_key;
          }
 
-         } finally {
-             generatingKeys = false;
+     } finally {
+         generatingKeys = false;
      }
  };
 
@@ -96,13 +101,15 @@
 
      generatingSign = true;
 
-     let cluster = await configs();
+     let loadedConfig = await clusterConfig();
 
-     cluster = cluster[1]; // TODO provide UI to select a cluster
+     let keyInfo = $cloudPublicKeys[selectedPk];
+
+     console.log('sign keyinfo', keyInfo);
 
      try {
          let { setup, instance } = await createSignSetup(
-             cluster,
+             loadedConfig,
              decodeBase64(selectedPk),
              new TextEncoder().encode(signMessage),
              threshold
@@ -112,7 +119,7 @@
 
          let abort = new AbortController();
 
-         let ws = await msg_relay_connect(wsUrl(cluster.setup.relay), abort.signal);
+         let ws = await msg_relay_connect(wsUrl(loadedConfig.setup.relay), abort.signal);
 
          let relayConnTime = Date.now();
 
@@ -120,7 +127,11 @@
 
          let genStart = Date.now();
 
-         let resp = await Promise.all(cluster.nodes.slice(0, threshold).map((n) => startDsg(n.endpoint, instance)));
+         let resp = await Promise.all(
+             loadedConfig
+                 .nodes
+                 .slice(0, threshold).map((n) => startDsg(n.endpoint, instance))
+         );
 
          let genEnd = Date.now();
 
@@ -141,6 +152,11 @@
      selectPk = false;
      selectedPk = pk;
      console.log('current pk', pk);
+ };
+
+ const pkInfo = (pk) => {
+     let info = $cloudPublicKeys[pk];
+     return `N: ${info.n}, T ${info.t}`;
  };
 
 </script>
@@ -186,7 +202,7 @@
 
 </details>
 
-{#if $cloudPublicKeys.length == 0 }
+{#if Object.keys($cloudPublicKeys).length == 0 }
     <p> Gnerate at leat one key </p>
 {:else}
 <details>
@@ -204,15 +220,15 @@
     </p>
 
     <details role="list" bind:open={selectPk}>
-        <summary aria-haspopup="listbox">{selectedPk}</summary>
+        <summary aria-haspopup="listbox">{selectedPk} | {pkInfo(selectedPk)}</summary>
         <ul role="listbox">
-            {#each $cloudPublicKeys as pk}
+            {#each Object.keys($cloudPublicKeys) as pk}
                 <li>
                     <label for="pk">
-                        <a href="#" on:click={() => doSelectPk(pk)} >
+                        <span role="button" tabindex="-1"  on:click={() => doSelectPk(pk)} on:keypress={() => null}>
                             <input type="radio" name="pk" value="{pk}" checked={pk == selectedPk}>
                             { pk }
-                        </a>
+                        </span>
                     </label>
                 </li>
             {/each}
