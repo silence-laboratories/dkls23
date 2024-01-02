@@ -12,5 +12,4 @@ export const coreLoaded = readable(false, (set) => {
     });
 });
 
-
 export {  genInstanceId, dkgSetupMessage, verifyingKey }

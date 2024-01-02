@@ -1,32 +1,34 @@
 <script lang="ts">
  import { default as TimeMetrics }      from '$lib/components/TimeMetrics.svelte';
  import { default as SummaryTimes }     from '$lib/components/SummaryTimes.svelte';
- import { configs, wsUrl }              from '$lib/config';
+ import { clusterConfig, wsUrl }        from '$lib/config';
  import { decodeBase64, encodeBase64 }  from '$lib/base64';
  import { encodeHex }                   from '$lib/hex';
  import { keyshares }                   from '$lib/stores';
 
  import {
      createKeygenSetupOpts,
-     createSignSetup,
+     createSignSetupOpts,
      startDkg,
-     startDsg
+     startDsg,
+     randomSeed,
  } from '$lib/nodes';
 
  import {
      init_dkg,
-     join_dsg,
+     init_dsg,
      genInstanceId,
      verifyingKey,
      msg_relay_connect,
-     createAbortMessage
+     createAbortMessage,
+     type Keyshare
  } from 'dkls-wasm';
 
  let generatingKeys = false;
  let threshold = 2;
  let partiesNumber = 3;
 
- let keygenWebStats = null;
+ let keygenWebStats: any | null = null;
  let keygenWebTimes = {};
 
  let signNum = 1;
@@ -34,47 +36,45 @@
  let signMessage = "Something to sign";
  let generatingSign = false;
 
- let signStats = null;
+ let signStats: any | null = null;
  let signTimes = {};
 
  $: validPartiesNum =
-        +partiesNumber && partiesNumber > 2 && partiesNumber <= 5;
+        +partiesNumber && partiesNumber >= 2 && partiesNumber <= 3;
  $: validThreshold =
-        +threshold && threshold > 1 && threshold < partiesNumber;
+        +threshold && threshold > 1 && threshold <= partiesNumber;
 
  let selectShare = false;
- let selectedShare = $keyshares[0] || null;
+ let selectedShare: Keyshare | null = null;
 
  const handleGenKeysWeb = async () => {
      let startTime = Date.now();
 
      generatingKeys = true;
 
-     let cluster = await configs();
-
-     cluster = cluster[1]; // TODO provide UI to select a cluster
+     let loadedConfig = await clusterConfig();
 
      try {
-         let opts = await createKeygenSetupOpts(cluster, threshold);
+         let opts = await createKeygenSetupOpts(loadedConfig, partiesNumber, threshold);
 
          let setupGen = Date.now();
 
          console.log('DKG setup gen', setupGen - startTime);
 
-         let msgRelayUrl = wsUrl(cluster.setup.relay);
+         let msgRelayUrl = wsUrl(loadedConfig.setup.relay);
 
          let genStart = Date.now();
 
          let web_party = init_dkg(
              opts,
-             encodeHex(cluster.nodes[0].secretKey),
+             encodeHex(loadedConfig.nodes[0].secretKey),
              msgRelayUrl,
              encodeHex(genInstanceId()) // seed
          );
 
          let [share, ...clouds] = await Promise.all([
              web_party,
-             ...cluster.nodes.slice(1).map((n) => startDkg(n.endpoint, opts.instance))
+             ...loadedConfig.nodes.slice(1, partiesNumber).map((n) => startDkg(n.endpoint, opts.instance))
          ]);
 
          let genEnd = Date.now();
@@ -82,6 +82,10 @@
          console.log('pk', share.publicKey(), encodeBase64(share.publicKey()));
 
          keyshares.update((shares) => [...shares, share]);
+
+         if (selectedShare === null) {
+             selectedShare = share;
+         }
 
          keygenWebStats = clouds;
 
@@ -95,7 +99,71 @@
  };
 
  const handleSignGen = async () => {
+     if (selectedShare === null) {
+         return;
+     }
+
+     let startTime = Date.now();
+
+     generatingSign = true;
+
+     let loadedConfig = await clusterConfig();
+
+     let selectedPk = selectedShare.publicKey();
+
+     try {
+         let genStart = Date.now();
+         let opts = await createSignSetupOpts(
+             loadedConfig,
+             selectedPk,
+             new TextEncoder().encode(signMessage),
+             threshold
+         );
+
+         let msgRelayUrl = wsUrl(loadedConfig.setup.relay);
+
+         let setupGen = Date.now();
+
+         let web_party = init_dsg(
+             opts,
+             encodeHex(loadedConfig.nodes[0].secretKey),
+             msgRelayUrl,
+             encodeHex(randomSeed()),
+             selectedShare
+         );
+
+         let resp = await Promise.all(
+             loadedConfig
+                 .nodes
+                 .slice(1, threshold).map((n) => startDsg(n.endpoint, opts.instance))
+         );
+
+         signStats = resp;
+
+         let genEnd = Date.now();
+
+         signTimes = {
+             totalTime: genEnd - startTime,
+             setupGenTime: setupGen - startTime,
+         };
+
+     } finally {
+         generatingSign = false;
+     };
  };
+
+ const doSelectShare = (share: Keyshare) => {
+     selectShare = false;
+     selectedShare = share;
+     console.log('current share', share);
+ };
+
+ const isSelectedShare = (share: Keyshare) => {
+     return share === selectedShare;
+ }
+
+ const sharePk = (share: Keyshare | null) => share ? encodeHex(share.publicKey()) : "";
+
 
 </script>
 
@@ -152,15 +220,15 @@
     </p>
 
     <details role="list" bind:open={selectShare}>
-        <summary aria-haspopup="listbox">{selectedShare.publicKey()}</summary>
+        <summary aria-haspopup="listbox">{sharePk(selectedShare)}</summary>
         <ul role="listbox">
             {#each $keyshares as share}
                 <li>
                     <label for="pk">
-                        <a href="#" on:click={() => doSelectShare(share)} >
-                            <input type="radio" name="pk" value="{pk}" checked={pk == selectedPk}>
-                            { pk }
-                        </a>
+                        <span role="button" tabindex="-1" on:click={() => doSelectShare(share)} on:keypress={() => null}>
+                            <input type="radio" name="pk" value="{sharePk(share)}" checked={isSelectedShare(share)}>
+                            { sharePk(share) }
+                        </span>
                     </label>
                 </li>
             {/each}
