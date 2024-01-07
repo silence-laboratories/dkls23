@@ -10,8 +10,8 @@ use crate::BadPartyIndex;
 #[derive(Debug, Error)]
 /// Distributed key generation errors
 pub enum KeygenError {
-    /// error while serializing or deserializing
-    #[error("Error while deserializing message")]
+    /// error while serializing or deserializing or invalid message data length
+    #[error("Error while deserializing message or invalid message data length")]
     InvalidMessage,
 
     /// Invalid commitment hash

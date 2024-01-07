@@ -41,6 +41,7 @@ use sl_mpc_mate::{
     message::*,
     HashBytes, SessionId,
 };
+use sl_oblivious::endemic_ot::EndemicOTMsg1;
 
 use crate::{
     keygen::{check_secret_recovery, constants::*, messages::*, KeygenError},
@@ -484,6 +485,14 @@ where
         let sid = &sid_i_list[party_id];
         let commitment = &commitment_list[party_id];
         let big_f_i_vector = &big_f_i_vecs[party_id];
+        let dlog_proofs_i = &dlog_proofs_i_list[party_id];
+
+        if big_f_i_vector.coeffs.len() != T {
+            return Err(KeygenError::InvalidMessage);
+        }
+        if dlog_proofs_i.len() != T {
+            return Err(KeygenError::InvalidMessage);
+        }
 
         let commit_hash = hash_commitment(
             sid,
@@ -514,7 +523,7 @@ where
         verify_dlog_proofs(
             &final_session_id,
             party_id,
-            &dlog_proofs_i_list[party_id],
+            dlog_proofs_i,
             big_f_i_vector.points(),
         )?;
     }
@@ -546,15 +555,14 @@ where
         &abort_tags,
         relay,
         DKG_MSG_R2,
-        |base_ot_msg1, party_id| {
+        |base_ot_msg1: EndemicOTMsg1, party_id| {
             let rank = setup.party_rank(party_id).unwrap();
             let sender = base_ot_senders.pop_pair(party_id);
 
             if base_ot_msg1.r_list.len() != BATCH_SIZE {
                 return Err(KeygenError::InvalidMessage);
             }
-            let (sender_output, base_ot_msg2) =
-                block_in_place(|| sender.process(base_ot_msg1));
+            let (sender_output, base_ot_msg2) = block_in_place(|| sender.process(base_ot_msg1));
 
             let all_but_one_session_id = get_all_but_one_session_id(
                 setup.party_id() as usize,
@@ -617,6 +625,20 @@ where
         relay,
         DKG_MSG_R3,
         |msg3: KeygenMsg3, party_id| {
+            if msg3.base_ot_msg2.m_b_list.len() != BATCH_SIZE {
+                return Err(KeygenError::InvalidMessage);
+            }
+            if msg3.pprf_output.len() != (BATCH_SIZE / SOFT_SPOKEN_K) {
+                return Err(KeygenError::InvalidMessage);
+            }
+            for i in 0..(BATCH_SIZE / SOFT_SPOKEN_K) {
+                if msg3.pprf_output[i].t.len() != (SOFT_SPOKEN_K - 1) {
+                    return Err(KeygenError::InvalidMessage);
+                }
+            }
+            if msg3.big_f_vec.coeffs.len() != T {
+                return Err(KeygenError::InvalidMessage);
+            }
             if msg3.big_f_vec != big_f_vec {
                 return Err(KeygenError::BigFVecMismatch);
             }
@@ -634,7 +656,7 @@ where
             let all_but_one_receiver_seed = eval_pprf(
                 &all_but_one_session_id,
                 &receiver_output,
-                256,
+                BATCH_SIZE,
                 SOFT_SPOKEN_K,
                 &msg3.pprf_output,
             )
@@ -673,12 +695,8 @@ where
     if big_f_i_vecs.len() != d_i_list.len() {
         return Err(KeygenError::FailedFelmanVerify);
     }
-    for (big_f_i_vec, f_i_val) in
-        big_f_i_vecs.into_iter().zip(d_i_list.iter())
-    {
-        let coeffs = block_in_place(|| {
-            big_f_i_vec.derivative_coeffs(setup.rank() as usize)
-        });
+    for (big_f_i_vec, f_i_val) in big_f_i_vecs.into_iter().zip(d_i_list.iter()) {
+        let coeffs = block_in_place(|| big_f_i_vec.derivative_coeffs(setup.rank() as usize));
         let valid = feldman_verify(
             coeffs,
             &x_i_list[my_party_id as usize],
@@ -736,6 +754,9 @@ where
         return Err(KeygenError::PublicKeyMismatch);
     }
 
+    if big_s_list.len() != proof_list.len() {
+        return Err(KeygenError::InvalidDLogProof);
+    }
     for (party_id, (big_s_i, dlog_proof)) in
         big_s_list.iter().zip(proof_list.into_iter()).enumerate()
     {
