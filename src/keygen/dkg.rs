@@ -816,6 +816,7 @@ where
         seed_ot_receivers: seed_ot_receivers.remove_ids(),
         seed_ot_senders: seed_ot_senders.remove_ids(),
         rec_seed_list: rec_seed_list.remove_ids(),
+        final_session_id: Opaque::from(final_session_id)
     };
 
     Ok(share)

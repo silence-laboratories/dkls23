@@ -77,6 +77,9 @@ pub struct Keyshare {
     /// Seed values received from the other parties
     pub rec_seed_list: Vec<[u8; 32]>, // [0..N-1]
 
+    /// Final session ID
+    pub final_session_id: Opaque<SessionId>,
+
     pub(crate) s_i: Opaque<Scalar, PF>,
     pub(crate) big_s_list: Vec<Opaque<ProjectivePoint, GR>>, // N
     pub(crate) x_i_list: Vec<Opaque<NonZeroScalar, NZ>>,     // N

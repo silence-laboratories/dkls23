@@ -239,6 +239,7 @@ async fn pre_signature_inner<R: Relay>(
         commitments
             .iter()
             .fold(Sha256::new(), |hash, (_, (sid, _))| hash.chain_update(sid))
+            .chain_update(setup.keyshare().final_session_id.0)
             .finalize()
             .into(),
     );
