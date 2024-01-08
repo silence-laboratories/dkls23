@@ -422,8 +422,8 @@ where
         let mut dlog_transcript = Transcript::new_dlog_proof(
             &final_session_id,
             setup.party_id() as usize,
-            DLOG_PROOF1_LABEL,
-            DKG_LABEL,
+            &DLOG_PROOF1_LABEL,
+            &DKG_LABEL,
         );
 
         polynomial
@@ -715,20 +715,20 @@ where
     // so that all parties are sure they generated the same root_chain_code
     let final_session_id_with_root_chain_code = {
         let mut buf = [0u8; 32];
-        let mut transcript = Transcript::new(DKG_LABEL);
+        let mut transcript = Transcript::new(&DKG_LABEL);
         transcript
             .append_message(b"final_session_id", final_session_id.as_ref());
         transcript
             .append_message(b"root_chain_code", root_chain_code.as_ref());
-        transcript.challenge_bytes(DLOG_SESSION_ID_WITH_CHAIN_CODE, &mut buf);
+        transcript.challenge_bytes(&DLOG_SESSION_ID_WITH_CHAIN_CODE, &mut buf);
         SessionId::new(buf)
     };
     let proof = {
         let mut transcript = Transcript::new_dlog_proof(
             &final_session_id_with_root_chain_code,
             setup.party_id() as usize,
-            DLOG_PROOF2_LABEL,
-            DKG_LABEL,
+            &DLOG_PROOF2_LABEL,
+            &DKG_LABEL,
         );
 
         DLogProof::prove(
@@ -765,8 +765,8 @@ where
         let mut transcript = Transcript::new_dlog_proof(
             &final_session_id_with_root_chain_code,
             party_id,
-            DLOG_PROOF2_LABEL,
-            DKG_LABEL,
+            &DLOG_PROOF2_LABEL,
+            &DKG_LABEL,
         );
         if !dlog_proof.verify(
             big_s_i,
@@ -1014,8 +1014,8 @@ fn verify_dlog_proofs<'a>(
     let mut dlog_transcript = Transcript::new_dlog_proof(
         final_session_id,
         party_id,
-        DLOG_PROOF1_LABEL,
-        DKG_LABEL,
+        &DLOG_PROOF1_LABEL,
+        &DKG_LABEL,
     );
 
     for (proof, point) in proofs.iter().zip(points) {
