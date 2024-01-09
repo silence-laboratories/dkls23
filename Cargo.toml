@@ -58,8 +58,8 @@ futures-util = "0.3.29"
 anyhow = "1"
 derivation-path = "0.2.0"
 zeroize = "1.6.1"
-sl-mpc-mate  = { git = "https://gitlab.com/com.silencelaboratories/sl-crypto.git", branch = "audit-fixes" }
-sl-oblivious = { git = "https://gitlab.com/com.silencelaboratories/sl-crypto.git", branch = "audit-fixes" }
+sl-mpc-mate  = { git = "https://gitlab.com/com.silencelaboratories/sl-crypto.git", rev = "3d3d28ab18a892100bd2d04eac1dcb05b71f73ae" }
+sl-oblivious = { git = "https://gitlab.com/com.silencelaboratories/sl-crypto.git", rev = "3d3d28ab18a892100bd2d04eac1dcb05b71f73ae" }
 
 [profile.release]
 # lto = true
