@@ -26,7 +26,7 @@ where
 }
 
 use sl_oblivious::{
-    endemic_ot::{EndemicOTReceiver, EndemicOTSender, RecR1, BATCH_SIZE},
+    endemic_ot::{EndemicOTReceiver, EndemicOTSender, BATCH_SIZE},
     soft_spoken::{build_pprf, eval_pprf, SOFT_SPOKEN_K},
     utils::TranscriptProtocol,
     zkproofs::DLogProof,
@@ -562,7 +562,8 @@ where
             if base_ot_msg1.r_list.len() != BATCH_SIZE {
                 return Err(KeygenError::InvalidMessage);
             }
-            let (sender_output, base_ot_msg2) = block_in_place(|| sender.process(base_ot_msg1));
+            let (sender_output, base_ot_msg2) =
+                block_in_place(|| sender.process(base_ot_msg1));
 
             let all_but_one_session_id = get_all_but_one_session_id(
                 setup.party_id() as usize,
@@ -653,13 +654,15 @@ where
                 setup.party_id() as usize,
                 &final_session_id,
             );
-            let all_but_one_receiver_seed = eval_pprf(
-                &all_but_one_session_id,
-                &receiver_output,
-                BATCH_SIZE,
-                SOFT_SPOKEN_K,
-                &msg3.pprf_output,
-            )
+            let all_but_one_receiver_seed = block_in_place(|| {
+                eval_pprf(
+                    &all_but_one_session_id,
+                    &receiver_output,
+                    BATCH_SIZE,
+                    SOFT_SPOKEN_K,
+                    &msg3.pprf_output,
+                )
+            })
             .map_err(KeygenError::PPRFError)?;
 
             seed_ot_receivers.push(party_id, all_but_one_receiver_seed);
@@ -695,8 +698,10 @@ where
     if big_f_i_vecs.len() != d_i_list.len() {
         return Err(KeygenError::FailedFelmanVerify);
     }
-    for (big_f_i_vec, f_i_val) in big_f_i_vecs.into_iter().zip(d_i_list.iter()) {
-        let coeffs = block_in_place(|| big_f_i_vec.derivative_coeffs(setup.rank() as usize));
+    for (big_f_i_vec, f_i_val) in big_f_i_vecs.into_iter().zip(&d_i_list) {
+        let coeffs = block_in_place(|| {
+            big_f_i_vec.derivative_coeffs(setup.rank() as usize)
+        });
         let valid = feldman_verify(
             coeffs,
             &x_i_list[my_party_id as usize],
@@ -720,7 +725,8 @@ where
             .append_message(b"final_session_id", final_session_id.as_ref());
         transcript
             .append_message(b"root_chain_code", root_chain_code.as_ref());
-        transcript.challenge_bytes(&DLOG_SESSION_ID_WITH_CHAIN_CODE, &mut buf);
+        transcript
+            .challenge_bytes(&DLOG_SESSION_ID_WITH_CHAIN_CODE, &mut buf);
         SessionId::new(buf)
     };
     let proof = {
@@ -816,7 +822,7 @@ where
         seed_ot_receivers: seed_ot_receivers.remove_ids(),
         seed_ot_senders: seed_ot_senders.remove_ids(),
         rec_seed_list: rec_seed_list.remove_ids(),
-        final_session_id: Opaque::from(final_session_id)
+        final_session_id: Opaque::from(final_session_id),
     };
 
     Ok(share)
@@ -921,9 +927,9 @@ fn make_base_ot_receivers<R: RngCore + CryptoRng>(
     enc_key: &ReusableSecret,
     nonce_counter: &mut NonceCounter,
     rng: &mut R,
-) -> Result<(Pairs<EndemicOTReceiver<RecR1>>, Vec<Vec<u8>>), KeygenError> {
+) -> Result<(Pairs<EndemicOTReceiver>, Vec<Vec<u8>>), KeygenError> {
     let mut to_send = vec![];
-    let base_ot_receivers: Pairs<EndemicOTReceiver<RecR1>> = setup
+    let base_ot_receivers: Pairs<EndemicOTReceiver> = setup
         .other_parties_iter()
         .map(|(p, _vk)| {
             (
