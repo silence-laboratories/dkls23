@@ -55,3 +55,6 @@ pub type Seed = <ChaCha20Rng as SeedableRng>::Seed;
 pub struct BadPartyIndex;
 
 pub(crate) mod pairs;
+
+/// Version of domain labels
+pub const VERSION: u16 = 1;

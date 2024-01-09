@@ -2,6 +2,7 @@
 name = "dkls23"
 version = "0.1.0"
 edition = "2021"
+publish = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [features]
@@ -28,7 +29,7 @@ zeroize.workspace = true
 [dev-dependencies]
 hex ="0.4.3"
 tokio = { workspace = true, features = ["rt", "sync", "macros", "rt-multi-thread" ] }
-tracing-subscriber = { workspace = true, features = ["env-filter"] }
+tracing-subscriber = { workspace = true }
 
 [workspace]
 members = [
@@ -57,8 +58,8 @@ futures-util = "0.3.29"
 anyhow = "1"
 derivation-path = "0.2.0"
 zeroize = "1.6.1"
-sl-mpc-mate  = { git = "https://gitlab.com/com.silencelaboratories/sl-crypto.git", rev = "a6b014722a29027d813bcb58720412da68f63d07" }
-sl-oblivious = { git = "https://gitlab.com/com.silencelaboratories/sl-crypto.git", rev = "a6b014722a29027d813bcb58720412da68f63d07" }
+sl-mpc-mate  = { git = "https://gitlab.com/com.silencelaboratories/sl-crypto.git", rev = "3d3d28ab18a892100bd2d04eac1dcb05b71f73ae" }
+sl-oblivious = { git = "https://gitlab.com/com.silencelaboratories/sl-crypto.git", rev = "3d3d28ab18a892100bd2d04eac1dcb05b71f73ae" }
 
 [profile.release]
 # lto = true

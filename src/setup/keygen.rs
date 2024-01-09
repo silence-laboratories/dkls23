@@ -237,10 +237,7 @@ impl ValidatedSetup {
 
     ///
     pub fn all_party_ranks(&self) -> Vec<u8> {
-        self.parties
-            .iter()
-            .map(|(rank, _)| *rank)
-            .collect()
+        self.parties.iter().map(|(rank, _)| *rank).collect()
     }
 
     ///

@@ -22,6 +22,10 @@ pub enum SignError {
     #[error("Invalid digest")]
     InvalidDigest,
 
+    /// Invalid final_session_id
+    #[error("Invalid final_session_id")]
+    InvalidFinalSessionID,
+
     #[error("Failed check: {0}")]
     /// Failed check
     FailedCheck(&'static str),
@@ -49,6 +53,10 @@ pub enum SignError {
     /// Some party decided to not participate in the protocol.
     #[error("Abort protocol by party {0}")]
     AbortProtocol(u8),
+
+    /// Abort the protocol and ban the party
+    #[error("Abort the protocol and ban the party {0}")]
+    AbortProtocolAndBanParty(u8),
 }
 
 impl From<InvalidMessage> for SignError {

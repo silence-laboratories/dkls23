@@ -73,6 +73,8 @@ impl Decode for Setup {
 
         let t = u8::decode(decoder)?;
 
+        // A preliminary test. Final one would in validate_decoded_setup,
+        // when we will have a corresponding keyshare and will know T and N.
         if t < 2 {
             return Err(DecodeError::Other("bad T"));
         }
@@ -310,6 +312,11 @@ impl ValidatedSetup {
             hdr,
             instance,
         } = setup;
+
+        let threshold = setup.parties.len() as u8;
+        if threshold < keyshare.threshold || threshold > keyshare.total_parties  {
+            return None;
+        }
 
         let party_idx = setup.find_party_idx(&signing_key.verifying_key())?;
 

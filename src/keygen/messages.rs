@@ -16,8 +16,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 use derivation_path::DerivationPath;
 
 /// Type for the key generation protocol's message 3. P2P
-#[derive(Debug, bincode::Encode, bincode::Decode)]
-#[derive(Zeroize, ZeroizeOnDrop)]
+#[derive(Debug, bincode::Encode, bincode::Decode, Zeroize, ZeroizeOnDrop)]
 pub struct KeygenMsg3 {
     /// Participants Fi values
     #[zeroize(skip)]
@@ -43,8 +42,7 @@ pub struct KeygenMsg3 {
 }
 
 /// Keyshare of a party.
-#[derive(Clone, bincode::Encode, bincode::Decode)]
-#[derive(Zeroize, ZeroizeOnDrop)]
+#[derive(Clone, bincode::Encode, bincode::Decode, Zeroize, ZeroizeOnDrop)]
 pub struct Keyshare {
     /// A marker
     pub magic: u32,
@@ -78,6 +76,9 @@ pub struct Keyshare {
 
     /// Seed values received from the other parties
     pub rec_seed_list: Vec<[u8; 32]>, // [0..N-1]
+
+    /// Final session ID
+    pub final_session_id: Opaque<SessionId>,
 
     pub(crate) s_i: Opaque<Scalar, PF>,
     pub(crate) big_s_list: Vec<Opaque<ProjectivePoint, GR>>, // N

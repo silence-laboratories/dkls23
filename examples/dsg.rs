@@ -2,12 +2,12 @@
 use std::time::Duration;
 use tokio::task::JoinSet;
 
+use derivation_path::DerivationPath;
 use dkls23::{
     keygen::{gen_keyshares, messages::Keyshare},
     sign,
 };
 use sl_mpc_mate::coord::SimpleMessageRelay;
-use derivation_path::DerivationPath;
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {

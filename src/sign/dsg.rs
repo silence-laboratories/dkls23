@@ -16,27 +16,25 @@ use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 
 use sl_mpc_mate::{coord::*, math::birkhoff_coeffs, message::*, HashBytes, SessionId};
+use sl_oblivious::soft_spoken::SoftSpokenOTError;
 
-use sl_oblivious::soft_spoken::Round1Output;
-
+use crate::sign::constants::{
+    COMMITMENT_LABEL, DIGEST_I_LABEL, DSG_LABEL, DSG_MSG_R1, DSG_MSG_R2, DSG_MSG_R3, DSG_MSG_R4,
+    PAIRWISE_MTA_LABEL, PAIRWISE_RANDOMIZATION_LABEL,
+};
 use crate::{
     keygen::{get_idx_from_id, messages::Keyshare},
+    proto::create_abort_message,
     setup::{sign::ValidatedSetup, ABORT_MESSAGE_TAG},
     sign::{
-        messages::{PartialSignature, PreSignResult, SignMsg1, SignMsg3, SignMsg4},
+        messages::{PartialSignature, PreSignResult, SignMsg1, SignMsg2, SignMsg3, SignMsg4},
         pairwise_mta::{PairwiseMtaRec, PairwiseMtaSender},
     },
     utils::{parse_raw_sign, verify_final_signature},
-    proto::create_abort_message,
     BadPartyIndex, Seed,
 };
 
 use super::SignError;
-
-const DSG_MSG_R1: MessageTag = MessageTag::tag(1);
-const DSG_MSG_R2: MessageTag = MessageTag::tag(2);
-const DSG_MSG_R3: MessageTag = MessageTag::tag(3);
-const DSG_MSG_R4: MessageTag = MessageTag::tag(4);
 
 type Pairs<T> = crate::pairs::Pairs<T, usize>;
 
@@ -93,26 +91,33 @@ async fn request_messages<R: Relay>(
 
 fn decode_signed_message<T: bincode::Decode>(
     tags: &mut Vec<(MsgId, usize)>,
-    mut msg: Vec<u8>,
+    msg: Message,
     setup: &ValidatedSetup,
 ) -> Result<(T, usize), InvalidMessage> {
-    let msg = Message::from_buffer(&mut msg)?;
     let mid = msg.id();
 
     let party_id = pop_tag(tags, &mid).ok_or(InvalidMessage::RecvError)? as _;
 
-    let msg = msg.verify_and_decode(setup.party_verifying_key(party_id).unwrap())?;
+    match msg.verify_and_decode(setup.party_verifying_key(party_id).unwrap()) {
+        Ok(msg) => Ok((msg, party_id)),
 
-    Ok((msg, party_id))
+        Err(err) => {
+            // Someone tries to send us an invalid message
+            if matches!(err, InvalidMessage::InvalidSignature) {
+                tags.push((mid, party_id));
+            }
+
+            Err(err)
+        },
+    }
 }
 
 fn decode_encrypted_message<T: bincode::Decode>(
     tags: &mut Vec<(MsgId, usize)>,
-    mut msg: Vec<u8>,
+    mut msg: Message,
     secret: &ReusableSecret,
     enc_pub_keys: &[(usize, PublicKey)],
 ) -> Result<(T, usize), InvalidMessage> {
-    let mut msg = Message::from_buffer(&mut msg)?;
     let mid = msg.id();
 
     let party_id = pop_tag(tags, &mid).ok_or(InvalidMessage::RecvError)? as _;
@@ -126,12 +131,18 @@ fn decode_encrypted_message<T: bincode::Decode>(
     Ok((msg, party_id))
 }
 
-fn check_abort_message(tags: &[(MsgId, usize)], msg: &[u8]) -> Result<(), SignError> {
-    let hdr = MsgHdr::from(msg).ok_or_else(|| SignError::InvalidMessage)?;
+fn check_abort_message(setup: &ValidatedSetup, tags: &[(MsgId, usize)], msg: &Message) -> Result<(), SignError> {
+    let id = msg.id();
 
-    match tags.iter().find(|(id, _)| *id == hdr.id).map(|(_, v)| v) {
+    match tags.iter().find(|(m, _)| m == &id).map(|(_, p)| *p) {
         None => Ok(()),
-        Some(p) => Err(SignError::AbortProtocol(*p as u8)),
+        Some(p) => {
+            if msg.verify(setup.party_verifying_key(p).unwrap()).is_ok() {
+                Err(SignError::AbortProtocol(p as _))
+            } else {
+                Ok(())
+            }
+        },
     }
 }
 
@@ -228,6 +239,7 @@ async fn pre_signature_inner<R: Relay>(
         commitments
             .iter()
             .fold(Sha256::new(), |hash, (_, (sid, _))| hash.chain_update(sid))
+            .chain_update(setup.keyshare().final_session_id.0)
             .finalize()
             .into(),
     );
@@ -249,12 +261,17 @@ async fn pre_signature_inner<R: Relay>(
             let xi_i_j = Scalar::generate_biased(&mut rng);
             let (mta_receiver, mta_msg_1) = mta_receiver.process(&xi_i_j);
 
+            let msg2 = SignMsg2 {
+                final_session_id: Opaque::from(final_session_id),
+                mta_msg1: mta_msg_1,
+            };
+
             to_send.push(Builder::<Encrypted>::encode(
                 &setup.msg_id(Some(party_idx), DSG_MSG_R2),
                 setup.ttl(),
                 &enc_key,
                 find_pair(&enc_pub_key, party_idx)?,
-                &mta_msg_1,
+                &msg2,
                 nonce_counter.next_nonce(),
             )?);
 
@@ -284,12 +301,13 @@ async fn pre_signature_inner<R: Relay>(
 
     let digest_i = {
         let mut h = Sha256::new();
+        h.update(DSG_LABEL);
         for (key, (sid_i, commitment_i)) in commitments.iter() {
             h.update((*key as u32).to_be_bytes());
             h.update(sid_i);
             h.update(commitment_i);
         }
-
+        h.update(DIGEST_I_LABEL);
         HashBytes::new(h.finalize().into())
     };
 
@@ -321,16 +339,30 @@ async fn pre_signature_inner<R: Relay>(
 
     let mut tags = request_messages(setup, DSG_MSG_R2, relay, true).await?;
     while !tags.is_empty() {
-        let msg = relay.next().await.ok_or(SignError::MissingMessage)?;
+        let mut msg = relay.next().await.ok_or(SignError::MissingMessage)?;
+        let msg = match Message::from_buffer(&mut msg) {
+            Ok(msg) => msg,
+            Err(_) => continue,
+        };
 
-        check_abort_message(&abort_tags, &msg)?;
+        check_abort_message(setup, &abort_tags, &msg)?;
 
-        let (msg1, party_idx) =
-            decode_encrypted_message::<Round1Output>(&mut tags, msg, &enc_key, &enc_pub_key)?;
+        let (msg2, party_idx) =
+            decode_encrypted_message::<SignMsg2>(&mut tags, msg, &enc_key, &enc_pub_key)?;
+
+        // Check final_session_id
+        if *msg2.final_session_id != final_session_id {
+            return Err(SignError::InvalidFinalSessionID);
+        }
 
         let mta_sender = pop_pair(&mut mta_senders, party_idx as u8)?;
 
-        let (additive_shares, mta_msg2) = mta_sender.process(x_i, k_i, &msg1);
+        let (additive_shares, mta_msg2) = match mta_sender.process(x_i, k_i, &msg2.mta_msg1) {
+            Ok(v) => v,
+            Err(SoftSpokenOTError::AbortProtocolAndBanReceiver) => {
+                return Err(SignError::AbortProtocolAndBanParty(party_idx as u8));
+            }
+        };
 
         let gamma0 = ProjectivePoint::GENERATOR * additive_shares[0];
         let gamma1 = ProjectivePoint::GENERATOR * additive_shares[1];
@@ -338,6 +370,7 @@ async fn pre_signature_inner<R: Relay>(
         let psi = phi_i - xi_i_j;
 
         let msg3 = SignMsg3 {
+            final_session_id: Opaque::from(final_session_id),
             mta_msg2,
             digest_i: Opaque::from(digest_i),
             big_x_i: Opaque::from(big_x_i),
@@ -371,18 +404,30 @@ async fn pre_signature_inner<R: Relay>(
 
     let mut tags = request_messages(setup, DSG_MSG_R3, relay, true).await?;
     while !tags.is_empty() {
-        let msg = relay.next().await.ok_or(SignError::MissingMessage)?;
+        let mut msg = relay.next().await.ok_or(SignError::MissingMessage)?;
+        let msg = match Message::from_buffer(&mut msg) {
+            Ok(msg) => msg,
+            _ => continue,
+        };
 
-        check_abort_message(&abort_tags, &msg)?;
+        check_abort_message(setup, &abort_tags, &msg)?;
 
         let (msg3, party_idx) =
             decode_encrypted_message::<SignMsg3>(&mut tags, msg, &enc_key, &enc_pub_key)?;
 
+        // Check final_session_id
+        if *msg3.final_session_id != final_session_id {
+            return Err(SignError::InvalidFinalSessionID);
+        }
+
         let (mta_receiver, xi_i_j) = pop_pair(&mut mta_receivers, party_idx as u8)?;
 
-        let receiver_additive_shares_i = mta_receiver
-            .process(&msg3.mta_msg2)
-            .map_err(SignError::MtaError)?;
+        let receiver_additive_shares_i = match mta_receiver.process(&msg3.mta_msg2) {
+            Ok(v) => v,
+            Err(_) => {
+                return Err(SignError::AbortProtocolAndBanParty(party_idx as u8));
+            }
+        };
 
         receiver_additive_shares.push(receiver_additive_shares_i);
 
@@ -406,13 +451,13 @@ async fn pre_signature_inner<R: Relay>(
         let cond1 = (big_r_j * &xi_i_j)
             == (ProjectivePoint::GENERATOR * receiver_additive_shares_i[1] + *msg3.gamma1);
         if !cond1 {
-            return Err(SignError::FailedCheck("Consistency check 1 failed"));
+            return Err(SignError::AbortProtocolAndBanParty(party_idx as u8));
         }
 
         let cond2 = (big_x_j * &xi_i_j)
             == (ProjectivePoint::GENERATOR * receiver_additive_shares_i[0] + *msg3.gamma0);
         if !cond2 {
-            return Err(SignError::FailedCheck("Consistency check 2 failed"));
+            return Err(SignError::AbortProtocolAndBanParty(party_idx as u8));
         }
     }
 
@@ -567,9 +612,13 @@ async fn run_inner<R: Relay>(
 
     let mut tags = request_messages(&setup, DSG_MSG_R4, relay, false).await?;
     while !tags.is_empty() {
-        let msg = relay.next().await.ok_or(SignError::MissingMessage)?;
+        let mut msg = relay.next().await.ok_or(SignError::MissingMessage)?;
+        let msg = match Message::from_buffer(&mut msg) {
+            Ok(msg) => msg,
+            _ => continue,
+        };
 
-        check_abort_message(&abort_tags, &msg)?;
+        check_abort_message(&setup, &abort_tags, &msg)?;
 
         let (msg, _party_idx) = decode_signed_message::<SignMsg4>(&mut tags, msg, &setup)?;
 
@@ -592,9 +641,11 @@ fn hash_commitment_r_i(
     blind_factor: &[u8; 32],
 ) -> HashBytes {
     let mut hasher = Sha256::new();
+    hasher.update(DSG_LABEL);
     hasher.update(session_id.as_ref());
     hasher.update(big_r_i.to_bytes());
     hasher.update(blind_factor);
+    hasher.update(COMMITMENT_LABEL);
     HashBytes::new(hasher.finalize().into())
 }
 
@@ -615,8 +666,10 @@ fn get_mu_i(keyshare: &Keyshare, party_id_list: &[(usize, u8)], sig_id: &HashByt
     for p_0_party in &p_0_list {
         let seed_j_i = keyshare.rec_seed_list[*p_0_party as usize];
         let mut hasher = Sha256::new();
+        hasher.update(DSG_LABEL);
         hasher.update(seed_j_i);
         hasher.update(sig_id);
+        hasher.update(PAIRWISE_RANDOMIZATION_LABEL);
         let value = Scalar::reduce(U256::from_be_slice(&hasher.finalize()));
         sum_p_0 += value;
     }
@@ -626,8 +679,10 @@ fn get_mu_i(keyshare: &Keyshare, party_id_list: &[(usize, u8)], sig_id: &HashByt
         let seed_i_j =
             keyshare.sent_seed_list[*p_1_party as usize - keyshare.party_id as usize - 1];
         let mut hasher = Sha256::new();
+        hasher.update(DSG_LABEL);
         hasher.update(seed_i_j);
         hasher.update(sig_id);
+        hasher.update(PAIRWISE_RANDOMIZATION_LABEL);
         let value = Scalar::reduce(U256::from_be_slice(&hasher.finalize()));
         sum_p_1 += value;
     }
@@ -685,13 +740,13 @@ fn verify_commitment_r_i(
 
 fn mta_session_id(final_session_id: &SessionId, sender_id: u8, receiver_id: u8) -> SessionId {
     let mut h = Sha256::new();
-    h.update(b"SL-DKLS-PAIRWISE-MTA");
+    h.update(DSG_LABEL);
     h.update(final_session_id);
     h.update(b"sender");
     h.update([sender_id]);
     h.update(b"receiver");
     h.update([receiver_id]);
-
+    h.update(PAIRWISE_MTA_LABEL);
     SessionId::new(h.finalize().into())
 }
 
@@ -732,11 +787,20 @@ where
 {
     let mut tags = request_messages(setup, tag, relay, false).await?;
     while !tags.is_empty() {
-        let msg = relay.next().await.ok_or(SignError::MissingMessage)?;
+        let mut msg = relay.next().await.ok_or(SignError::MissingMessage)?;
+        let msg = match Message::from_buffer(&mut msg) {
+            Ok(msg) => msg,
+            _ => continue,
+        };
 
-        check_abort_message(abort_tags, &msg)?;
+        check_abort_message(setup, abort_tags, &msg)?;
 
-        let (msg, party_id) = decode_signed_message::<T>(&mut tags, msg, setup)?;
+        let (msg, party_id) = match decode_signed_message::<T>(&mut tags, msg, setup) {
+            Ok((msg, party_id)) => (msg, party_id),
+            Err(InvalidMessage::RecvError) => continue,
+            Err(InvalidMessage::InvalidSignature) => continue,
+            _ => todo!(),
+        };
 
         handler(msg, party_id)?;
     }

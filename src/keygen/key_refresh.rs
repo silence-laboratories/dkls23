@@ -56,13 +56,14 @@ impl KeyshareForRefresh {
 pub async fn run<R>(
     setup: ValidatedSetup,
     seed: Seed,
-    mut relay: R,
+    relay: R,
     old_keyshare: KeyshareForRefresh,
 ) -> Result<Keyshare, KeygenError>
 where
     R: Relay,
 {
     let abort_msg = create_abort_message(setup.instance(), setup.ttl(), setup.signing_key());
+    let mut relay = BufferedMsgRelay::new(relay);
 
     let x_i = &old_keyshare.x_i_list[setup.party_id() as usize] as &NonZeroScalar;
     let result: Result<Keyshare, KeygenError> =

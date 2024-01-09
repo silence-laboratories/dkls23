@@ -15,6 +15,7 @@ pub use crate::setup::sign::ValidatedSetup;
 /// Pairwise MTA
 pub mod pairwise_mta;
 
+mod constants;
 mod dsg;
 mod messages;
 mod types;
