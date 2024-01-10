@@ -1,11 +1,11 @@
 use k256::{ProjectivePoint, Scalar};
 
 use sl_mpc_mate::{message::*, HashBytes, SessionId};
+use sl_oblivious::rvole::RVOLEOutput;
 use sl_oblivious::soft_spoken::Round1Output;
 
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-use super::pairwise_mta::MtaRound2Output;
 
 /// Type for the sign gen message 1.
 #[derive(bincode::Encode, bincode::Decode)]
@@ -40,13 +40,13 @@ pub struct SignMsg3 {
     pub final_session_id: Opaque<SessionId>,
 
     /// encrypted data
-    pub mta_msg2: MtaRound2Output,
+    pub mta_msg2: Box<RVOLEOutput>,
 
     /// Encrypted data
     pub digest_i: Opaque<HashBytes>,
 
     /// Encrypted data
-    pub big_x_i: Opaque<ProjectivePoint, GR>,
+    pub pk_i: Opaque<ProjectivePoint, GR>,
 
     /// Encrypted data
     pub big_r_i: Opaque<ProjectivePoint, GR>,
@@ -55,10 +55,10 @@ pub struct SignMsg3 {
     pub blind_factor: Opaque<[u8; 32]>,
 
     /// Encrypted data
-    pub gamma0: Opaque<ProjectivePoint, GR>,
+    pub gamma_v: Opaque<ProjectivePoint, GR>,
 
     /// Encrypted data
-    pub gamma1: Opaque<ProjectivePoint, GR>,
+    pub gamma_u: Opaque<ProjectivePoint, GR>,
 
     /// Encrypted psi scalar
     pub psi: Opaque<Scalar, PF>,

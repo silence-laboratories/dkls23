@@ -21,7 +21,7 @@ These functions involve cryptographic computing at the participating nodes of th
  - Generation of *sent_seed_list* and *rec_seed_list* values ​​based on Protocol 2.2 Pairwise Randomization [dkls23_preprint.pdf](docs/dkls23_preprint.pdf)
  - SoftSpokenOT protocol https://eprint.iacr.org/2022/192.pdf
  - Instantiation of SoftSpokenOT based on Fig.10 https://eprint.iacr.org/2015/546.pdf
- - Pairwise Multiplication based on Protocol 2.5 [dkls23_preprint.pdf](docs/dkls23_preprint.pdf)
+ - Proactive security definition, Section 2 https://www.iacr.org/archive/eurocrypt2006/40040601/40040601.pdf
 
 
 # Protocol

@@ -18,6 +18,12 @@ use rand_chacha::ChaCha20Rng;
 use sl_mpc_mate::{coord::*, math::birkhoff_coeffs, message::*, HashBytes, SessionId};
 use sl_oblivious::soft_spoken::SoftSpokenOTError;
 
+use sl_oblivious::{
+    rvole::{
+        RVOLESender, RVOLEReceiver
+    }
+};
+
 use crate::sign::constants::{
     COMMITMENT_LABEL, DIGEST_I_LABEL, DSG_LABEL, DSG_MSG_R1, DSG_MSG_R2, DSG_MSG_R3, DSG_MSG_R4,
     PAIRWISE_MTA_LABEL, PAIRWISE_RANDOMIZATION_LABEL,
@@ -28,7 +34,6 @@ use crate::{
     setup::{sign::ValidatedSetup, ABORT_MESSAGE_TAG},
     sign::{
         messages::{PartialSignature, PreSignResult, SignMsg1, SignMsg2, SignMsg3, SignMsg4},
-        pairwise_mta::{PairwiseMtaRec, PairwiseMtaSender},
     },
     utils::{parse_raw_sign, verify_final_signature},
     BadPartyIndex, Seed,
@@ -188,12 +193,12 @@ async fn pre_signature_inner<R: Relay>(
 
     let session_id: SessionId = SessionId::random(&mut rng);
     let phi_i: Scalar = Scalar::generate_biased(&mut rng);
-    let k_i: Scalar = Scalar::generate_biased(&mut rng);
+    let r_i: Scalar = Scalar::generate_biased(&mut rng);
     let blind_factor: [u8; 32] = rng.gen();
 
     let enc_key = ReusableSecret::random_from_rng(&mut rng);
 
-    let big_r_i = ProjectivePoint::GENERATOR * k_i;
+    let big_r_i = ProjectivePoint::GENERATOR * r_i;
     let commitment_r_i = hash_commitment_r_i(&session_id, &big_r_i, &blind_factor);
 
     commitments.push(my_party_idx, (session_id, commitment_r_i));
@@ -256,10 +261,10 @@ async fn pre_signature_inner<R: Relay>(
             let sender_ot_results =
                 &setup.keyshare().seed_ot_senders[get_idx_from_id(my_party_id, sender_id) as usize];
 
-            let mta_receiver = PairwiseMtaRec::new(sid, sender_ot_results, &mut rng);
+            let mta_receiver = RVOLEReceiver::new(sid, sender_ot_results, &mut rng);
 
-            let xi_i_j = Scalar::generate_biased(&mut rng);
-            let (mta_receiver, mta_msg_1) = mta_receiver.process(&xi_i_j);
+            let (mta_receiver, chi_i_j, mta_msg_1) =
+                mta_receiver.process();
 
             let msg2 = SignMsg2 {
                 final_session_id: Opaque::from(final_session_id),
@@ -275,7 +280,7 @@ async fn pre_signature_inner<R: Relay>(
                 nonce_counter.next_nonce(),
             )?);
 
-            Ok((party_idx as u8, (mta_receiver, xi_i_j)))
+            Ok((party_idx as u8, (mta_receiver, chi_i_j)))
         })
         .collect::<Result<Vec<_>, SignError>>()?;
 
@@ -293,7 +298,7 @@ async fn pre_signature_inner<R: Relay>(
             let seed_ot_results = &setup.keyshare().seed_ot_receivers
                 [get_idx_from_id(my_party_id, receiver_id) as usize];
 
-            let sender = PairwiseMtaSender::new(sid, seed_ot_results, &mut rng);
+            let sender = RVOLESender::new(sid, seed_ot_results, &mut rng);
 
             Ok((party_idx as u8, sender))
         })
@@ -311,7 +316,7 @@ async fn pre_signature_inner<R: Relay>(
         HashBytes::new(h.finalize().into())
     };
 
-    let mu_i = get_mu_i(setup.keyshare(), &party_idx_to_id_map, &digest_i);
+    let zeta_i = get_zeta_i(setup.keyshare(), &party_idx_to_id_map, &digest_i);
 
     let coeff = if setup.keyshare().rank_list.iter().all(|&r| r == 0) {
         get_lagrange_coeff(setup.keyshare(), &party_idx_to_id_map)
@@ -332,8 +337,8 @@ async fn pre_signature_inner<R: Relay>(
         .unwrap(); // FIXME: report error
     let additive_offset = additive_offset * threshold_inv;
 
-    let x_i = coeff * *setup.keyshare().s_i + additive_offset + mu_i;
-    let big_x_i = ProjectivePoint::GENERATOR * x_i;
+    let sk_i = coeff * *setup.keyshare().s_i + additive_offset + zeta_i;
+    let pk_i = ProjectivePoint::GENERATOR * sk_i;
 
     let mut sender_additive_shares = vec![];
 
@@ -357,27 +362,27 @@ async fn pre_signature_inner<R: Relay>(
 
         let mta_sender = pop_pair(&mut mta_senders, party_idx as u8)?;
 
-        let (additive_shares, mta_msg2) = match mta_sender.process(x_i, k_i, &msg2.mta_msg1) {
+        let ([c_u, c_v], mta_msg2) = match mta_sender.process([r_i, sk_i], &msg2.mta_msg1) {
             Ok(v) => v,
             Err(SoftSpokenOTError::AbortProtocolAndBanReceiver) => {
                 return Err(SignError::AbortProtocolAndBanParty(party_idx as u8));
             }
         };
 
-        let gamma0 = ProjectivePoint::GENERATOR * additive_shares[0];
-        let gamma1 = ProjectivePoint::GENERATOR * additive_shares[1];
-        let (_mta_receiver, xi_i_j) = find_pair(&mta_receivers, party_idx as u8)?;
-        let psi = phi_i - xi_i_j;
+        let gamma_u = ProjectivePoint::GENERATOR * c_u;
+        let gamma_v = ProjectivePoint::GENERATOR * c_v;
+        let (_mta_receiver, chi_i_j) = find_pair(&mta_receivers, party_idx as u8)?;
+        let psi = phi_i - chi_i_j;
 
         let msg3 = SignMsg3 {
             final_session_id: Opaque::from(final_session_id),
             mta_msg2,
             digest_i: Opaque::from(digest_i),
-            big_x_i: Opaque::from(big_x_i),
+            pk_i: Opaque::from(pk_i),
             big_r_i: Opaque::from(big_r_i),
             blind_factor: Opaque::from(blind_factor),
-            gamma0: Opaque::from(gamma0),
-            gamma1: Opaque::from(gamma1),
+            gamma_v: Opaque::from(gamma_v),
+            gamma_u: Opaque::from(gamma_u),
             psi: Opaque::from(psi),
         };
 
@@ -393,11 +398,11 @@ async fn pre_signature_inner<R: Relay>(
             .await
             .map_err(|_| SignError::SendMessage)?;
 
-        sender_additive_shares.push(additive_shares);
+        sender_additive_shares.push([c_u, c_v]);
     }
 
     let mut big_r_star = ProjectivePoint::IDENTITY;
-    let mut sum_x_j = ProjectivePoint::IDENTITY;
+    let mut sum_pk_j = ProjectivePoint::IDENTITY;
     let mut sum_psi_j_i = Scalar::ZERO;
 
     let mut receiver_additive_shares = vec![];
@@ -420,16 +425,16 @@ async fn pre_signature_inner<R: Relay>(
             return Err(SignError::InvalidFinalSessionID);
         }
 
-        let (mta_receiver, xi_i_j) = pop_pair(&mut mta_receivers, party_idx as u8)?;
+        let (mta_receiver, chi_i_j) = pop_pair(&mut mta_receivers, party_idx as u8)?;
 
-        let receiver_additive_shares_i = match mta_receiver.process(&msg3.mta_msg2) {
+        let [d_u, d_v] = match mta_receiver.process(&msg3.mta_msg2) {
             Ok(v) => v,
             Err(_) => {
                 return Err(SignError::AbortProtocolAndBanParty(party_idx as u8));
             }
         };
 
-        receiver_additive_shares.push(receiver_additive_shares_i);
+        receiver_additive_shares.push([d_u, d_v]);
 
         let (sid_i, commitment) = commitments.find_pair(party_idx);
 
@@ -442,20 +447,20 @@ async fn pre_signature_inner<R: Relay>(
         }
 
         let big_r_j = &*msg3.big_r_i;
-        let big_x_j = &*msg3.big_x_i;
+        let pk_j = &*msg3.pk_i;
 
         big_r_star += big_r_j;
-        sum_x_j += big_x_j;
+        sum_pk_j += pk_j;
         sum_psi_j_i += &*msg3.psi;
 
-        let cond1 = (big_r_j * &xi_i_j)
-            == (ProjectivePoint::GENERATOR * receiver_additive_shares_i[1] + *msg3.gamma1);
+        let cond1 = (big_r_j * &chi_i_j)
+            == (ProjectivePoint::GENERATOR * d_u + *msg3.gamma_u);
         if !cond1 {
             return Err(SignError::AbortProtocolAndBanParty(party_idx as u8));
         }
 
-        let cond2 = (big_x_j * &xi_i_j)
-            == (ProjectivePoint::GENERATOR * receiver_additive_shares_i[0] + *msg3.gamma0);
+        let cond2 = (pk_j * &chi_i_j)
+            == (ProjectivePoint::GENERATOR * d_v + *msg3.gamma_v);
         if !cond2 {
             return Err(SignError::AbortProtocolAndBanParty(party_idx as u8));
         }
@@ -463,29 +468,29 @@ async fn pre_signature_inner<R: Relay>(
 
     // new var
     let big_r = big_r_star + big_r_i;
-    sum_x_j += big_x_i;
+    sum_pk_j += pk_i;
 
     // Checks
-    if sum_x_j != derived_public_key {
+    if sum_pk_j != derived_public_key {
         return Err(SignError::FailedCheck("Consistency check 3 failed"));
     }
 
-    let mut sum0 = Scalar::ZERO;
-    let mut sum1 = Scalar::ZERO;
+    let mut sum_v = Scalar::ZERO;
+    let mut sum_u = Scalar::ZERO;
 
     for i in 0..setup.keyshare().threshold as usize - 1 {
         let sender_shares = &sender_additive_shares[i];
         let receiver_shares = &receiver_additive_shares[i];
-        sum0 += sender_shares[0] + receiver_shares[0];
-        sum1 += sender_shares[1] + receiver_shares[1];
+        sum_u += sender_shares[0] + receiver_shares[0];
+        sum_v += sender_shares[1] + receiver_shares[1];
     }
 
     let r_point = big_r.to_affine();
     let r_x = Scalar::from_repr(r_point.x()).unwrap();
     //        let recid = r_point.y_is_odd().unwrap_u8();
     let phi_plus_sum_psi = phi_i + sum_psi_j_i;
-    let s_0 = r_x * (x_i * phi_plus_sum_psi + sum0);
-    let s_1 = k_i * phi_plus_sum_psi + sum1;
+    let s_0 = r_x * (sk_i * phi_plus_sum_psi + sum_v);
+    let s_1 = r_i * phi_plus_sum_psi + sum_u;
 
     let pre_sign_result = PreSignResult {
         final_session_id: Opaque::from(final_session_id),
@@ -649,7 +654,7 @@ fn hash_commitment_r_i(
     HashBytes::new(hasher.finalize().into())
 }
 
-fn get_mu_i(keyshare: &Keyshare, party_id_list: &[(usize, u8)], sig_id: &HashBytes) -> Scalar {
+fn get_zeta_i(keyshare: &Keyshare, party_id_list: &[(usize, u8)], sig_id: &HashBytes) -> Scalar {
     let mut p_0_list = Vec::new();
     let mut p_1_list = Vec::new();
 
