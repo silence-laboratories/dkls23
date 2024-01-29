@@ -297,14 +297,24 @@ impl ValidatedSetup {
         })
     }
 
+    /// Decode the setup message buffer and validate the setup using
+    /// the provided user validator function.
     ///
-    /// Decode and validate a raw setup message.
+    /// # Arguments
     ///
-    /// Ensure that setup message contains a public key
-    /// from singing_key pair passed as the second parameter.
+    /// * `message_buffer` - A mutable slice that contains the message buffer to decode.
+    /// * `instance` - The instance ID.
+    /// * `verify_key` - Setup message verifying key.
+    /// * `signing_key` - Party's signing key.
+    /// * `user_validator` - A closure that takes a reference to the setup a return OK flag.
     ///
-    /// Perform all common validation, construct a Setup structure
-    /// and pass it to a suer supplied validation closure.
+    /// An honest party checks that the passed `instance` belongs to the
+    /// session. This `instance` will be used to derive ID of all messages
+    /// exchanges during protocol execution.
+    ///
+    /// # Returns
+    ///
+    /// A `ValidatedSetup` if the decoding and validation is successful.
     ///
     pub fn decode<F>(
         message_buffer: &mut [u8],
@@ -346,6 +356,25 @@ impl SetupBuilder {
         self
     }
 
+    /// Build a setup message using the provided parameters and sign it with the given signing key.
+    ///
+    /// # Arguments
+    ///
+    /// * `id`  - The message ID.
+    /// * `ttl` - The time-to-live for the message.
+    /// * `key` - The signing key.
+    ///
+    /// It is *ABSOLUTELY* essential to use a unique `InstanceId` to
+    /// avoid replay attacks. Replay attacks occur when an attacker
+    /// intercepts a message and retransmits it multiple times to the
+    /// recipient, causing unexpected behavior or security
+    /// vulnerabilities.
+    ///
+    /// An `InstanceId` is used to derive an ID of all messages within some session.
+    ///
+    /// # Returns
+    ///
+    /// A `Vec<u8>` containing the built and signed message, or None if the message building fails.
     ///
     pub fn build(self, id: &MsgId, ttl: u32, t: u8, key: &SigningKey) -> Option<Vec<u8>> {
         if self.parties.len() >= u8::MAX as usize {

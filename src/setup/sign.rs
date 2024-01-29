@@ -20,18 +20,9 @@ use crate::{
 
 use derivation_path::DerivationPath;
 
-/// A key generation setup message.
-///
-/// struct SetupMessage {
-///     uint32      algo;
-///     t           u8;
-///     publicKey   u8[33];  // affine point
-///     pkey        opaque<32*t>;
-///     hash_also   u32;
-///     message     Vec<u8>;
-///     chain_path  String;
-/// }
-///
+/// Decoded setup message. Reference to the `Setup` message is
+/// available to user validation function. The user validation
+/// function is responsible for keyshare loading and access control.
 #[derive(Clone, Debug)]
 pub struct Setup {
     public_key: AffinePoint,
@@ -124,7 +115,7 @@ impl Decode for Setup {
 }
 
 impl Setup {
-    ///
+    /// Number of parties of this signature generation session.
     pub fn threshold(&self) -> u8 {
         self.parties.len() as u8
     }
@@ -155,6 +146,11 @@ impl Setup {
 
             _ => unimplemented!(),
         }
+    }
+
+    /// Message to sign
+    pub fn message(&self) -> &[u8] {
+        &self.message
     }
 
     /// Return the public key.
@@ -330,6 +326,24 @@ impl ValidatedSetup {
         })
     }
 
+    /// Decode the setup message buffer and validate the setup using
+    /// the provided user validator function.
+    ///
+    /// # Arguments
+    ///
+    /// * `message_buffer` - A mutable slice that contains the message buffer to decode.
+    /// * `instance` - The instance ID.
+    /// * `verify_key` - Setup message verifying key.
+    /// * `signing_key` - Party's signing key.
+    /// * `user_validator` - A closure that takes a reference to the setup and returns an keyshare.
+    ///
+    /// An honest party checks that the passed `instance` belongs to the
+    /// session. This `instance` will be used to derive ID of all messages
+    /// exchanges during protocol execution.
+    ///
+    /// # Returns
+    ///
+    /// A `ValidatedSetup` if the decoding and validation is successful.
     ///
     pub fn decode<F>(
         message_buffer: &mut [u8],
@@ -381,26 +395,47 @@ impl SetupBuilder {
         self
     }
 
-    /// Add party witj given rank and public key
+    /// Add party with given rank and public key
     pub fn add_party(mut self, vk: VerifyingKey) -> Self {
         self.parties.push(vk);
         self
     }
 
-    ///
+    /// Provide a hash of the message to sign.
     pub fn with_hash(mut self, hash: HashBytes) -> Self {
         self.message = Vec::from(&hash[..]);
         self.hash = Some(HashAlgo::HashU32);
         self
     }
 
-    ///
+    /// Add a message to sign and designate SHA256 as a hash function.
+    /// The provided message will be available to each party at setup
+    /// validation stage.
     pub fn with_sha256(mut self, message: Vec<u8>) -> Self {
         self.message = message;
         self.hash = Some(HashAlgo::Sha256);
         self
     }
 
+    /// Build a setup message using the provided parameters and sign it with the given signing key.
+    ///
+    /// # Arguments
+    ///
+    /// * `id`  - The message ID.
+    /// * `ttl` - The time-to-live for the message.
+    /// * `key` - The signing key.
+    ///
+    /// It is *ABSOLUTELY* essential to use a unique `InstanceId` to
+    /// avoid replay attacks. Replay attacks occur when an attacker
+    /// intercepts a message and retransmits it multiple times to the
+    /// recipient, causing unexpected behavior or security
+    /// vulnerabilities.
+    ///
+    /// An `InstanceId` is used to derive an ID of all messages within some session.
+    ///
+    /// # Returns
+    ///
+    /// A `Vec<u8>` containing the built and signed message, or None if the message building fails.
     ///
     pub fn build(self, id: &MsgId, ttl: u32, key: &SigningKey) -> Option<Vec<u8>> {
         let hash_algo = self.hash?;
