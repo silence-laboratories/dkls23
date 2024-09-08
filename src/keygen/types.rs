@@ -1,17 +1,17 @@
-use thiserror::Error;
+// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
+// This software is licensed under the Silence Laboratories License Agreement.
 
-use sl_mpc_mate::{
-    bincode::error::{DecodeError, EncodeError},
-    message::InvalidMessage,
-};
+use crate::proto::tags::Error;
+use sl_mpc_mate::coord::MessageSendError;
 
-use crate::BadPartyIndex;
-
-#[derive(Debug, Error)]
+#[derive(Debug, thiserror::Error)]
+#[allow(missing_docs)]
 /// Distributed key generation errors
 pub enum KeygenError {
     /// error while serializing or deserializing or invalid message data length
-    #[error("Error while deserializing message or invalid message data length")]
+    #[error(
+        "Error while deserializing message or invalid message data length"
+    )]
     InvalidMessage,
 
     /// Invalid commitment hash
@@ -30,6 +30,10 @@ pub enum KeygenError {
     /// Invalid key refresh
     InvalidKeyRefresh,
 
+    #[error("Invalid Quorum Change")]
+    /// Invalid Quorum Change
+    InvalidQuorumChange,
+
     /// Not unique x_i values
     #[error("Not unique x_i values")]
     NotUniqueXiValues,
@@ -46,10 +50,6 @@ pub enum KeygenError {
     #[error("Public key mismatch between the message and the party")]
     PublicKeyMismatch,
 
-    ///
-    #[error("DKG failed before generating PK")]
-    NoPublicKey,
-
     /// Big S value mismatch
     #[error("Big S value mismatch")]
     BigSMismatch,
@@ -58,13 +58,7 @@ pub enum KeygenError {
     /// PPRF error
     PPRFError(&'static str),
 
-    /// We have internal state as pairs of (PairtyID, datum)
-    /// This error is returned when we unable to find a datum
-    /// corresponding to the party-id
-    #[error("Missing piece of state")]
-    InvalidParty,
-
-    ///
+    /// Missing message
     #[error("Missing message")]
     MissingMessage,
 
@@ -74,31 +68,23 @@ pub enum KeygenError {
 
     /// Some party decided to not participate in the protocol.
     #[error("Abort protocol by party {0}")]
-    AbortProtocol(u8),
+    AbortProtocol(usize),
 }
 
-impl From<InvalidMessage> for KeygenError {
-    fn from(_err: InvalidMessage) -> Self {
-        println!("inv msg {:?}", _err);
-        KeygenError::InvalidMessage
+impl From<MessageSendError> for KeygenError {
+    fn from(_err: MessageSendError) -> Self {
+        KeygenError::SendMessage
     }
 }
 
-impl From<EncodeError> for KeygenError {
-    fn from(_err: EncodeError) -> Self {
-        KeygenError::InvalidMessage
-    }
-}
-
-impl From<DecodeError> for KeygenError {
-    fn from(_err: DecodeError) -> Self {
-        KeygenError::InvalidMessage
-    }
-}
-
-impl From<BadPartyIndex> for KeygenError {
-    fn from(_err: BadPartyIndex) -> Self {
-        KeygenError::InvalidMessage
+impl From<Error> for KeygenError {
+    fn from(err: Error) -> Self {
+        match err {
+            Error::Abort(p) => KeygenError::AbortProtocol(p as _),
+            Error::Recv => KeygenError::MissingMessage,
+            Error::Send => KeygenError::SendMessage,
+            Error::InvalidMessage => KeygenError::InvalidMessage,
+        }
     }
 }
 
@@ -124,14 +110,16 @@ mod tests {
 
         // f'(x) = 2 + 2(p-1)x
         // f'(2) = (4p-2) mod p => p - 2
-        let poly = Polynomial::<Secp256k1>::new(u_i_k);
+        let poly = Polynomial::<ProjectivePoint>::new(u_i_k);
         let n = 1;
 
         let result = poly.derivative_at(n, &Scalar::from(2_u64));
 
         assert_eq!(
             result,
-            Scalar::from_uint_unchecked(order.wrapping_sub(&U256::from(2_u64)))
+            Scalar::from_uint_unchecked(
+                order.wrapping_sub(&U256::from(2_u64))
+            )
         );
     }
 
@@ -145,7 +133,7 @@ mod tests {
             Scalar::from(4_u64),
         ];
 
-        let poly = Polynomial::<Secp256k1>::new(u_i_k);
+        let poly = Polynomial::<ProjectivePoint>::new(u_i_k);
 
         // f''(x) = 6 + 24x
         let n = 2;
@@ -160,13 +148,13 @@ mod tests {
         // f(x) = 1 + 2x + 3x^2 + 4x^3
         let g = ProjectivePoint::GENERATOR;
         let u_i_k = vec![
-            (g * Scalar::from(1_u64)).into(),
-            (g * Scalar::from(2_u64)).into(),
-            (g * Scalar::from(3_u64)).into(),
-            (g * Scalar::from(4_u64)).into(),
+            (g * Scalar::from(1_u64)),
+            (g * Scalar::from(2_u64)),
+            (g * Scalar::from(3_u64)),
+            (g * Scalar::from(4_u64)),
         ];
 
-        let poly = GroupPolynomial::<Secp256k1>::new(u_i_k);
+        let poly = GroupPolynomial::<ProjectivePoint>::new(u_i_k);
 
         // f''(x) = 6 + 24x
         let n = 2;

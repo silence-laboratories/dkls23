@@ -1,182 +1,60 @@
+// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
+// This software is licensed under the Silence Laboratories License Agreement.
+
 //! Distributed sign generation protocol.
-//! Based on https://eprint.iacr.org/2023/765.pdf
+//! Based on <https://eprint.iacr.org/2023/765.pdf>
 
 use std::collections::HashMap;
 
 use k256::{
-    ecdsa::Signature,
+    ecdsa::{
+        signature::hazmat::PrehashVerifier, RecoveryId, Signature,
+        VerifyingKey,
+    },
     elliptic_curve::{
-        group::GroupEncoding, ops::Reduce, point::AffineCoordinates, subtle::ConstantTimeEq,
+        group::GroupEncoding,
+        ops::Reduce,
+        point::AffineCoordinates,
+        scalar::IsHigh,
+        subtle::{Choice, ConstantTimeEq},
         PrimeField,
     },
     sha2::{Digest, Sha256},
-    ProjectivePoint, Scalar, Secp256k1, U256,
+    NonZeroScalar, ProjectivePoint, Scalar, Secp256k1, U256,
 };
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
+use zeroize::Zeroizing;
 
-use sl_mpc_mate::{coord::*, math::birkhoff_coeffs, message::*, HashBytes, SessionId};
-use sl_oblivious::soft_spoken::SoftSpokenOTError;
+use sl_mpc_mate::{coord::*, math::birkhoff_coeffs};
 
-use sl_oblivious::{
-    rvole::{
-        RVOLESender, RVOLEReceiver
-    }
-};
+use sl_oblivious::rvole::{RVOLEReceiver, RVOLESender};
 
-use crate::sign::constants::{
-    COMMITMENT_LABEL, DIGEST_I_LABEL, DSG_LABEL, DSG_MSG_R1, DSG_MSG_R2, DSG_MSG_R3, DSG_MSG_R4,
-    PAIRWISE_MTA_LABEL, PAIRWISE_RANDOMIZATION_LABEL,
-};
 use crate::{
-    keygen::{get_idx_from_id, messages::Keyshare},
-    proto::create_abort_message,
-    setup::{sign::ValidatedSetup, ABORT_MESSAGE_TAG},
-    sign::{
-        messages::{PartialSignature, PreSignResult, SignMsg1, SignMsg2, SignMsg3, SignMsg4},
+    keygen::Keyshare,
+    proto::{
+        create_abort_message, tags::*, EncryptedMessage, SignedMessage, *,
     },
-    utils::{parse_raw_sign, verify_final_signature},
-    BadPartyIndex, Seed,
+    setup::{
+        FinalSignSetupMessage, PreSignSetupMessage, ProtocolParticipant,
+        SignSetupMessage, ABORT_MESSAGE_TAG,
+    },
+    sign::constants::*,
+    sign::messages::*,
+    Seed,
 };
 
 use super::SignError;
 
-type Pairs<T> = crate::pairs::Pairs<T, usize>;
+use crate::pairs::Pairs;
 
-fn find_pair<K: Eq, T>(pairs: &[(K, T)], party_id: K) -> Result<&T, BadPartyIndex> {
-    pairs
-        .iter()
-        .find(|(p, _)| *p == party_id)
-        .map(|(_, v)| v)
-        .ok_or(BadPartyIndex)
-}
-
-fn pop_pair<K: Eq, T>(pairs: &mut Vec<(K, T)>, party_id: K) -> Result<T, BadPartyIndex> {
-    let pos = pairs
-        .iter()
-        .position(|(p, _)| *p == party_id)
-        .ok_or(BadPartyIndex)?;
-
-    Ok(pairs.remove(pos).1)
-}
-
-fn pop_tag<T>(msg_map: &mut Vec<(MsgId, T)>, id: &MsgId) -> Option<T> {
-    if let Some(idx) = msg_map.iter().position(|prev| prev.0.eq(id)) {
-        let (_, tag) = msg_map.swap_remove(idx);
-        return Some(tag);
-    }
-
-    None
-}
-
-async fn request_messages<R: Relay>(
-    setup: &ValidatedSetup,
-    tag: MessageTag,
-    relay: &mut R,
-    p2p: bool,
-) -> Result<Vec<(MsgId, usize)>, SignError> {
-    let mut tags = vec![];
-    let me = if p2p { Some(setup.party_idx()) } else { None };
-
-    for (p, vk) in setup.other_parties_iter() {
-        // A message from party VK (p) to me.
-        let msg_id = setup.msg_id_from(vk, me, tag);
-
-        let msg = AskMsg::allocate(&msg_id, setup.ttl().as_secs() as _);
-
-        tags.push((msg_id, p));
-
-        relay.feed(msg).await.map_err(|_| SignError::SendMessage)?;
-    }
-
-    relay.flush().await.map_err(|_| SignError::SendMessage)?;
-
-    Ok(tags)
-}
-
-fn decode_signed_message<T: bincode::Decode>(
-    tags: &mut Vec<(MsgId, usize)>,
-    msg: Message,
-    setup: &ValidatedSetup,
-) -> Result<(T, usize), InvalidMessage> {
-    let mid = msg.id();
-
-    let party_id = pop_tag(tags, &mid).ok_or(InvalidMessage::RecvError)? as _;
-
-    match msg.verify_and_decode(setup.party_verifying_key(party_id).unwrap()) {
-        Ok(msg) => Ok((msg, party_id)),
-
-        Err(err) => {
-            // Someone tries to send us an invalid message
-            if matches!(err, InvalidMessage::InvalidSignature) {
-                tags.push((mid, party_id));
-            }
-
-            Err(err)
-        },
-    }
-}
-
-fn decode_encrypted_message<T: bincode::Decode>(
-    tags: &mut Vec<(MsgId, usize)>,
-    mut msg: Message,
-    secret: &ReusableSecret,
-    enc_pub_keys: &[(usize, PublicKey)],
-) -> Result<(T, usize), InvalidMessage> {
-    let mid = msg.id();
-
-    let party_id = pop_tag(tags, &mid).ok_or(InvalidMessage::RecvError)? as _;
-
-    let msg = msg.decrypt_and_decode(
-        MESSAGE_HEADER_SIZE,
-        secret,
-        find_pair(enc_pub_keys, party_id).map_err(|_| InvalidMessage::RecvError)?,
-    )?;
-
-    Ok((msg, party_id))
-}
-
-fn check_abort_message(setup: &ValidatedSetup, tags: &[(MsgId, usize)], msg: &Message) -> Result<(), SignError> {
-    let id = msg.id();
-
-    match tags.iter().find(|(m, _)| m == &id).map(|(_, p)| *p) {
-        None => Ok(()),
-        Some(p) => {
-            if msg.verify(setup.party_verifying_key(p).unwrap()).is_ok() {
-                Err(SignError::AbortProtocol(p as _))
-            } else {
-                Ok(())
-            }
-        },
-    }
-}
-
-/// Method to create a pre-signature without any message information for the signature
-pub async fn pre_signature<R: Relay>(
-    setup: &ValidatedSetup,
+async fn pre_signature_inner<R: Relay, S: PreSignSetupMessage>(
+    setup: &S,
     seed: Seed,
-    mut relay: R,
-) -> Result<PreSignResult, SignError> {
-    let abort_msg = create_abort_message(setup.instance(), setup.ttl(), setup.signing_key());
-
-    match pre_signature_inner(setup, seed, &mut relay).await {
-        Ok((pre, _)) => Ok(pre),
-        Err(SignError::AbortProtocol(p)) => Err(SignError::AbortProtocol(p)),
-        Err(SignError::SendMessage) => Err(SignError::SendMessage),
-        Err(err) => {
-            relay.send(abort_msg).await?;
-            Err(err)
-        }
-    }
-}
-
-async fn pre_signature_inner<R: Relay>(
-    setup: &ValidatedSetup,
-    seed: Seed,
-    relay: &mut R,
-) -> Result<(PreSignResult, Vec<(MsgId, usize)>), SignError> {
+    relay: &mut FilteredMsgRelay<R>,
+) -> Result<PreSign, SignError> {
     let mut rng = ChaCha20Rng::from_seed(seed);
-    let mut nonce_counter = NonceCounter::new();
+    let mut scheme = crate::proto::Scheme::new(&mut rng);
 
     // For DKG part_id == part_idx.
     //
@@ -186,142 +64,161 @@ async fn pre_signature_inner<R: Relay>(
     // its encryption public key
     //
     let my_party_id = setup.keyshare().party_id;
-    let my_party_idx = setup.party_idx();
+    let my_party_idx = setup.participant_index();
 
-    let mut commitments = Pairs::new();
-    let mut enc_pub_key = vec![];
-
-    let session_id: SessionId = SessionId::random(&mut rng);
     let phi_i: Scalar = Scalar::generate_biased(&mut rng);
     let r_i: Scalar = Scalar::generate_biased(&mut rng);
     let blind_factor: [u8; 32] = rng.gen();
 
-    let enc_key = ReusableSecret::random_from_rng(&mut rng);
-
     let big_r_i = ProjectivePoint::GENERATOR * r_i;
-    let commitment_r_i = hash_commitment_r_i(&session_id, &big_r_i, &blind_factor);
 
-    commitments.push(my_party_idx, (session_id, commitment_r_i));
+    // TODO: Replace with SmallVec 2?
+    let mut commitments =
+        vec![([0; 32], [0; 32]); setup.total_participants()];
 
-    let abort_tags = request_messages(setup, ABORT_MESSAGE_TAG, relay, false).await?;
+    commitments[my_party_idx].0 = rng.gen(); // generate SessionId
+    commitments[my_party_idx].1 = hash_commitment_r_i(
+        &commitments[my_party_idx].0,
+        &big_r_i,
+        &blind_factor,
+    );
 
-    let msg1 = SignMsg1 {
-        session_id: Opaque::from(session_id),
-        commitment_r_i: Opaque::from(commitment_r_i),
-        party_id: setup.keyshare().party_id,
-        enc_pk: Opaque::from(PublicKey::from(&enc_key).to_bytes()),
-    };
-    send_broadcast(setup, relay, DSG_MSG_R1, msg1).await?;
+    relay
+        .send(SignedMessage::build(
+            &setup.msg_id(None, DSG_MSG_R1),
+            setup.message_ttl().as_secs() as _,
+            0,
+            setup.signer(),
+            |msg: &mut SignMsg1, _| {
+                msg.session_id = commitments[my_party_idx].0;
+                msg.commitment_r_i = commitments[my_party_idx].1;
+                msg.party_id = my_party_id;
+                msg.enc_pk = scheme.public_key().try_into().unwrap();
+            },
+        ))
+        .await?;
 
     // vector of pairs (party_idx, party_id)
     let mut party_idx_to_id_map = vec![(my_party_idx, my_party_id)];
 
-    handle_signed_messages(
-        setup,
-        &abort_tags,
-        relay,
-        DSG_MSG_R1,
-        |msg: SignMsg1, party_idx| {
-            party_idx_to_id_map.push((party_idx, msg.party_id));
-            commitments.push(party_idx, (*msg.session_id, *msg.commitment_r_i));
-            enc_pub_key.push((party_idx, PublicKey::from(*msg.enc_pk)));
+    Round::new(setup.total_participants() - 1, DSG_MSG_R1, relay)
+        .of_signed_messages(
+            setup,
+            SignError::AbortProtocol,
+            |msg: &SignMsg1, party_idx| {
+                party_idx_to_id_map.push((party_idx, msg.party_id));
+                commitments[party_idx] = (msg.session_id, msg.commitment_r_i);
+                scheme
+                    .receiver_public_key(party_idx, &msg.enc_pk)
+                    .map_err(|_| SignError::InvalidMessage)?;
 
-            Ok(())
-        },
-    )
-    .await?;
+                Ok(())
+            },
+        )
+        .await?;
 
-    party_idx_to_id_map.sort_by_key(|(_, pid)| *pid);
+    party_idx_to_id_map.sort_by_key(|&(_, pid)| pid);
 
+    // there is no party-id duplicates
+    if !party_idx_to_id_map.windows(2).all(|w| w[0] != w[1]) {
+        return Err(SignError::InvalidMessage);
+    }
+
+    // all party-id are in range
+    if !party_idx_to_id_map
+        .iter()
+        .all(|&(_, pid)| pid < setup.keyshare().total_parties)
+    {
+        return Err(SignError::InvalidMessage);
+    }
+
+    // IDX -> ID
     let find_party_id = |idx: usize| {
         party_idx_to_id_map
             .iter()
-            .find(|(i, _)| *i == idx)
-            .map(|(_, p)| *p)
+            .find_map(|&(i, p)| (i == idx).then_some(p))
+            .unwrap()
     };
 
-    let final_session_id = SessionId::new(
-        commitments
-            .iter()
-            .fold(Sha256::new(), |hash, (_, (sid, _))| hash.chain_update(sid))
-            .chain_update(setup.keyshare().final_session_id.0)
-            .finalize()
-            .into(),
-    );
+    let final_session_id: [u8; 32] = commitments
+        .iter()
+        .fold(Sha256::new(), |hash, (sid, _)| hash.chain_update(sid))
+        .chain_update(setup.keyshare().final_session_id)
+        .finalize()
+        .into();
+
+    let digest_i: [u8; 32] = commitments
+        .iter()
+        .enumerate()
+        .fold(
+            Sha256::new().chain_update(DSG_LABEL),
+            |hash, (key, (sid, commitment))| {
+                hash.chain_update((key as u32).to_be_bytes())
+                    .chain_update(sid)
+                    .chain_update(commitment)
+            },
+        )
+        .chain_update(DIGEST_I_LABEL)
+        .finalize()
+        .into();
 
     let mut to_send = vec![];
 
-    let mut mta_receivers = setup
-        .other_parties_iter()
-        .map(|(party_idx, _vk)| {
-            let sender_id = find_party_id(party_idx).unwrap();
+    let mut mta_receivers = Pairs::from(
+        setup
+            .all_other_parties()
+            .map(|party_idx| {
+                let sender_id = find_party_id(party_idx);
 
-            let sid = mta_session_id(&final_session_id, sender_id, my_party_id);
+                let sid =
+                    mta_session_id(&final_session_id, sender_id, my_party_id);
 
-            let sender_ot_results =
-                &setup.keyshare().seed_ot_senders[get_idx_from_id(my_party_id, sender_id) as usize];
+                let sender_ot_results =
+                    setup.keyshare().sender_seed(sender_id);
 
-            let mta_receiver = RVOLEReceiver::new(sid, sender_ot_results, &mut rng);
+                let mut enc_msg = EncryptedMessage::<SignMsg2>::new(
+                    &setup.msg_id(Some(party_idx), DSG_MSG_R2),
+                    setup.message_ttl().as_secs() as u32,
+                    0,
+                    0,
+                    &scheme,
+                );
 
-            let (mta_receiver, chi_i_j, mta_msg_1) =
-                mta_receiver.process();
+                let (msg2, _) = enc_msg.payload(&scheme);
+                msg2.final_session_id = final_session_id;
 
-            let msg2 = SignMsg2 {
-                final_session_id: Opaque::from(final_session_id),
-                mta_msg1: mta_msg_1,
-            };
+                let (mta_receiver, chi_i_j) = RVOLEReceiver::new(
+                    sid,
+                    sender_ot_results,
+                    &mut msg2.mta_msg1,
+                    &mut rng,
+                );
 
-            to_send.push(Builder::<Encrypted>::encode(
-                &setup.msg_id(Some(party_idx), DSG_MSG_R2),
-                setup.ttl(),
-                &enc_key,
-                find_pair(&enc_pub_key, party_idx)?,
-                &msg2,
-                nonce_counter.next_nonce(),
-            )?);
+                to_send.push(
+                    enc_msg
+                        .encrypt(&mut scheme, party_idx)
+                        .ok_or(SignError::SendMessage)?,
+                );
 
-            Ok((party_idx as u8, (mta_receiver, chi_i_j)))
-        })
-        .collect::<Result<Vec<_>, SignError>>()?;
+                Ok((party_idx, (mta_receiver, chi_i_j)))
+            })
+            .collect::<Result<Vec<_>, SignError>>()?,
+    );
 
-    for msg in to_send.into_iter() {
+    for msg in to_send {
         relay.feed(msg).await.map_err(|_| SignError::SendMessage)?;
     }
 
-    let mut mta_senders = setup
-        .other_parties_iter()
-        .map(|(party_idx, _vk)| {
-            let receiver_id = find_party_id(party_idx).unwrap();
+    relay.flush().await?;
 
-            let sid = mta_session_id(&final_session_id, my_party_id, receiver_id);
+    let zeta_i =
+        get_zeta_i(setup.keyshare(), &party_idx_to_id_map, &digest_i);
 
-            let seed_ot_results = &setup.keyshare().seed_ot_receivers
-                [get_idx_from_id(my_party_id, receiver_id) as usize];
-
-            let sender = RVOLESender::new(sid, seed_ot_results, &mut rng);
-
-            Ok((party_idx as u8, sender))
-        })
-        .collect::<Result<Vec<_>, SignError>>()?;
-
-    let digest_i = {
-        let mut h = Sha256::new();
-        h.update(DSG_LABEL);
-        for (key, (sid_i, commitment_i)) in commitments.iter() {
-            h.update((*key as u32).to_be_bytes());
-            h.update(sid_i);
-            h.update(commitment_i);
-        }
-        h.update(DIGEST_I_LABEL);
-        HashBytes::new(h.finalize().into())
-    };
-
-    let zeta_i = get_zeta_i(setup.keyshare(), &party_idx_to_id_map, &digest_i);
-
-    let coeff = if setup.keyshare().rank_list.iter().all(|&r| r == 0) {
+    let coeff = if setup.keyshare().zero_ranks() {
         get_lagrange_coeff(setup.keyshare(), &party_idx_to_id_map)
     } else {
-        let betta_coeffs = get_birkhoff_coefficients(setup.keyshare(), &party_idx_to_id_map);
+        let betta_coeffs =
+            get_birkhoff_coefficients(setup.keyshare(), &party_idx_to_id_map);
 
         *betta_coeffs
             .get(&(my_party_id as usize))
@@ -332,71 +229,91 @@ async fn pre_signature_inner<R: Relay>(
         .keyshare()
         .derive_with_offset(setup.chain_path())
         .unwrap(); // FIXME: report error
-    let threshold_inv = Scalar::from(setup.keyshare().threshold as u32)
+    let threshold_inv = Scalar::from(setup.total_participants() as u32)
         .invert()
-        .unwrap(); // FIXME: report error
+        .unwrap(); // threshold > 0 so it has an invert
     let additive_offset = additive_offset * threshold_inv;
 
-    let sk_i = coeff * *setup.keyshare().s_i + additive_offset + zeta_i;
+    let sk_i = coeff * setup.keyshare().s_i() + additive_offset + zeta_i;
     let pk_i = ProjectivePoint::GENERATOR * sk_i;
 
     let mut sender_additive_shares = vec![];
 
-    let mut tags = request_messages(setup, DSG_MSG_R2, relay, true).await?;
-    while !tags.is_empty() {
-        let mut msg = relay.next().await.ok_or(SignError::MissingMessage)?;
-        let msg = match Message::from_buffer(&mut msg) {
-            Ok(msg) => msg,
-            Err(_) => continue,
-        };
+    let mut round =
+        Round::new(setup.total_participants() - 1, DSG_MSG_R2, relay);
 
-        check_abort_message(setup, &abort_tags, &msg)?;
-
-        let (msg2, party_idx) =
-            decode_encrypted_message::<SignMsg2>(&mut tags, msg, &enc_key, &enc_pub_key)?;
-
-        // Check final_session_id
-        if *msg2.final_session_id != final_session_id {
-            return Err(SignError::InvalidFinalSessionID);
+    while let Some((msg, party_idx, is_abort)) = round.recv().await? {
+        if is_abort {
+            check_abort(setup, &msg, party_idx, SignError::AbortProtocol)?;
+            round.put_back(&msg, ABORT_MESSAGE_TAG, party_idx);
+            continue;
         }
 
-        let mta_sender = pop_pair(&mut mta_senders, party_idx as u8)?;
-
-        let ([c_u, c_v], mta_msg2) = match mta_sender.process([r_i, sk_i], &msg2.mta_msg1) {
-            Ok(v) => v,
-            Err(SoftSpokenOTError::AbortProtocolAndBanReceiver) => {
-                return Err(SignError::AbortProtocolAndBanParty(party_idx as u8));
+        let mut msg = Zeroizing::new(msg);
+        let msg2 = match EncryptedMessage::<SignMsg2>::decrypt(
+            &mut msg, 0, &scheme, party_idx,
+        ) {
+            Some((refs, _)) => refs,
+            _ => {
+                round.put_back(&msg, DSG_MSG_R2, party_idx);
+                continue;
             }
         };
 
+        // Check final_session_id
+        if msg2.final_session_id.ct_ne(&final_session_id).into() {
+            return Err(SignError::InvalidFinalSessionID);
+        }
+
+        let receiver_id = find_party_id(party_idx);
+
+        let sid = mta_session_id(&final_session_id, my_party_id, receiver_id);
+
+        let seed_ot_results = setup.keyshare().receiver_seed(receiver_id);
+
+        let mut enc_msg3 = EncryptedMessage::<SignMsg3>::new(
+            &setup.msg_id(Some(party_idx), DSG_MSG_R3),
+            setup.message_ttl().as_secs() as _,
+            0,
+            0,
+            &scheme,
+        );
+
+        let (msg3, _) = enc_msg3.payload(&scheme);
+
+        let [c_u, c_v] = RVOLESender::process(
+            &sid,
+            seed_ot_results,
+            &[r_i, sk_i],
+            &msg2.mta_msg1,
+            &mut msg3.mta_msg2,
+            &mut rng,
+        )
+        .map_err(|_| SignError::AbortProtocolAndBanParty(party_idx as u8))?;
+
         let gamma_u = ProjectivePoint::GENERATOR * c_u;
         let gamma_v = ProjectivePoint::GENERATOR * c_v;
-        let (_mta_receiver, chi_i_j) = find_pair(&mta_receivers, party_idx as u8)?;
+        let (_mta_receiver, chi_i_j) = mta_receivers.find_pair(party_idx);
+
         let psi = phi_i - chi_i_j;
 
-        let msg3 = SignMsg3 {
-            final_session_id: Opaque::from(final_session_id),
-            mta_msg2,
-            digest_i: Opaque::from(digest_i),
-            pk_i: Opaque::from(pk_i),
-            big_r_i: Opaque::from(big_r_i),
-            blind_factor: Opaque::from(blind_factor),
-            gamma_v: Opaque::from(gamma_v),
-            gamma_u: Opaque::from(gamma_u),
-            psi: Opaque::from(psi),
-        };
+        msg3.final_session_id = final_session_id;
+        msg3.digest_i = digest_i;
+        msg3.pk_i = encode_point(&pk_i);
+        msg3.big_r_i = encode_point(&big_r_i);
+        msg3.blind_factor = blind_factor;
+        msg3.gamma_v = encode_point(&gamma_v);
+        msg3.gamma_u = encode_point(&gamma_u);
+        msg3.psi = encode_scalar(&psi);
 
-        relay
-            .send(Builder::<Encrypted>::encode(
-                &setup.msg_id(Some(party_idx), DSG_MSG_R3),
-                setup.ttl(),
-                &enc_key,
-                find_pair(&enc_pub_key, party_idx)?,
-                &msg3,
-                nonce_counter.next_nonce(),
-            )?)
-            .await
-            .map_err(|_| SignError::SendMessage)?;
+        round
+            .relay
+            .send(
+                enc_msg3
+                    .encrypt(&mut scheme, party_idx)
+                    .ok_or(SignError::SendMessage)?,
+            )
+            .await?;
 
         sender_additive_shares.push([c_u, c_v]);
     }
@@ -407,38 +324,50 @@ async fn pre_signature_inner<R: Relay>(
 
     let mut receiver_additive_shares = vec![];
 
-    let mut tags = request_messages(setup, DSG_MSG_R3, relay, true).await?;
-    while !tags.is_empty() {
-        let mut msg = relay.next().await.ok_or(SignError::MissingMessage)?;
-        let msg = match Message::from_buffer(&mut msg) {
-            Ok(msg) => msg,
-            _ => continue,
-        };
+    let mut round =
+        Round::new(setup.total_participants() - 1, DSG_MSG_R3, relay);
 
-        check_abort_message(setup, &abort_tags, &msg)?;
-
-        let (msg3, party_idx) =
-            decode_encrypted_message::<SignMsg3>(&mut tags, msg, &enc_key, &enc_pub_key)?;
-
-        // Check final_session_id
-        if *msg3.final_session_id != final_session_id {
-            return Err(SignError::InvalidFinalSessionID);
+    while let Some((msg, party_idx, is_abort)) = round.recv().await? {
+        if is_abort {
+            check_abort(setup, &msg, party_idx, SignError::AbortProtocol)?;
+            round.put_back(&msg, ABORT_MESSAGE_TAG, party_idx);
+            continue;
         }
 
-        let (mta_receiver, chi_i_j) = pop_pair(&mut mta_receivers, party_idx as u8)?;
-
-        let [d_u, d_v] = match mta_receiver.process(&msg3.mta_msg2) {
-            Ok(v) => v,
-            Err(_) => {
-                return Err(SignError::AbortProtocolAndBanParty(party_idx as u8));
+        let mut msg = Zeroizing::new(msg);
+        let msg3 = match EncryptedMessage::<SignMsg3>::decrypt(
+            &mut msg, 0, &scheme, party_idx,
+        ) {
+            Some((refs, _)) => refs,
+            _ => {
+                round.put_back(&msg, DSG_MSG_R3, party_idx);
+                continue;
             }
         };
 
-        receiver_additive_shares.push([d_u, d_v]);
+        // Check final_session_id
+        if msg3.final_session_id != final_session_id {
+            return Err(SignError::InvalidFinalSessionID);
+        }
 
-        let (sid_i, commitment) = commitments.find_pair(party_idx);
+        let (mta_receiver, chi_i_j) = mta_receivers.pop_pair(party_idx);
 
-        if !verify_commitment_r_i(sid_i, &msg3.big_r_i, &msg3.blind_factor, commitment) {
+        let [d_u, d_v] =
+            mta_receiver.process(&msg3.mta_msg2).map_err(|_| {
+                SignError::AbortProtocolAndBanParty(party_idx as u8)
+            })?;
+
+        let (sid_i, commitment) = &commitments[party_idx];
+
+        let big_r_j =
+            decode_point(&msg3.big_r_i).ok_or(SignError::InvalidMessage)?;
+
+        if !verify_commitment_r_i(
+            sid_i,
+            &big_r_j,
+            &msg3.blind_factor,
+            commitment,
+        ) {
             return Err(SignError::InvalidCommitment);
         }
 
@@ -446,24 +375,31 @@ async fn pre_signature_inner<R: Relay>(
             return Err(SignError::InvalidDigest);
         }
 
-        let big_r_j = &*msg3.big_r_i;
-        let pk_j = &*msg3.pk_i;
+        let pk_j =
+            decode_point(&msg3.pk_i).ok_or(SignError::InvalidMessage)?;
 
         big_r_star += big_r_j;
         sum_pk_j += pk_j;
-        sum_psi_j_i += &*msg3.psi;
+        sum_psi_j_i +=
+            decode_scalar(&msg3.psi).ok_or(SignError::InvalidMessage)?;
 
-        let cond1 = (big_r_j * &chi_i_j)
-            == (ProjectivePoint::GENERATOR * d_u + *msg3.gamma_u);
+        let cond1 = (big_r_j * chi_i_j)
+            == (ProjectivePoint::GENERATOR * d_u
+                + decode_point(&msg3.gamma_u)
+                    .ok_or(SignError::InvalidMessage)?);
         if !cond1 {
             return Err(SignError::AbortProtocolAndBanParty(party_idx as u8));
         }
 
-        let cond2 = (pk_j * &chi_i_j)
-            == (ProjectivePoint::GENERATOR * d_v + *msg3.gamma_v);
+        let cond2 = (pk_j * chi_i_j)
+            == (ProjectivePoint::GENERATOR * d_v
+                + decode_point(&msg3.gamma_v)
+                    .ok_or(SignError::InvalidMessage)?);
         if !cond2 {
             return Err(SignError::AbortProtocolAndBanParty(party_idx as u8));
         }
+
+        receiver_additive_shares.push([d_u, d_v]);
     }
 
     // new var
@@ -478,7 +414,7 @@ async fn pre_signature_inner<R: Relay>(
     let mut sum_v = Scalar::ZERO;
     let mut sum_u = Scalar::ZERO;
 
-    for i in 0..setup.keyshare().threshold as usize - 1 {
+    for i in 0..setup.total_participants() - 1 {
         let sender_shares = &sender_additive_shares[i];
         let receiver_shares = &receiver_additive_shares[i];
         sum_u += sender_shares[0] + receiver_shares[0];
@@ -486,210 +422,314 @@ async fn pre_signature_inner<R: Relay>(
     }
 
     let r_point = big_r.to_affine();
-    let r_x = Scalar::from_repr(r_point.x()).unwrap();
-    //        let recid = r_point.y_is_odd().unwrap_u8();
+    let r_x = <Scalar as Reduce<U256>>::reduce_bytes(&r_point.x());
     let phi_plus_sum_psi = phi_i + sum_psi_j_i;
     let s_0 = r_x * (sk_i * phi_plus_sum_psi + sum_v);
     let s_1 = r_i * phi_plus_sum_psi + sum_u;
 
-    let pre_sign_result = PreSignResult {
-        final_session_id: Opaque::from(final_session_id),
-        public_key: Opaque::from(derived_public_key),
-        s_0: Opaque::from(s_0),
-        s_1: Opaque::from(s_1),
-        phi_i: Opaque::from(phi_i),
-        r: Opaque::from(big_r),
+    let pre_sign_result = PreSign {
+        final_session_id,
+        public_key: encode_point(&derived_public_key),
+        s_0: encode_scalar(&s_0),
+        s_1: encode_scalar(&s_1),
+        phi_i: encode_scalar(&phi_i),
+        r: encode_point(&big_r),
+        party_id: my_party_id,
     };
 
-    Ok((pre_sign_result, abort_tags))
+    Ok(pre_sign_result)
 }
 
-/// Locally create a partial signature from pre-signature and msg_hash
+// Locally create a partial signature from pre-signature and msg_hash
 fn create_partial_signature(
-    pre_sign_result: PreSignResult,
-    msg_hash: HashBytes,
-) -> PartialSignature {
-    let m = Scalar::reduce(U256::from_be_slice(&msg_hash));
-    let s_0 = m * pre_sign_result.phi_i.0 + pre_sign_result.s_0.0;
+    pre_sign_result: &PreSign,
+    message_hash: [u8; 32],
+) -> Result<PartialSignature, SignError> {
+    let m = Scalar::reduce(U256::from_be_slice(&message_hash));
 
-    PartialSignature {
-        final_session_id: pre_sign_result.final_session_id.0,
-        public_key: pre_sign_result.public_key.0,
-        message_hash: msg_hash,
+    let phi_i = decode_scalar(&pre_sign_result.phi_i)
+        .ok_or(SignError::InvalidPreSign)?;
+
+    let s_0 = decode_scalar(&pre_sign_result.s_0)
+        .ok_or(SignError::InvalidPreSign)?;
+
+    let s_0 = m * phi_i + s_0;
+
+    let s_1 = decode_scalar(&pre_sign_result.s_1)
+        .ok_or(SignError::InvalidPreSign)?;
+
+    let r =
+        decode_point(&pre_sign_result.r).ok_or(SignError::InvalidPreSign)?;
+
+    let public_key = decode_point(&pre_sign_result.public_key)
+        .ok_or(SignError::InvalidPreSign)?;
+
+    Ok(PartialSignature {
+        final_session_id: pre_sign_result.final_session_id,
+        public_key,
+        message_hash,
         s_0,
-        s_1: pre_sign_result.s_1.0,
-        r: pre_sign_result.r.0,
-    }
+        s_1,
+        r,
+    })
 }
 
-/// Locally combine list of t partial signatures into a final signature
-pub fn combine_partial_signature(
-    partial_signatures: Vec<PartialSignature>,
-    t: usize,
-) -> Result<Signature, SignError> {
-    if partial_signatures.len() != t {
+// Locally combine list of t partial signatures into a final signature
+fn combine_partial_signature(
+    partial_signatures: &[PartialSignature],
+) -> Result<(Signature, RecoveryId), SignError> {
+    let p0 = &partial_signatures[0];
+
+    let mut check = Choice::from(0);
+
+    let mut sum_s_0 = p0.s_0;
+    let mut sum_s_1 = p0.s_1;
+
+    for pn in &partial_signatures[1..] {
+        check |= pn.final_session_id.ct_ne(&p0.final_session_id);
+        check |= pn.public_key.ct_ne(&p0.public_key);
+        check |= pn.r.ct_ne(&p0.r);
+        check |= pn.message_hash.ct_ne(&p0.message_hash);
+
+        sum_s_0 += pn.s_0;
+        sum_s_1 += pn.s_1;
+    }
+
+    if check.into() {
         return Err(SignError::FailedCheck(
-            "Invalid number of partial signatures",
+            "Invalid list of partial signatures",
         ));
     }
 
-    let final_session_id = partial_signatures[0].final_session_id;
-    let public_key = partial_signatures[0].public_key;
-    let message_hash = partial_signatures[0].message_hash;
-    let r = partial_signatures[0].r;
+    let r = p0.r.to_affine();
 
-    let mut sum_s_0 = Scalar::ZERO;
-    let mut sum_s_1 = Scalar::ZERO;
-    for partial_sign in partial_signatures.into_iter() {
-        let cond = (partial_sign.final_session_id != final_session_id)
-            || (partial_sign.public_key != public_key)
-            || (partial_sign.r != r)
-            || (partial_sign.message_hash != message_hash);
-        if cond {
-            return Err(SignError::FailedCheck("Invalid list of partial signatures"));
-        }
-        sum_s_0 += partial_sign.s_0;
-        sum_s_1 += partial_sign.s_1;
-    }
+    let is_y_odd: bool = r.y_is_odd().into();
 
-    let r = r.to_affine().x();
+    let r_x = <Scalar as Reduce<U256>>::reduce_bytes(&r.x());
+    let is_x_reduced = r_x.to_repr() != r.x();
+    let recid = RecoveryId::new(is_y_odd, is_x_reduced);
+
     let sum_s_1_inv = sum_s_1.invert().unwrap();
-    let sig = sum_s_0 * sum_s_1_inv;
+    let s = sum_s_0 * sum_s_1_inv;
 
-    let sign = parse_raw_sign(&r, &sig.to_bytes())?;
+    let is_y_odd = recid.is_y_odd() ^ bool::from(s.is_high());
+    let recid = RecoveryId::new(is_y_odd, recid.is_x_reduced());
+
+    let sign = Signature::from_scalars(r_x, s)?;
     let sign = sign.normalize_s().unwrap_or(sign);
 
-    verify_final_signature(&message_hash.0, &sign, &public_key.to_bytes())?;
+    VerifyingKey::from_affine(p0.public_key.to_affine())?
+        .verify_prehash(&p0.message_hash, &sign)?;
 
-    Ok(sign)
+    Ok((sign, recid))
 }
 
 /// Execute DSG protocol.
-pub async fn run<R: Relay>(
-    setup: ValidatedSetup,
+pub async fn run<R: Relay, S: SignSetupMessage>(
+    setup: S,
     seed: Seed,
-    mut relay: R,
-) -> Result<Signature, SignError> {
-    let abort_msg = Builder::<Signed>::encode(
-        &setup.msg_id(None, ABORT_MESSAGE_TAG),
-        setup.ttl(),
-        setup.signing_key(),
-        &(), // empty message
-    )?;
+    relay: R,
+) -> Result<(Signature, RecoveryId), SignError> {
+    let abort_msg = create_abort_message(&setup);
+    let mut relay = FilteredMsgRelay::new(relay);
 
-    match run_inner(setup, seed, &mut relay).await {
+    relay.ask_messages(&setup, ABORT_MESSAGE_TAG, false).await?;
+    relay.ask_messages(&setup, DSG_MSG_R1, false).await?;
+    relay.ask_messages(&setup, DSG_MSG_R2, true).await?;
+    relay.ask_messages(&setup, DSG_MSG_R3, true).await?;
+    relay.ask_messages(&setup, DSG_MSG_R4, false).await?;
+
+    let result = match run_inner(setup, seed, &mut relay).await {
         Ok(sign) => Ok(sign),
+        Err(SignError::AbortProtocol(p)) => Err(SignError::AbortProtocol(p)),
+        Err(SignError::SendMessage) => Err(SignError::SendMessage),
+        Err(err) => {
+            // ignore error of sending abort message
+            let _ = relay.send(abort_msg).await;
+            Err(err)
+        }
+    };
+
+    let _ = relay.close().await;
+
+    result
+}
+
+async fn run_inner<R: Relay, S: SignSetupMessage>(
+    setup: S,
+    seed: Seed,
+    relay: &mut FilteredMsgRelay<R>,
+) -> Result<(Signature, RecoveryId), SignError> {
+    let t = setup.total_participants();
+
+    let pre_signature_result =
+        pre_signature_inner(&setup, seed, relay).await?;
+
+    let msg_hash = setup.message_hash();
+
+    run_final(&setup, relay, t, msg_hash, &pre_signature_result).await
+}
+
+/// Execute DSG upto creation of PreSignature.
+pub async fn pre_signature<R: Relay, S: PreSignSetupMessage>(
+    setup: S,
+    seed: Seed,
+    relay: R,
+) -> Result<PreSign, SignError> {
+    let abort_msg = create_abort_message(&setup);
+    let mut relay = FilteredMsgRelay::new(relay);
+
+    relay.ask_messages(&setup, ABORT_MESSAGE_TAG, false).await?;
+    relay.ask_messages(&setup, DSG_MSG_R1, false).await?;
+    relay.ask_messages(&setup, DSG_MSG_R2, true).await?;
+    relay.ask_messages(&setup, DSG_MSG_R3, true).await?;
+
+    let result = match pre_signature_inner(&setup, seed, &mut relay).await {
+        Ok(result) => Ok(result),
         Err(SignError::AbortProtocol(p)) => Err(SignError::AbortProtocol(p)),
         Err(SignError::SendMessage) => Err(SignError::SendMessage),
         Err(err) => {
             relay.send(abort_msg).await?;
             Err(err)
         }
-    }
+    };
+
+    let _ = relay.close().await;
+
+    result
 }
 
-async fn run_inner<R: Relay>(
-    setup: ValidatedSetup,
-    seed: Seed,
-    relay: &mut R,
-) -> Result<Signature, SignError> {
-    let t = setup.keyshare().threshold;
+/// Finish DSG.
+pub async fn finish<R: Relay, S: FinalSignSetupMessage>(
+    setup: S,
+    relay: R,
+) -> Result<(Signature, RecoveryId), SignError> {
+    let pre_signature_result = setup.pre_signature();
+    let msg_hash = setup.message_hash();
+    let mut relay = FilteredMsgRelay::new(relay);
 
-    let (pre_signature_result, abort_tags) = pre_signature_inner(&setup, seed, relay).await?;
+    relay.ask_messages(&setup, ABORT_MESSAGE_TAG, false).await?;
+    relay.ask_messages(&setup, DSG_MSG_R4, false).await?;
 
-    let public_key = pre_signature_result.public_key;
-    let r: Opaque<ProjectivePoint, GR> = pre_signature_result.r;
+    let result = run_final(
+        &setup,
+        &mut relay,
+        setup.total_participants(),
+        msg_hash,
+        pre_signature_result,
+    )
+    .await;
 
-    let msg_hash = setup.hash();
+    let _ = relay.close().await;
 
-    let partial_signature = create_partial_signature(pre_signature_result, msg_hash);
+    result
+}
 
-    let msg4 = SignMsg4 {
-        session_id: Opaque::from(partial_signature.final_session_id),
-        s_0: Opaque::from(partial_signature.s_0),
-        s_1: Opaque::from(partial_signature.s_1),
-    };
-    send_broadcast(&setup, relay, DSG_MSG_R4, msg4).await?;
+async fn run_final<R: Relay, S: ProtocolParticipant>(
+    setup: &S,
+    relay: &mut FilteredMsgRelay<R>,
+    t: usize,
+    msg_hash: [u8; 32],
+    pre_signature_result: &PreSign,
+) -> Result<(Signature, RecoveryId), SignError> {
+    let public_key = decode_point(&pre_signature_result.public_key).unwrap();
+    let r = decode_point(&pre_signature_result.r).unwrap();
 
-    let mut partial_signatures: Vec<PartialSignature> = Vec::with_capacity(t as usize);
+    let partial_signature =
+        create_partial_signature(pre_signature_result, msg_hash)?;
+
+    relay
+        .send(SignedMessage::build(
+            &setup.msg_id(None, DSG_MSG_R4),
+            setup.message_ttl().as_secs() as _,
+            0,
+            setup.signer(),
+            |msg4: &mut SignMsg4, _| {
+                msg4.session_id = partial_signature.final_session_id;
+                msg4.s_0 = encode_scalar(&partial_signature.s_0);
+                msg4.s_1 = encode_scalar(&partial_signature.s_1);
+            },
+        ))
+        .await?;
+
+    let mut partial_signatures: Vec<PartialSignature> = Vec::with_capacity(t);
 
     partial_signatures.push(partial_signature);
 
-    let mut tags = request_messages(&setup, DSG_MSG_R4, relay, false).await?;
-    while !tags.is_empty() {
-        let mut msg = relay.next().await.ok_or(SignError::MissingMessage)?;
-        let msg = match Message::from_buffer(&mut msg) {
-            Ok(msg) => msg,
-            _ => continue,
-        };
+    Round::new(setup.total_participants() - 1, DSG_MSG_R4, relay)
+        .of_signed_messages(
+            setup,
+            SignError::AbortProtocol,
+            |msg: &SignMsg4, _party_idx| {
+                partial_signatures.push(PartialSignature {
+                    final_session_id: msg.session_id,
+                    public_key,
+                    message_hash: msg_hash,
+                    s_0: decode_scalar(&msg.s_0)
+                        .ok_or(SignError::InvalidMessage)?,
+                    s_1: decode_scalar(&msg.s_1)
+                        .ok_or(SignError::InvalidMessage)?,
+                    r,
+                });
 
-        check_abort_message(&setup, &abort_tags, &msg)?;
+                Ok(())
+            },
+        )
+        .await?;
 
-        let (msg, _party_idx) = decode_signed_message::<SignMsg4>(&mut tags, msg, &setup)?;
-
-        partial_signatures.push(PartialSignature {
-            final_session_id: msg.session_id.0,
-            public_key: public_key.0,
-            message_hash: msg_hash,
-            s_0: msg.s_0.0,
-            s_1: msg.s_1.0,
-            r: r.0,
-        });
-    }
-
-    combine_partial_signature(partial_signatures, t as usize)
+    combine_partial_signature(&partial_signatures)
 }
 
 fn hash_commitment_r_i(
-    session_id: &SessionId,
+    session_id: &[u8],
     big_r_i: &ProjectivePoint,
     blind_factor: &[u8; 32],
-) -> HashBytes {
+) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(DSG_LABEL);
     hasher.update(session_id.as_ref());
     hasher.update(big_r_i.to_bytes());
     hasher.update(blind_factor);
     hasher.update(COMMITMENT_LABEL);
-    HashBytes::new(hasher.finalize().into())
+
+    hasher.finalize().into()
 }
 
-fn get_zeta_i(keyshare: &Keyshare, party_id_list: &[(usize, u8)], sig_id: &HashBytes) -> Scalar {
-    let mut p_0_list = Vec::new();
-    let mut p_1_list = Vec::new();
-
-    for (_, party_id) in party_id_list {
-        if party_id < &keyshare.party_id {
-            p_0_list.push(*party_id);
-        }
-        if party_id > &keyshare.party_id {
-            p_1_list.push(*party_id);
-        }
-    }
-
+fn get_zeta_i(
+    keyshare: &Keyshare,
+    party_id_list: &[(usize, u8)],
+    sig_id: &[u8],
+) -> Scalar {
     let mut sum_p_0 = Scalar::ZERO;
-    for p_0_party in &p_0_list {
-        let seed_j_i = keyshare.rec_seed_list[*p_0_party as usize];
+    for &(_, p_0_party) in party_id_list {
+        if p_0_party >= keyshare.party_id {
+            continue;
+        }
+
+        let seed_j_i = keyshare.each(p_0_party).zeta_seed;
+
         let mut hasher = Sha256::new();
         hasher.update(DSG_LABEL);
         hasher.update(seed_j_i);
         hasher.update(sig_id);
         hasher.update(PAIRWISE_RANDOMIZATION_LABEL);
-        let value = Scalar::reduce(U256::from_be_slice(&hasher.finalize()));
-        sum_p_0 += value;
+        sum_p_0 += Scalar::reduce(U256::from_be_slice(&hasher.finalize()));
     }
 
     let mut sum_p_1 = Scalar::ZERO;
-    for p_1_party in &p_1_list {
-        let seed_i_j =
-            keyshare.sent_seed_list[*p_1_party as usize - keyshare.party_id as usize - 1];
+    for &(_, p_1_party) in party_id_list {
+        if p_1_party <= keyshare.party_id {
+            continue;
+        }
+
+        let seed_i_j = keyshare.each(p_1_party - 1).zeta_seed;
+
         let mut hasher = Sha256::new();
         hasher.update(DSG_LABEL);
         hasher.update(seed_i_j);
         hasher.update(sig_id);
         hasher.update(PAIRWISE_RANDOMIZATION_LABEL);
-        let value = Scalar::reduce(U256::from_be_slice(&hasher.finalize()));
-        sum_p_1 += value;
+        sum_p_1 += Scalar::reduce(U256::from_be_slice(&hasher.finalize()));
     }
 
     sum_p_0 - sum_p_1
@@ -701,11 +741,8 @@ fn get_birkhoff_coefficients(
 ) -> HashMap<usize, Scalar> {
     let params = sign_party_ids
         .iter()
-        .map(|(_, pid)| {
-            (
-                *keyshare.x_i_list[*pid as usize],
-                keyshare.rank_list[*pid as usize] as usize,
-            )
+        .map(|&(_, pid)| {
+            (keyshare.get_x_i(pid), keyshare.get_rank(pid) as usize)
         })
         .collect::<Vec<_>>();
 
@@ -718,32 +755,63 @@ fn get_birkhoff_coefficients(
         .collect::<HashMap<_, _>>()
 }
 
-fn get_lagrange_coeff(keyshare: &Keyshare, sign_party_ids: &[(usize, u8)]) -> Scalar {
+fn get_lagrange_coeff(
+    keyshare: &Keyshare,
+    sign_party_ids: &[(usize, u8)],
+) -> Scalar {
     let mut coeff = Scalar::from(1u64);
     let pid = keyshare.party_id;
-    let x_i = &*keyshare.x_i_list[pid as usize] as &Scalar;
-    for (_, party_id) in sign_party_ids {
-        let x_j = &*keyshare.x_i_list[*party_id as usize] as &Scalar;
+    let x_i = &keyshare.get_x_i(pid) as &Scalar;
+
+    for &(_, party_id) in sign_party_ids {
+        let x_j = &keyshare.get_x_i(party_id) as &Scalar;
         if x_i.ct_ne(x_j).into() {
             let sub = x_j - x_i;
             coeff *= x_j * &sub.invert().unwrap();
         }
     }
+
     coeff
 }
 
+pub(crate) fn get_lagrange_coeff_list<'a, K, T>(
+    party_points: &'a [T],
+    k: K,
+) -> impl Iterator<Item = Scalar> + 'a
+where
+    K: Fn(&T) -> &NonZeroScalar + 'a,
+{
+    party_points.iter().map(move |x_i| {
+        let x_i = k(x_i);
+        let mut coeff = Scalar::ONE;
+        for x_j in party_points {
+            let x_j = k(x_j);
+            if x_i.ct_ne(x_j).into() {
+                let sub = x_j.sub(x_i);
+                // SAFETY: Invert is safe because we check x_j != x_i, so sub is not zero.
+                coeff *= x_j.as_ref() * &sub.invert().unwrap();
+            }
+        }
+        coeff
+    })
+}
+
 fn verify_commitment_r_i(
-    sid: &SessionId,
+    sid: &[u8],
     big_r_i: &ProjectivePoint,
     blind_factor: &[u8; 32],
-    commitment: &HashBytes,
+    commitment: &[u8],
 ) -> bool {
     let compare_commitment = hash_commitment_r_i(sid, big_r_i, blind_factor);
 
     commitment.ct_eq(&compare_commitment).into()
 }
 
-fn mta_session_id(final_session_id: &SessionId, sender_id: u8, receiver_id: u8) -> SessionId {
+fn mta_session_id(
+    final_session_id: &[u8],
+    sender_id: u8,
+    receiver_id: u8,
+) -> [u8; 32] {
     let mut h = Sha256::new();
     h.update(DSG_LABEL);
     h.update(final_session_id);
@@ -752,132 +820,21 @@ fn mta_session_id(final_session_id: &SessionId, sender_id: u8, receiver_id: u8) 
     h.update(b"receiver");
     h.update([receiver_id]);
     h.update(PAIRWISE_MTA_LABEL);
-    SessionId::new(h.finalize().into())
-}
-
-async fn send_broadcast<T, R>(
-    setup: &ValidatedSetup,
-    relay: &mut R,
-    tag: MessageTag,
-    msg: T,
-) -> Result<(), SignError>
-where
-    T: bincode::Encode,
-    R: Relay,
-{
-    relay
-        .send(Builder::<Signed>::encode(
-            &setup.msg_id(None, tag),
-            setup.ttl(),
-            setup.signing_key(),
-            &msg,
-        )?)
-        .await
-        .map_err(|_| SignError::SendMessage)?;
-
-    Ok(())
-}
-
-async fn handle_signed_messages<T, R, F>(
-    setup: &ValidatedSetup,
-    abort_tags: &[(MsgId, usize)],
-    relay: &mut R,
-    tag: MessageTag,
-    mut handler: F,
-) -> Result<(), SignError>
-where
-    T: bincode::Decode,
-    R: Relay,
-    F: FnMut(T, usize) -> Result<(), SignError>,
-{
-    let mut tags = request_messages(setup, tag, relay, false).await?;
-    while !tags.is_empty() {
-        let mut msg = relay.next().await.ok_or(SignError::MissingMessage)?;
-        let msg = match Message::from_buffer(&mut msg) {
-            Ok(msg) => msg,
-            _ => continue,
-        };
-
-        check_abort_message(setup, abort_tags, &msg)?;
-
-        let (msg, party_id) = match decode_signed_message::<T>(&mut tags, msg, setup) {
-            Ok((msg, party_id)) => (msg, party_id),
-            Err(InvalidMessage::RecvError) => continue,
-            Err(InvalidMessage::InvalidSignature) => continue,
-            _ => todo!(),
-        };
-
-        handler(msg, party_id)?;
-    }
-
-    Ok(())
+    h.finalize().into()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    use derivation_path::DerivationPath;
-    use k256::AffinePoint;
-    use rand::seq::SliceRandom;
     use tokio::task::JoinSet;
 
     use sl_mpc_mate::coord::SimpleMessageRelay;
 
-    use crate::keygen::gen_keyshares;
-    use crate::setup::{sign::*, SETUP_MESSAGE_TAG};
-
-    fn setup_dsg(
-        pk: &AffinePoint,
-        shares: &[Keyshare],
-        chain_path: &DerivationPath,
-    ) -> Vec<(ValidatedSetup, Seed)> {
-        let mut rng = rand::thread_rng();
-
-        let instance = InstanceId::from(rng.gen::<[u8; 32]>());
-
-        // signing key to sing the setup message
-        let setup_sk = SigningKey::from_bytes(&rng.gen());
-        let setup_vk = setup_sk.verifying_key();
-        let setup_pk = setup_vk.to_bytes();
-
-        let setup_msg_id = MsgId::new(&instance, &setup_pk, None, SETUP_MESSAGE_TAG);
-
-        let t = shares[0].threshold as usize;
-
-        // make sure that first share has rank 0
-        assert_eq!(shares[0].rank_list[0], 0);
-
-        let mut shares = shares.to_vec();
-
-        // Always use the first share with rank 0, and shuffle the rest.
-        shares[1..].shuffle(&mut rng);
-
-        // a signing key for each party.
-        let party_sk: Vec<SigningKey> =
-            std::iter::repeat_with(|| SigningKey::from_bytes(&rng.gen()))
-                .take(t)
-                .collect();
-
-        let mut setup = (0..t)
-            .fold(
-                SetupBuilder::new(pk).chain_path(Some(chain_path)),
-                |setup, p| setup.add_party(party_sk[p].verifying_key()),
-            )
-            .with_hash(HashBytes::new([1; 32]))
-            .build(&setup_msg_id, 100, &setup_sk)
-            .unwrap();
-
-        party_sk
-            .into_iter()
-            .zip(shares)
-            .map(|(party_sk, share)| {
-                ValidatedSetup::decode(&mut setup, &instance, &setup_vk, party_sk, |_| Some(share))
-                    .unwrap()
-            })
-            .map(|setup| (setup, rng.gen()))
-            .collect::<Vec<_>>()
-    }
+    use crate::{
+        keygen::utils::gen_keyshares,
+        sign::{setup_dsg, setup_finish_sign},
+    };
 
     #[tokio::test(flavor = "multi_thread")]
     async fn s2x2() {
@@ -885,11 +842,10 @@ mod tests {
 
         let shares = gen_keyshares(2, 2, Some(&[0, 0])).await;
 
-        let pk = shares[0].public_key.to_affine();
-        let chain_path = "m".parse().unwrap();
+        let chain_path = "m";
 
         let mut parties = JoinSet::new();
-        for (setup, seed) in setup_dsg(&pk, &shares, &chain_path).into_iter() {
+        for (setup, seed) in setup_dsg(None, &shares, chain_path) {
             parties.spawn(run(setup, seed, coord.connect()));
         }
 
@@ -910,11 +866,14 @@ mod tests {
 
         let shares = gen_keyshares(2, 3, Some(&[0, 1, 1])).await;
 
-        let pk = shares[0].public_key.to_affine();
-        let chain_path = "m".parse().unwrap();
+        let vk =
+            VerifyingKey::from_affine(shares[0].public_key().to_affine())
+                .unwrap();
+
+        let chain_path = "m";
 
         let mut parties = JoinSet::new();
-        for (setup, seed) in setup_dsg(&pk, &shares, &chain_path).into_iter() {
+        for (setup, seed) in setup_dsg(None, &shares[0..2], chain_path) {
             parties.spawn(run(setup, seed, coord.connect()));
         }
 
@@ -925,7 +884,51 @@ mod tests {
                 println!("error {err:?}");
             }
 
-            let _fini = fini.unwrap();
+            let (sign, recid) = fini.unwrap();
+
+            let hash = [1u8; 32];
+
+            let recid2 =
+                RecoveryId::trial_recovery_from_prehash(&vk, &hash, &sign)
+                    .unwrap();
+
+            assert_eq!(recid, recid2);
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn s2x3_all_shares() {
+        let coord = SimpleMessageRelay::new();
+
+        let shares = gen_keyshares(2, 3, Some(&[0, 1, 1])).await;
+
+        let vk =
+            VerifyingKey::from_affine(shares[0].public_key().to_affine())
+                .unwrap();
+
+        let chain_path = "m";
+
+        let mut parties = JoinSet::new();
+        for (setup, seed) in setup_dsg(None, &shares, chain_path) {
+            parties.spawn(run(setup, seed, coord.connect()));
+        }
+
+        while let Some(fini) = parties.join_next().await {
+            let fini = fini.unwrap();
+
+            if let Err(ref err) = fini {
+                println!("error {err:?}");
+            }
+
+            let (sign, recid) = fini.unwrap();
+
+            let hash = [1u8; 32];
+
+            let recid2 =
+                RecoveryId::trial_recovery_from_prehash(&vk, &hash, &sign)
+                    .unwrap();
+
+            assert_eq!(recid, recid2);
         }
     }
 
@@ -935,12 +938,65 @@ mod tests {
 
         let shares = gen_keyshares(3, 5, Some(&[0, 1, 1, 1, 1])).await;
 
-        let pk = shares[0].public_key.to_affine();
-        let chain_path = "m".parse().unwrap();
+        let vk =
+            VerifyingKey::from_affine(shares[0].public_key().to_affine())
+                .unwrap();
+
+        let chain_path = "m";
 
         let mut parties = JoinSet::new();
-        for (setup, seed) in setup_dsg(&pk, &shares, &chain_path).into_iter() {
+        for (setup, seed) in setup_dsg(None, &shares[0..3], chain_path) {
             parties.spawn(run(setup, seed, coord.connect()));
+        }
+
+        while let Some(fini) = parties.join_next().await {
+            let fini = fini.unwrap();
+
+            if let Err(ref err) = fini {
+                println!("error {err:?}");
+            }
+
+            let (sign, recid) = fini.unwrap();
+
+            let hash = [1u8; 32];
+
+            let recid2 =
+                RecoveryId::trial_recovery_from_prehash(&vk, &hash, &sign)
+                    .unwrap();
+
+            assert_eq!(recid, recid2);
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn pre2x3() {
+        let shares = gen_keyshares(2, 3, Some(&[0, 1, 1])).await;
+        let chain_path = "m";
+
+        let coord = SimpleMessageRelay::new();
+        let mut parties = JoinSet::new();
+
+        for (setup, seed) in setup_dsg(None, &shares[0..2], chain_path) {
+            parties.spawn(pre_signature(setup, seed, coord.connect()));
+        }
+
+        let mut pre_sign = vec![];
+
+        while let Some(fini) = parties.join_next().await {
+            let fini = fini.unwrap();
+
+            if let Err(ref err) = fini {
+                println!("error {err:?}");
+            }
+
+            pre_sign.push(fini.unwrap())
+        }
+
+        let coord = SimpleMessageRelay::new();
+        let mut parties = JoinSet::new();
+
+        for setup in setup_finish_sign(pre_sign) {
+            parties.spawn(finish(setup, coord.connect()));
         }
 
         while let Some(fini) = parties.join_next().await {

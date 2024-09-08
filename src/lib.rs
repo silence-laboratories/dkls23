@@ -1,3 +1,6 @@
+// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
+// This software is licensed under the Silence Laboratories License Agreement.
+
 //! DKLs23 rust implementation
 #![deny(missing_docs, unsafe_code)]
 
@@ -16,45 +19,19 @@ pub mod setup;
 /// Misc protocol helper functions.
 pub mod proto;
 
-/// Utilities
-pub mod utils {
-    use k256::ecdsa::{signature::hazmat::PrehashVerifier, Signature, VerifyingKey};
-
-    /// Parse the raw signature (r, s) into a Signature object.
-    pub fn parse_raw_sign(r: &[u8], s: &[u8]) -> Result<Signature, k256::ecdsa::Error> {
-        // Pad r and s to 32 bytes
-        let mut raw_sign = [0u8; 64];
-
-        let r_pad = 32 - r.len();
-        let s_pad = 32 - s.len();
-
-        raw_sign[r_pad..32].copy_from_slice(r);
-        raw_sign[32 + s_pad..64].copy_from_slice(s);
-
-        Signature::try_from(raw_sign.as_slice())
-    }
-
-    /// Verify the ecdsa signature given the message hash, r, s and public key.
-    /// # ⚠️ Security Warning
-    /// If prehash is something other than the output of a cryptographically secure hash function,
-    /// an attacker can potentially forge signatures by solving a system of linear equations.
-    pub fn verify_final_signature(
-        message_hash: &[u8],
-        sign: &Signature,
-        pubkey_bytes: &[u8],
-    ) -> Result<(), k256::ecdsa::Error> {
-        VerifyingKey::from_sec1_bytes(pubkey_bytes)?.verify_prehash(message_hash, sign)
-    }
-}
-
 /// Seed for our RNG
 pub type Seed = <ChaCha20Rng as SeedableRng>::Seed;
 
-///
-#[derive(Debug)]
-pub struct BadPartyIndex;
+/// Key Export related functions and structs
+pub mod key_export;
+/// Key Import related functions and structs
+pub mod key_import;
 
 pub(crate) mod pairs;
 
 /// Version of domain labels
 pub const VERSION: u16 = 1;
+
+pub use k256;
+pub use sl_mpc_mate::coord::{MessageSendError, Relay};
+pub use sl_mpc_mate::message::{InstanceId, MsgId};
