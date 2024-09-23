@@ -70,227 +70,37 @@ dkls23::sign::dsg::combine_partial_signature()
 
 Please refer to the cargo-generated documentation for information on their usage.
 
-
-## crates/msg-relay-svc
-
-The DKLs23 algorithm has a complex communication flow. At times, all parties need to exchange messages with a central message broker; other times, they need to be able to communicate in a peer-to-peer manner. The communication structure is not rigorously defined and will change from run to run - sessions will require differing amounts of p2p communications. In order to handle this, a generalized message broker has been created that allows highly flexible messaging within a network.
-
-This is a driver for a simple implementation of a message relay service. It handles both peer-to-peer communications (defined when it is invoked) and broadcasts from a central coordinator, and by temporarily caching messages in volatile memory, can act as a message buffer for devices with unreliable connections (e.g. mobile phones).
-
-Broadly speaking, it follows something analogous to a pub/sub model, but without the "sub" aspect, and with some custom logic to allow for party identities, and for specific messages to be requested from specific entities.
-Rather than subscribing to a channel, parties request a specific message by constructing a message ID from the hash of the sender, receiver (if any), a message tag (e.g. "keygen message 4", or something similar), and an instance ID. If the corresponding message exists with the relay, it is returned.
-
-A few examples how to run it:
-
-```shell
-# Default options
-cargo run -p msg-relay-svc
-
-# or, with some trace output
-RUST_LOG=info cargo run -p msg-relay-svc
-
-# and listen on more then one addr:port
-cargo run -p msg-relay-svc -- \
-  --listen 0.0.0.0:8080 \
-  --peer ws://localhost:8081/v1/msg-replay
-```
-Option `--listen` understands both IPv4 and IPv6 addresses.
-
-Option `--peer` defines a peer instance. If the instance receives an ASK
-message and there is no corresponding ready message then it forwards the ASK
-to all peers.
-
-## crates/msg-relay
-
-A reusable reference implementation of a message relay.
-`msg-relay-svc` is built using this one.
-
-## crates/msg-releay-client
-
-This is client library to access message relay service.
-
-An implementation of `sl_mpc_mate::message::Relay` trait.
-
-## crates/dkls-party
-
-This command line utility to execute all steps of distributed
-key generation (DKG) and distributed signature generation (DSG).
-Invoking this handles the complete process, and returns the output.
-
-The simplest way to build and run it would be:
-
-```shell
-cargo run -p dkls-party -q --release -- --help
-```
-
-The following scripts invoke the DKG and DSG components as a script -
-for more information on how exactly this is done, we recommend
-inspecting these scripts directly.
-
-### crates/dkls-party/scripts/dkg.sh
-
-This is a helper script to generate all the required keys for a party,
-create an initial message (a setup message), execute the distributed
-key generation and save the resulting keyshares to files.
-
-```shell
-# create a directory for keyshares and various addtional files
-mkdir ./data
-
-# we assume that msg-relay-svc is running on this machine and
-# it listens on 127.0.0.1:8080 (this is default)
-
-# the following command will execute distributed key generation
-#
-# N=5 - number of participants
-# T=3 - theshold
-#
-# show trace output as much as possible and place all data files
-# into directory `./data`
-#
-RUST_LOG=debug DEST=./data ./crates/dkls-party/scripts/dkg.sh 5 3
-
-# a last line of output pf dsg.sh will be public key of new key
-
-# make sure there are keyshares. Should be one for each party
-
-ls -l ./data/keyshare.*
-
-```
-
-### crates/dkls-party/dsg.sh
-
-We generated key, now we are ready to generate a signature with it.
-
-```shell
-# we will use ./data directory populated by dkg.sh script
-
-# This command will generate a signature for message "test"
-# using first 3 keyshares, parties 0, 1, and 2.
-#
-RUST_LOG=debug DEST=./data ./crates/dkls-party/scripts/dsg.sh "test" 0 1 2
-```
-
-Please, read the comments in these scripts to get more details.
-
-## Run an example of the full system.
-
-### Build docker image
-
-To build the docker image for a `dkls-party`, you will need a personal
-access token from GitLab. Give it read access to repositories, and
-store it in a text file somewhere on your system. Then, you can build
-the image with the following command:
-
-```shell
-docker build -t dkls-party \
-    --secret id=token,src=/path/to/file/containing/gitlab-token \
-    .
-```
-Make sure you replace the `/path/to/file/containing/gitlab-token` with the actual path to your token file.
-
-This image contains both an instance of `dkls-party`, and `msg-relay-svc` to facilitate communications.
-
-### Start "all cloud nodes" MPC network
-
-The `docker-compose.yml` file is pre-configured for 3 nodes.
-
-```shell
-docker-compose up -d
-```
-This command will start set of services.
-
-Three instances of "cloud nodes" Each instance represents a
-participant in an MPC network. In the actual system, one node could be
-replaced by a load balancer and set (most likely dynamic) of the
-computational node.
-
-Three instances of `msg-relay-svc`, one for each MPC network
-participant.  Each computational node is configured to connect to its
-instance of `msg-relay-svc.` Each message relay instance is configured
-to connect to two others as its peer relay.
-
-The last service is an instance of `msg-relay-svc` to receive setup
-messages. It is a peer for all other message relay services, but all
-other services are not peer for this instance.
-
-### Generate distributed key
-
-To trigger the DKG session, a script is provided.
-```shell
-./crates/dkls-party/scripts/dkg-setup.sh 3 2
-```
-
-This will generate distributed key and print the resulting public key.
-
-This command will generate a setup message for key generation and
-publish it to the designated message relay instance.
-
-Then, it will contact all computation nodes and send them the instance ID.
-This is signal to start distributed key generation, and from there the nodes
-will communicate directly with one another to carry out the protocol.
-
-### Generate signature
-
-```shell
-./crates/dkls-party/scripts/dsg-setup.sh \
-   <public key> \
-   "message to sign" \
-   0 1
-```
-
-The command above will trigger the nodes to generate a signature,
-and print it to the console.
-
-## Configuration
-
-The library uses two thread pools. One is controlled by variable
-`RAYON_NUM_THREADS` and another one by `TOKIO_WORKER_THREADS`. Sum of
-these numbers should match a number of CPU cores available for an
-instance of a service.
-
-# BIP32: Non-Hardened Derivation
-To sign a message using the key derived from the master key_share using the chain path such as m/0/1/42 you can do as follows:
-
-Сreate chain_path variable
-```rust
-let chain_path: DerivationPath = "m/0/1/42".parse().unwrap();
-```
-and use it to create a ```ValidatedSetup``` structure and create a signature.
-For more information see the example ```./examples/dsg.rs```
-```
-cargo run --example dsg --release
-```
-
-## SL-Demo web site
-
-### Wasm bindings.
-
-SL-Demo uses Wasm bindings. To building them local use the following
-commands:
-
-```shell
-rustup target add wasm32-unknown-unknown
-cargo install wasm-opt
-cargo install wasm-pack
-wasm-pack build -t web wrapper/wasm
-```
-
-The last command runs the build and put NPM package at wrapper/wasm/pkg.
-
-### Building sl-demo
-
-```shell
-cd wrapper/wasm/demo
-npm install
-```
-
-### Run local sl-demo
-Assuming that MPC network is started by docker-compose-local.yaml,
-now we could run local dev server.
-
-```shell
-env DKLS_LOCAL=yes npm run dev
-```
-
-Open http://localhost:5173/ and follow instructions.
+# Summary of Changes After Security Audit
+
+## Setup Messages
+
+The `run()` functions are now generic over the setup message type.
+All setup message types must implement the trait
+`ProtocolParticipant`, which contains associated types that define how
+to sign and verify broadcast messages.
+
+## Message Serialization
+
+We implemented what we call zero-copy message serialization. We
+redefined all messages sent between parties and their components to be
+arrays of bytes. This transformation allows us to safely cast a byte
+slice `&[u8]` into a reference to some message structure if the sizes
+are equal.
+
+This allows us to implement in-place message construction. We allocate
+a memory buffer of an appropriate size, take a mutable reference to
+some message structure, and pass it to a message constructor. Then we
+calculate the message signature or encrypt the message in place
+without any extra memory copying.
+
+This provides not only memory efficiency but also more secure code
+because we have exactly one copy of secret material in memory and
+overwrite it with in-place encryption.
+
+Key share representation also uses the same technique. We allocate a
+memory buffer for the key share at the beginning of the key generation
+execution and fill it piece by piece. This allows us to avoid extra
+memory copies.
+
+Key share for a 3-party case is about 130kb; messages are: 16kb, 37kb,
+and 49kb.
