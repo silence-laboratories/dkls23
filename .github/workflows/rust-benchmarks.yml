@@ -12,7 +12,9 @@ jobs:
   benchmark:
     name: Run Rust benchmark example
     runs-on: ubuntu-latest
-    working-directory: ./crates/dkls-metrics/benches
+    defaults:
+      run:
+        working-directory: ./crates/dkls-metrics/benches
     steps:
       - uses: actions/checkout@v4
       - run: rustup toolchain update nightly && rustup default nightly
