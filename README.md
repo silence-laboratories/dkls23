@@ -44,77 +44,144 @@ The repository implements threshold ECDSA signatures implementing DKLs23 protoco
 ### Detailed Metrics
 `cargo run -p dkls-metrics -r -- dkg --n 3 --t 2 --dsg
 `
-## Protocols
+##  Crates structure
 
+### Protocols 
 
 <table>
   <tr>
     <td><b> Name </b></td>
     <td><b> Reference </b></td>
     <td><b> Code </b></td>
+    <td><b> Audited </b></td>
+
   </tr>
   <tr>
     <td>DKG</td>
     <td><a href="https://eprint.iacr.org/2022/374.pdf">paper</a></td>
     <td><a href="src/keygen/dkg.rs">code</a></td>
+    <td>Yes</td>
+
   </tr>
   <tr>
     <td>DSG</td>
     <td><a href="https://eprint.iacr.org/2023/765.pdf">paper</a></td>
     <td><a href="src/sign/dsg.rs">code</a></td>
+    <td>Yes</td>
+
   </tr>
   <tr>
     <td>Refresh</td>
     <td>reference</td>
     <td><a href="src/keygen/key_refresh.rs">code</a></td>
+    <td>Yes</td>
+
   </tr>
   <tr>
     <td>Import</td>
     <td><a href="sss"></a>reference</td>
     <td><a href="/src/key_import.rs">code</a></td>
+    <td>No</td>
+
   </tr>
   <tr>
     <td>Export</td>
     <td>reference</td>
     <td><a href="/src/key_export.rs">code</a></td>
+    <td>No</td>
+
   </tr>
 <tr>
     <td>Quorum Change</td>
     <td><a href="https://github.com/silence-laboratories/dkls23/blob/core-after-audit/docs/dwtss.pdf">reference</a></td>
     <td><a href="/src/keygen/quorum_change.rs">code</a></td>
+    <td>No</td>
+
   </tr>
 <tr>
     <td>Migration</td>
     <td>reference</td>
     <td><a href="/src/keygen/migration.rs">code</a></td>
+    <td>No</td>
+
   </tr>
 
 </table>
 
-## Primitives
 
+### Primitives
 
 <table>
   <tr>
     <td><b> Name </b></td>
     <td><b> Reference </b></td>
     <td><b> Code </b></td>
+    <td><b> Audited </b></td>
+
   </tr>
   <tr>
     <td>1-2 OT</td>
     <td><a href="https://eprint.iacr.org/2019/706.pdf">paper</a></td>
     <td><a href="https://github.com/silence-laboratories/sl-crypto/blob/main/crates/sl-oblivious/src/endemic_ot.rs">code</a></td>
+    <td>Yes</td>
+
   </tr>
   <tr>
     <td>Base OT</td>
     <td><a href="https://eprint.iacr.org/2015/546.pdf">paper</a></td>
     <td><a href="https://github.com/silence-laboratories/sl-crypto/blob/main/crates/sl-oblivious/src/soft_spoken/soft_spoken_ot.rs">code</a></td>
-  </tr>
+    <td>Yes</td>
+  
+</tr>
   <tr>
     <td>Extended OT</td>
     <td><a href="https://eprint.iacr.org/2022/192.pdf">paper</a></td>
     <td><a href="https://github.com/silence-laboratories/sl-crypto/tree/main/crates/sl-oblivious/src/soft_spoken">code</a></td>
+    <td>Yes</td> 
+
+</tr>
+  <tr>
+    <td>Polynomial Arithmetics</td>
+    <td>reference</td>
+    <td><a href="https://github.com/silence-laboratories/sl-crypto/blob/main/crates/sl-mpc-mate/src/math.rs">code</a></td>
+    <td>Yes</td>
+</tr>
+ <tr>
+    <td>Matrix Arithmetics</td>
+    <td>reference</td>
+    <td><a href="https://github.com/silence-laboratories/sl-crypto/blob/main/crates/sl-mpc-mate/src/matrix.rs
+">code</a></td>
+    <td>Yes</td>
+</tr>
+</table>
+
+### E2E Security
+
+<table>
+  <tr>
+    <td><b> Name </b></td>
+    <td><b> Code </b></td>
+    <td><b> Audited </b></td>
+
   </tr>
+  <tr>
+    <td>Key Agreement: x25519+Curve25519</td>
+    <td><a href="https://github.com/silence-laboratories/dkls23/blob/core-after-audit/src/proto/scheme.rs">code</a></td>
+    <td>Yes</td>
+
+  </tr>
+  <tr>
+    <td>Authenticated Encryption: ChaCha20Poly1305</td>
+    <td><a href="https://github.com/silence-laboratories/dkls23/blob/core-after-audit/src/proto/encrypted.rs">code</a></td>
+    <td>Yes</td>
+
+</tr>
+  <tr>
+    <td>Sender authenticity: EdDSA+Curve25519</td>
+    <td><a href="https://github.com/silence-laboratories/dkls23/blob/core-after-audit/src/proto/signed.rs">code</a></td>
+    <td>Yes</td> 
+
+</tr>
 
 </table>
 
