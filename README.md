@@ -1,11 +1,14 @@
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+# Table of Contents
 
 - [DKLs23](#dkls23)
 - [Functionality](#functionality)
 - [Build](#build)
 - [Tests](#tests)
-- [Bench](#bench)
+- [Benches](#benches)
+  - [Criterion](#criterion)
+  - [Detailed Metrics](#detailed-metrics)
 - [Protocols](#protocols)
 - [Primitives](#primitives)
 - [Summary of Changes After Security Audit](#summary-of-changes-after-security-audit)
@@ -31,13 +34,14 @@ The repository implements threshold ECDSA signatures implementing DKLs23 protoco
 ## Tests
 `cargo test
 `
-## Bench
-
+## Benches
+### Criterion
 `cd crates/dkls-metrics/benches`
 
 `cargo bench`
-
-
+### Detailed Metrics
+`cargo run -p dkls-metrics -r -- dkg --n 3 --t 2 --dsg
+`
 ## Protocols 
 
 
@@ -86,18 +90,18 @@ The repository implements threshold ECDSA signatures implementing DKLs23 protoco
   </tr>
   <tr>
     <td>1-2 OT</td>
-    <td><a href=" https://eprint.iacr.org/2019/706.pdf">paper</a></td>
-    <td><a href="src/keygen/dkg.rs">code</a></td>
+    <td><a href="https://eprint.iacr.org/2019/706.pdf">paper</a></td>
+    <td><a href="https://github.com/silence-laboratories/sl-crypto/blob/main/crates/sl-oblivious/src/endemic_ot.rs">code</a></td>
   </tr>
   <tr>
     <td>Base OT</td>
     <td><a href="https://eprint.iacr.org/2015/546.pdf">paper</a></td>
-    <td><a href="src/sign/dsg.rs">code</a></td>
+    <td><a href="https://github.com/silence-laboratories/sl-crypto/blob/main/crates/sl-oblivious/src/soft_spoken/soft_spoken_ot.rs">code</a></td>
   </tr>
   <tr>
     <td>Extended OT</td>
     <td><a href="https://eprint.iacr.org/2022/192.pdf">paper</a></td>
-    <td><a href="src/keygen/key_refresh.rs.rs">code</a></td>
+    <td><a href="https://github.com/silence-laboratories/sl-crypto/tree/main/crates/sl-oblivious/src/soft_spoken">code</a></td>
   </tr>
 
 </table>
