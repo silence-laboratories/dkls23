@@ -24,9 +24,11 @@ The repository implements threshold ECDSA signatures implementing DKLs23 protoco
 
 - Distributed Key Generation (DKG)
 - Distributed Signature Generation (DSK)
-- Proactive Security with Key rotation/refresh
-- Import a singleton key and distributed among parties
+- Key refresh
+- Import a singleton key and distribute it among parties
 - Export a threshold key to a singleton one
+- Quorum Change: change dynamically the set of participants adding or removing
+- Migration: Migrate from compatible curve protocols like: GG** or CMP to DKLs23
 
 ## Build
 `cargo build
@@ -42,7 +44,7 @@ The repository implements threshold ECDSA signatures implementing DKLs23 protoco
 ### Detailed Metrics
 `cargo run -p dkls-metrics -r -- dkg --n 3 --t 2 --dsg
 `
-## Protocols 
+## Protocols
 
 
 <table>
@@ -73,8 +75,18 @@ The repository implements threshold ECDSA signatures implementing DKLs23 protoco
   </tr>
   <tr>
     <td>Export</td>
-    <td><a href="sss">reference</a></td>
+    <td>reference</td>
     <td><a href="/src/key_export.rs">code</a></td>
+  </tr>
+<tr>
+    <td>Quorum Change</td>
+    <td><a href="https://github.com/silence-laboratories/dkls23/blob/core-after-audit/docs/dwtss.pdf">reference</a></td>
+    <td><a href="/src/keygen/quorum_change.rs">code</a></td>
+  </tr>
+<tr>
+    <td>Migration</td>
+    <td>reference</td>
+    <td><a href="/src/keygen/migration.rs">code</a></td>
   </tr>
 
 </table>
