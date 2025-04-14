@@ -1,0 +1,11 @@
+.cargo
+target/
+dev/
+.git
+.env
+Dockerfile
+.dockerignore
+**/node_modules/
+wrapper/wasm/pkg
+*.node
+./data/keyshare*
