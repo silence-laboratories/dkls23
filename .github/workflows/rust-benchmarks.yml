@@ -12,11 +12,12 @@ jobs:
   benchmark:
     name: Run Rust benchmark example
     runs-on: ubuntu-latest
+    working-directory: ./crates/dkls-metrics/benches
     steps:
       - uses: actions/checkout@v4
       - run: rustup toolchain update nightly && rustup default nightly
       - name: Run benchmark
-        run: cd crates/dkls-metrics/benches && cargo +nightly bench | tee ../../../output.txt
+        run:  cargo +nightly bench | tee output.txt
 
       - name: Create benchmarks
         uses: benchmark-action/github-action-benchmark@v1
