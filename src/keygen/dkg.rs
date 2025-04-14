@@ -1,8 +1,9 @@
 // Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
 
-//! Distributed key generation protocol.
-//! Based on Protocol 6.1 https://eprint.iacr.org/2022/374.pdf
+//! This module implements the distributed key generation protocol based on Protocol 6.1 from
+//! the paper "Efficient Multi-Party Computation with Dispute Resolution" <https://eprint.iacr.org/2022/374.pdf> and OT parameters
+//! from here "Threshold ECDSA in Three Rounds" <https://eprint.iacr.org/2023/765.pdf>
 
 use k256::{
     elliptic_curve::{
@@ -54,11 +55,15 @@ where
     f()
 }
 
-/// Seed for our RNG
+/// Seed type for the ChaCha20 random number generator
 pub type Seed = <ChaCha20Rng as SeedableRng>::Seed;
 
 use crate::pairs::Pairs;
 
+/// Data structure for key refresh operations
+///
+/// This struct contains the necessary information for performing key refresh operations,
+/// including additive shares, lost key share information, and expected public key values.
 pub(crate) struct KeyRefreshData {
     /// Additive share of participant_i (after interpolation)
     /// \sum_{i=0}^{n-1} s_i_0 = private_key
@@ -66,18 +71,44 @@ pub(crate) struct KeyRefreshData {
     /// and wants to recover it during key_refresh
     pub(crate) s_i_0: Scalar,
 
-    /// list of participants ids who lost their key_shares
-    /// should be in range [0, n-1]
+    /// List of participant IDs who lost their key shares
+    /// Should be in range [0, n-1]
     pub(crate) lost_keyshare_party_ids: Vec<u8>,
 
-    /// expected public key for key_refresh
+    /// Expected public key for key refresh
     pub(crate) expected_public_key: ProjectivePoint,
 
-    /// root_chain_code
+    /// Root chain code for key derivation
     pub(crate) root_chain_code: [u8; 32],
 }
 
-/// Execute DKG protocol.
+/// Executes the Distributed Key Generation protocol
+///
+/// This is the main entry point for the DKG protocol. It orchestrates the entire process
+/// of generating a distributed key among the participants.
+///
+/// # Type Parameters
+///
+/// * `T` - A type implementing the `KeygenSetupMessage` trait
+/// * `R` - A type implementing the `Relay` trait for message communication
+///
+/// # Arguments
+///
+/// * `setup` - The protocol setup configuration
+/// * `seed` - The random seed for cryptographic operations
+/// * `relay` - The message relay for communication between parties
+///
+/// # Returns
+///
+/// * `Ok(Keyshare)` - The generated key share if the protocol succeeds
+/// * `Err(KeygenError)` - If the protocol fails
+///
+/// # Errors
+///
+/// This function may return the following errors:
+/// * `KeygenError::AbortProtocol` - If the protocol is aborted by a participant
+/// * `KeygenError::SendMessage` - If there's an error sending messages
+/// * Other `KeygenError` variants for various protocol failures
 pub async fn run<T, R>(
     setup: T,
     seed: Seed,
@@ -108,17 +139,34 @@ where
     result
 }
 
-/// Implementation of DKG protocol.
+/// Internal implementation of the DKG protocol
 ///
-/// `setup` contains all parameters, including verfication keys of all
-/// parties and our own signing key.
+/// This function implements the core logic of the DKG protocol, including:
+/// - Polynomial generation and commitment
+/// - Share distribution and verification
+/// - Oblivious transfer setup
+/// - Final key share computation
 ///
-/// `seed` is used to initialize instance of ChaCha20Rng random number
-/// generator. This generator used to generate *ALL* random values for DKG.
+/// # Type Parameters
 ///
-/// And optional `key_refresh_data` is allow to reused the function for key
-/// rotation protocol.
+/// * `T` - A type implementing the `KeygenSetupMessage` trait
+/// * `R` - A type implementing the `Relay` trait
 ///
+/// # Arguments
+///
+/// * `setup` - The protocol setup configuration
+/// * `seed` - The random seed for cryptographic operations
+/// * `relay` - The message relay for communication
+/// * `key_refresh_data` - Optional data for key refresh operations
+///
+/// # Returns
+///
+/// * `Ok(Keyshare)` - The generated key share if the protocol succeeds
+/// * `Err(KeygenError)` - If the protocol fails
+///
+/// # Errors
+///
+/// This function may return various `KeygenError` variants depending on the failure mode.
 #[allow(non_snake_case)]
 pub(crate) async fn run_inner<T, R>(
     setup: T,
@@ -680,6 +728,23 @@ where
     Ok(keyshare)
 }
 
+/// Computes a commitment hash for the DKG protocol
+///
+/// This function creates a cryptographic commitment for a participant's polynomial
+/// and other protocol parameters.
+///
+/// # Arguments
+///
+/// * `session_id` - The session identifier
+/// * `party_id` - The ID of the participant
+/// * `rank` - The rank of the participant
+/// * `x_i` - The x-coordinate for the participant's share
+/// * `big_f_i_vec` - The vector of polynomial commitments
+/// * `r_i` - Random value for the commitment
+///
+/// # Returns
+///
+/// A 32-byte hash representing the commitment
 fn hash_commitment(
     session_id: &SessionId,
     party_id: usize,
@@ -703,6 +768,19 @@ fn hash_commitment(
     hasher.finalize().into()
 }
 
+/// Computes a secondary commitment hash
+///
+/// This function creates a commitment hash for chain code and session information.
+///
+/// # Arguments
+///
+/// * `session_id` - The session identifier
+/// * `chain_code_sid` - The chain code session identifier
+/// * `r_i` - Random value for the commitment
+///
+/// # Returns
+///
+/// A 32-byte hash representing the commitment
 fn hash_commitment_2(
     session_id: &[u8],
     chain_code_sid: &[u8; 32],
@@ -718,6 +796,20 @@ fn hash_commitment_2(
     hasher.finalize().into()
 }
 
+/// Generates a session ID for base oblivious transfer
+///
+/// This function creates a unique session ID for the base oblivious transfer
+/// protocol between two participants.
+///
+/// # Arguments
+///
+/// * `sender_id` - The ID of the sender
+/// * `receiver_id` - The ID of the receiver
+/// * `session_id` - The base session identifier
+///
+/// # Returns
+///
+/// A new session ID for the oblivious transfer protocol
 pub(crate) fn get_base_ot_session_id(
     sender_id: u8,
     receiver_id: u8,
@@ -737,6 +829,20 @@ pub(crate) fn get_base_ot_session_id(
     )
 }
 
+/// Generates a session ID for all-but-one protocol
+///
+/// This function creates a unique session ID for the all-but-one protocol
+/// between two participants.
+///
+/// # Arguments
+///
+/// * `sender_id` - The ID of the sender
+/// * `receiver_id` - The ID of the receiver
+/// * `session_id` - The base session identifier
+///
+/// # Returns
+///
+/// A new session ID for the all-but-one protocol
 pub(crate) fn get_all_but_one_session_id(
     sender_id: usize,
     receiver_id: usize,
@@ -756,6 +862,22 @@ pub(crate) fn get_all_but_one_session_id(
     )
 }
 
+/// Verifies discrete logarithm proofs
+///
+/// This function verifies the discrete logarithm proofs provided by participants
+/// to ensure the correctness of their polynomial commitments.
+///
+/// # Arguments
+///
+/// * `final_session_id` - The final session identifier
+/// * `party_id` - The ID of the participant
+/// * `proofs` - The vector of discrete logarithm proofs
+/// * `points` - The vector of points to verify against
+///
+/// # Returns
+///
+/// * `Ok(())` - If all proofs are valid
+/// * `Err(KeygenError)` - If any proof is invalid
 fn verify_dlog_proofs(
     final_session_id: &[u8],
     party_id: usize,
@@ -785,6 +907,31 @@ fn verify_dlog_proofs(
     Ok(())
 }
 
+/// Broadcasts four messages to all participants
+///
+/// This function handles the broadcasting of four different message types
+/// to all participants in the protocol.
+///
+/// # Type Parameters
+///
+/// * `P` - A type implementing the `ProtocolParticipant` trait
+/// * `R` - A type implementing the `Relay` trait
+/// * `T1` - Type of the first message
+/// * `T2` - Type of the second message
+/// * `T3` - Type of the third message
+/// * `T4` - Type of the fourth message
+///
+/// # Arguments
+///
+/// * `setup` - The protocol setup configuration
+/// * `relay` - The message relay for communication
+/// * `tag` - The message tag for filtering
+/// * `msg` - Tuple containing the four messages to broadcast
+///
+/// # Returns
+///
+/// * `Ok((Vec<T1>, Vec<T2>, Vec<T3>, Vec<T4>))` - Vectors of received messages
+/// * `Err(KeygenError)` - If the broadcast fails
 pub(crate) async fn broadcast_4<P, R, T1, T2, T3, T4>(
     setup: &P,
     relay: &mut FilteredMsgRelay<R>,

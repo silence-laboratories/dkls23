@@ -5,6 +5,17 @@ edition = "2021"
 publish = false
 license-file ="LICENSE"
 
+
+[[example]]
+name = "keygen"
+
+[[example]]
+name = "sign"
+
+[[example]]
+name = "refresh"
+
+
 [features]
 default = ["multi-thread", "tracing"]
 multi-thread = ["dep:tokio", "tokio/rt-multi-thread"]

@@ -1,6 +1,30 @@
 // Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
 
+//! Cryptographic Scheme Implementation for Secure Communication
+//!
+//! This module provides the core cryptographic primitives and protocols
+//! for secure communication between parties in the DKLS23 protocol.
+//! It implements an encryption scheme that combines:
+//! - Authenticated Encryption with Associated Data (AEAD)
+//! - Key exchange using X25519
+//! - Secure key derivation
+//!
+//! # Security Properties
+//!
+//! - Forward secrecy through ephemeral key exchange
+//! - Message authentication and integrity
+//! - Nonce reuse prevention
+//! - Secure key derivation using SHA-256
+//!
+//! # Implementation Details
+//!
+//! The module provides:
+//! - `EncryptionScheme` trait defining the interface for secure communication
+//! - `AeadX25519` implementation using ChaCha20-Poly1305 for AEAD
+//! - Secure nonce generation and management
+//! - Key pair management for multiple parties
+
 #![allow(unused_imports, dead_code, unused_variables)]
 
 use std::marker::PhantomData;
@@ -18,12 +42,15 @@ use zeroize::Zeroizing;
 
 use crate::pairs::Pairs;
 
+/// Error indicating invalid public key format or operation
 #[derive(Debug)]
 pub struct PublicKeyError;
 
+/// Error indicating encryption or decryption failure
 #[derive(Debug)]
 pub struct EncryptionError;
 
+/// Type alias for a shared key used in encryption
 type SharedKey = Zeroizing<GenericArray<u8, U32>>;
 
 /// Represents an encryption scheme interface for in-place AEAD and
@@ -39,6 +66,13 @@ type SharedKey = Zeroizing<GenericArray<u8, U32>>;
 ///   The concrete type of public/private key pair and key exchange is
 ///   an implementation detail.
 ///
+/// # Security Considerations
+///
+/// Implementations must ensure:
+/// - Forward secrecy through proper key exchange
+/// - Nonce uniqueness for each encryption
+/// - Secure key derivation
+/// - Proper authentication of messages
 pub trait EncryptionScheme: Send {
     /// Return external representation of own public key
     fn public_key(&self) -> &[u8];
@@ -60,14 +94,11 @@ pub trait EncryptionScheme: Send {
     ///   This key is used in cryptographic operations to ensure that only
     ///   the intended receiver can decrypt messages encrypted with this key.
     ///
-    ///
     /// # Errors
     ///
     /// - `PublicKeyError`: An error is returned if the public key cannot be
     ///   set due to invalid formatting, an invalid receiver index, or any
-    ///   other issue encountered in the operation. The precise error variant
-    ///   provides further details on the nature of the failure.
-    ///
+    ///   other issue encountered in the operation.
     fn receiver_public_key(
         &mut self,
         receiver_index: usize,
@@ -80,13 +111,13 @@ pub trait EncryptionScheme: Send {
     /// # Parameters
     ///
     /// - `associated_data`: A byte slice containing additional
-    ///    authenticated data (AAD) that will be used to ensure the
-    ///    integrity and authenticity of the encrypted data. This data is
-    ///    not encrypted but is included in the integrity check.
+    ///   authenticated data (AAD) that will be used to ensure the
+    ///   integrity and authenticity of the encrypted data. This data is
+    ///   not encrypted but is included in the integrity check.
     ///
     /// - `buffer`: A mutable byte slice containing the plaintext data
     ///   that will be encrypted in place. Upon successful encryption,
-    ///    this buffer will contain the ciphertext data.
+    ///   this buffer will contain the ciphertext data.
     ///
     /// - `tail`: A mutable byte slice representing the trailing
     ///   segment of the data buffer that may be used to store for
@@ -101,9 +132,7 @@ pub trait EncryptionScheme: Send {
     ///
     ///   `EncryptionError` if issues arise such as missing keys,
     ///   incorrect buffer lengths, or any other problems during the
-    ///   encryption process. The error provides specific details about
-    ///   the nature of the failure.
-    ///
+    ///   encryption process.
     fn encrypt(
         &mut self,
         associated_data: &[u8],
@@ -120,8 +149,7 @@ pub trait EncryptionScheme: Send {
     /// - `associated_data`: A byte slice containing additional
     ///   authenticated data (AAD) that will be used along with the
     ///   buffer to ensure the integrity and authenticity of the
-    ///   decryption process. This data is not encrypted but plays a
-    ///   role in verifying the encrypted data.
+    ///   decryption process.
     ///
     /// - `buffer`: A mutable byte slice holding the encrypted data
     ///   that will be decrypted in place. Upon successful decryption,
@@ -141,7 +169,6 @@ pub trait EncryptionScheme: Send {
     ///   `EncryptionError` in several situations such as when the
     ///   decryption key is not found, when the input data is tampered
     ///   with or if the cryptographic verification of the AAD fails.
-    ///
     fn decrypt(
         &self,
         associated_data: &[u8],
@@ -154,22 +181,40 @@ pub trait EncryptionScheme: Send {
     fn overhead(&self) -> usize;
 }
 
-/// Counter to create a unuque nonce.
+/// Counter to create a unique nonce for encryption operations.
+///
+/// This struct maintains a counter that is used to generate unique nonces
+/// for each encryption operation. The counter is incremented for each
+/// encryption to ensure nonce uniqueness.
+///
+/// # Security Considerations
+///
+/// - The counter is 32-bit and will panic on overflow
+/// - Nonces are derived from the counter value
+/// - Each encryption operation must use a unique nonce
 #[derive(Default)]
 pub struct NonceCounter(u32);
 
 impl NonceCounter {
-    /// New counter initialized by 0.
-    fn new() -> Self {
+    /// Creates a new counter initialized to 0.
+    pub fn new() -> Self {
         Self(0)
     }
 
-    /// Increment counter.
-    fn next_nonce<S: AeadCore>(&mut self) -> Nonce<S> {
-        // In our design, we use 3-5 nonces per unique symmetric key.
-        // If the u32 counter overflows, then calling it is definitely
-        // a misuse of the counter, and it's safer to crash than reuse
-        // a nonce.
+    /// Increments the counter and returns a new nonce.
+    ///
+    /// # Type Parameters
+    ///
+    /// * `S`: The AEAD scheme type that determines the nonce size
+    ///
+    /// # Returns
+    ///
+    /// A new nonce derived from the incremented counter value
+    ///
+    /// # Panics
+    ///
+    /// Panics if the counter overflows (exceeds u32::MAX)
+    pub fn next_nonce<S: AeadCore>(&mut self) -> Nonce<S> {
         self.0 = self.0.checked_add(1).expect("nonce overflow");
 
         let mut nonce = Nonce::<S>::default();
@@ -179,8 +224,18 @@ impl NonceCounter {
     }
 }
 
-/// The implementation of EncryptionScheme that uses x25519 for key
-/// exchange and any implementation of `AeadInPlace`.
+/// Implementation of EncryptionScheme using X25519 for key exchange
+/// and any AEAD scheme for encryption.
+///
+/// This struct combines:
+/// - X25519 for key exchange
+/// - A configurable AEAD scheme for encryption
+/// - Secure nonce generation
+/// - Key pair management for multiple parties
+///
+/// # Type Parameters
+///
+/// * `S`: The AEAD scheme to use for encryption (e.g., ChaCha20Poly1305)
 pub struct AeadX25519<S> {
     secret: ReusableSecret,
     public_key: PublicKey,
@@ -191,6 +246,17 @@ pub struct AeadX25519<S> {
 
 impl<S> AeadX25519<S> {
     /// Generate a new [`AeadX25519`] with the supplied RNG.
+    ///
+    /// # Arguments
+    ///
+    /// * `rng`: A cryptographically secure random number generator
+    ///
+    /// # Returns
+    ///
+    /// A new `AeadX25519` instance with:
+    /// - A randomly generated X25519 key pair
+    /// - An initialized nonce counter
+    /// - An empty key pair store
     pub fn new(rng: &mut impl CryptoRngCore) -> Self {
         let secret = ReusableSecret::random_from_rng(rng);
         let public_key = PublicKey::from(&secret);
@@ -204,7 +270,18 @@ impl<S> AeadX25519<S> {
         }
     }
 
-    /// Create a new [`AeadX25519`] from provided `ReusableSecret`.
+    /// Create a new [`AeadX25519`] from a provided `ReusableSecret`.
+    ///
+    /// # Arguments
+    ///
+    /// * `secret`: A pre-existing X25519 secret key
+    ///
+    /// # Returns
+    ///
+    /// A new `AeadX25519` instance with:
+    /// - The provided secret key and its corresponding public key
+    /// - An initialized nonce counter
+    /// - An empty key pair store
     pub fn from_secret(secret: ReusableSecret) -> Self {
         let public_key = PublicKey::from(&secret);
 
@@ -231,14 +308,14 @@ where
         associated_data: &[u8],
         buffer: &mut [u8],
         tail: &mut [u8],
-        receiver: usize,
+        receive: usize,
     ) -> Result<(), EncryptionError> {
         if tail.len() != self.overhead() {
             return Err(EncryptionError);
         }
 
         let (key, public_key) =
-            self.pk.find_pair_or_err(receiver, EncryptionError)?;
+            self.pk.find_pair_or_err(receive, EncryptionError)?;
 
         let key = Zeroizing::new(
             Sha256::new_with_prefix(public_key)
