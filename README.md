@@ -1,15 +1,13 @@
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 
-[//]: # (**Table of Contents**  *generated with [DocToc]&#40;https://github.com/thlorenz/doctoc&#41;*)
-
 - [DKLs23](#dkls23)
 - [Functionality](#functionality)
 - [Build](#build)
 - [Tests](#tests)
 - [Bench](#bench)
-- [Articles and links](#articles-and-links)
-- [Code Structure](#code-structure)
+- [Protocols](#protocols)
+- [Primitives](#primitives)
 - [Summary of Changes After Security Audit](#summary-of-changes-after-security-audit)
   - [Setup Messages](#setup-messages)
   - [Message Serialization](#message-serialization)
