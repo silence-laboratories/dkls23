@@ -22,6 +22,7 @@ jobs:
         run:  cargo +nightly bench | tee output.txt
 
       - name: Create benchmarks
+        working-directory: ./crates/dkls-metrics/benches
         uses: benchmark-action/github-action-benchmark@v1.8.1
         with:
           name: Rust Benchmark
