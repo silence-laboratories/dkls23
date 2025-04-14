@@ -4,11 +4,12 @@
 
 - [DKLs23](#dkls23)
 - [Functionality](#functionality)
-- [Build](#build)
-- [Tests](#tests)
-- [Benches](#benches)
-  - [Criterion](#criterion)
-  - [Detailed Metrics](#detailed-metrics)
+- [Installing, Testing, Benchmarks](#installing-testing-benchmarks)
+  - [Build](#build)
+  - [Tests](#tests)
+  - [Benches](#benches)
+    - [Criterion](#criterion)
+    - [Detailed Metrics](#detailed-metrics)
 - [Crates structure](#crates-structure)
   - [Protocols](#protocols)
   - [Primitives](#primitives)
@@ -32,18 +33,19 @@ The repository implements threshold ECDSA signatures implementing DKLs23 protoco
 - Quorum Change: change dynamically the set of participants adding or removing
 - Migration: Migrate from compatible curve protocols like: GG** or CMP to DKLs23
 
-## Build
+## Installing, Testing, Benchmarks 
+### Build
 `cargo build
 `
-## Tests
+### Tests
 `cargo test
 `
-## Benches
-### Criterion
+### Benches
+#### Criterion
 `cd crates/dkls-metrics/benches`
 
 `cargo bench`
-### Detailed Metrics
+#### Detailed Metrics
 `cargo run -p dkls-metrics -r -- dkg --n 3 --t 2 --dsg
 `
 ##  Crates structure
