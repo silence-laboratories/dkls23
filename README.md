@@ -64,7 +64,7 @@ The repository implements threshold ECDSA signatures implementing DKLs23 protoco
   <tr>
     <td>Refresh</td>
     <td>reference</td>
-    <td><a href="src/keygen/key_refresh.rs.rs">code</a></td>
+    <td><a href="src/keygen/key_refresh.rs">code</a></td>
   </tr>
   <tr>
     <td>Import</td>
