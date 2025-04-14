@@ -1,10 +1,10 @@
 // Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
 
-//! Quorum change protocol
-//! Based on docs/quorum_change_protocol.txt and
-//! Protocol 7.1. Relaxed DLog Keygen https://eprint.iacr.org/2023/765.pdf
-
+//! Module for implementing the Quorum Change Protocol.
+//! The protocol supports:
+//! - Adding new participants
+//! - Removing existing participants
 use k256::{
     elliptic_curve::{group::GroupEncoding, subtle::ConstantTimeEq, Group},
     NonZeroScalar, ProjectivePoint, Scalar,
@@ -56,7 +56,37 @@ where
     f()
 }
 
-/// Execute Quorum change protocol.
+/// Executes the Quorum Change Protocol.
+///
+/// This function orchestrates the quorum change process, allowing participants to:
+/// - Add new participants to the quorum
+/// - Remove existing participants
+/// - Change the threshold value
+/// - Modify participant ranks
+///
+/// # Type Parameters
+///
+/// * `T` - A type implementing the `QuorumChangeSetupMessage` trait
+/// * `R` - A type implementing the `Relay` trait for message communication
+///
+/// # Arguments
+///
+/// * `setup` - The protocol setup configuration containing participant information
+/// * `seed` - The random seed for cryptographic operations
+/// * `relay` - The message relay for communication between parties
+///
+/// # Returns
+///
+/// * `Ok(Some(Keyshare))` - The new key share if the protocol succeeds
+/// * `Ok(None)` - If the participant is not part of the new quorum
+/// * `Err(KeygenError)` - If the protocol fails
+///
+/// # Errors
+///
+/// This function may return the following errors:
+/// * `KeygenError::AbortProtocol` - If the protocol is aborted by a participant
+/// * `KeygenError::SendMessage` - If there's an error sending messages
+/// * Other `KeygenError` variants for various protocol failures
 pub async fn run<T, R>(
     setup: T,
     seed: Seed,
@@ -87,14 +117,27 @@ where
     result
 }
 
-/// Implementation of Quorum change protocol.
+/// Internal implementation of the Quorum Change Protocol.
 ///
-/// `setup` contains all parameters, including verfication keys of all
-/// parties and our own signing key.
+/// This function contains the core logic for the quorum change protocol,
+/// handling the cryptographic operations and message exchanges between participants.
 ///
-/// `seed` is used to initialize instance of ChaCha20Rng random number
-/// generator. This generator used to generate *ALL* random values for DKG.
+/// # Type Parameters
 ///
+/// * `T` - A type implementing the `QuorumChangeSetupMessage` trait
+/// * `R` - A type implementing the `Relay` trait for message communication
+///
+/// # Arguments
+///
+/// * `setup` - The protocol setup configuration
+/// * `seed` - The random seed for cryptographic operations
+/// * `relay` - The message relay for communication between parties
+///
+/// # Returns
+///
+/// * `Ok(Some(Keyshare))` - The new key share if the protocol succeeds
+/// * `Ok(None)` - If the participant is not part of the new quorum
+/// * `Err(KeygenError)` - If the protocol fails
 #[allow(non_snake_case)]
 pub(crate) async fn run_inner<T, R>(
     setup: T,
@@ -831,6 +874,21 @@ where
     Ok(Some(new_keyshare))
 }
 
+/// Computes the hash commitment for the first round of the protocol.
+///
+/// This function generates a commitment to the polynomial coefficients
+/// and random value used in the first round of the quorum change protocol.
+///
+/// # Arguments
+///
+/// * `session_id` - The session identifier
+/// * `party_index` - The index of the party generating the commitment
+/// * `big_f_i_vec` - The polynomial commitment vector
+/// * `r1_i` - The random value for the commitment
+///
+/// # Returns
+///
+/// A 32-byte hash commitment
 fn hash_commitment_1(
     session_id: &[u8],
     party_index: usize,
@@ -850,6 +908,22 @@ fn hash_commitment_1(
     hasher.finalize().into()
 }
 
+/// Computes the hash commitment for the second round of the protocol.
+///
+/// This function generates a commitment to the share values and random
+/// value used in the second round of the quorum change protocol.
+///
+/// # Arguments
+///
+/// * `session_id` - The session identifier
+/// * `from_party_i_index` - The index of the sending party
+/// * `to_party_j_index` - The index of the receiving party
+/// * `p_i_j` - The share value being committed
+/// * `r2_i` - The random value for the commitment
+///
+/// # Returns
+///
+/// A 32-byte hash commitment
 fn hash_commitment_2(
     session_id: &[u8],
     from_party_i_index: usize,
@@ -869,10 +943,20 @@ fn hash_commitment_2(
     hasher.finalize().into()
 }
 
-/// Generate message receiver map.
+/// Processes message receivers for the quorum change protocol.
 ///
-/// Call the passed closure for each pair (msg_id, receiver)
+/// This function handles the distribution of messages to the appropriate
+/// receivers based on the protocol setup and message type.
 ///
+/// # Type Parameters
+///
+/// * `S` - A type implementing the `QuorumChangeSetupMessage` trait
+/// * `F` - A closure type for processing message receivers
+///
+/// # Arguments
+///
+/// * `setup` - The protocol setup configuration
+/// * `msg_receiver` - A closure that processes each message receiver
 pub fn message_receivers<S, F>(setup: &S, mut msg_receiver: F)
 where
     S: QuorumChangeSetupMessage<Keyshare, ProjectivePoint>,

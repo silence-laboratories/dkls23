@@ -5,7 +5,8 @@ use criterion::{criterion_group, criterion_main, Criterion};
 
 use tokio::runtime::Runtime;
 
-use dkls_metrics::{dkg, dsg, relay::MessageTrace};
+use dkls_metrics::relay::MessageTrace;
+use dkls_metrics::{dkg, dsg};
 
 fn bench_dkg(c: &mut Criterion, n: u8, t: u8) {
     let (inst, messages, shares) = {
@@ -66,6 +67,10 @@ fn bench_dsg(c: &mut Criterion, n: u8, t: u8) {
     });
 }
 
+fn dkg_2x2(c: &mut Criterion) {
+    bench_dkg(c, 2, 2);
+}
+
 fn dkg_3x2(c: &mut Criterion) {
     bench_dkg(c, 3, 2);
 }
@@ -84,6 +89,10 @@ fn dkg_20x11(c: &mut Criterion) {
 
 fn dkg_27x15(c: &mut Criterion) {
     bench_dkg(c, 27, 15);
+}
+
+fn dsg_2x2(c: &mut Criterion) {
+    bench_dsg(c, 2, 2);
 }
 
 fn dsg_3x2(c: &mut Criterion) {
@@ -114,8 +123,13 @@ criterion_group!(
         Criterion::default(); //.measurement_time(std::time::Duration::from_secs(60));
 
     targets =
-        dkg_3x2, dkg_5x3, dkg_15x9, dkg_20x11, dkg_27x15,
-        dsg_3x2, dsg_5x3, dsg_15x9, dsg_20x11, dsg_27x15,
+        dkg_2x2,dsg_2x2,
+        dkg_3x2,dsg_3x2,
+        dkg_5x3,dsg_5x3,
+        dkg_15x9,dsg_15x9,
+        dkg_20x11,dsg_20x11,
+        dkg_27x15,dsg_27x15
+
 );
 
 criterion_main!(benches);

@@ -1,6 +1,11 @@
 // Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
 
+//! Module for handling encrypted messages in the protocol.
+//! This module provides functionality for encrypting and decrypting messages
+//! with support for additional data and trailers. It uses a pluggable encryption
+//! scheme interface to allow for different encryption implementations.
+
 use std::marker::PhantomData;
 
 use bytemuck::{AnyBitPattern, NoUninit};
@@ -10,22 +15,27 @@ use sl_mpc_mate::message::*;
 
 pub use crate::proto::scheme::EncryptionScheme;
 
-/// Default encryption scheme
+/// Default encryption scheme using X25519 key exchange and ChaCha20Poly1305 for encryption.
 pub type Scheme = crate::proto::scheme::AeadX25519<ChaCha20Poly1305>;
 
-/// A wrapper for a message of type T with support for in-place
-/// encryption/decryption with additional data.
+/// A wrapper for a message of type T with support for in-place encryption/decryption.
 ///
-/// Format of encrypted message:
+/// This struct provides functionality for encrypting and decrypting messages while
+/// maintaining a specific format:
 ///
+/// ```text
 /// [ msg-hdr | additional-data | payload | trailer | tag + nonce ]
+/// ```
 ///
-/// `payload | trailer` are encrypted.
+/// Where:
+/// - `msg-hdr`: Message header containing ID, TTL, and flags
+/// - `additional-data`: Optional unencrypted data
+/// - `payload`: The encrypted external representation of type T
+/// - `trailer`: Optional encrypted variable-sized data
+/// - `tag + nonce`: Authentication tag and nonce for the encryption scheme
 ///
-/// `trailer` is a variable-sized part of the message.
-///
-/// `payload` is the external representation of `T`.
-///
+/// The `payload` and `trailer` sections are encrypted, while the header and
+/// additional data remain in plaintext.
 pub struct EncryptedMessage<T> {
     buffer: Vec<u8>,
     additional_data: usize, // size of additional-data
@@ -35,7 +45,15 @@ pub struct EncryptedMessage<T> {
 impl<T: AnyBitPattern + NoUninit> EncryptedMessage<T> {
     const T_SIZE: usize = core::mem::size_of::<T>();
 
-    /// Size of the whole message with additional data and trailer bytes.
+    /// Calculates the total size of an encrypted message.
+    ///
+    /// # Arguments
+    /// * `ad` - Size of additional data in bytes
+    /// * `trailer` - Size of trailer data in bytes
+    /// * `scheme` - The encryption scheme to use
+    ///
+    /// # Returns
+    /// The total size in bytes needed for the encrypted message
     pub fn size(
         ad: usize,
         trailer: usize,
@@ -44,8 +62,17 @@ impl<T: AnyBitPattern + NoUninit> EncryptedMessage<T> {
         MESSAGE_HEADER_SIZE + ad + Self::T_SIZE + trailer + scheme.overhead()
     }
 
-    /// Allocate a message with passed ID and TTL and additional
-    /// trailer bytes.
+    /// Creates a new encrypted message with the specified parameters.
+    ///
+    /// # Arguments
+    /// * `id` - Message identifier
+    /// * `ttl` - Time-to-live value
+    /// * `flags` - Message flags
+    /// * `trailer` - Size of trailer data in bytes
+    /// * `scheme` - The encryption scheme to use
+    ///
+    /// # Returns
+    /// A new `EncryptedMessage` instance
     pub fn new(
         id: &MsgId,
         ttl: u32,
@@ -58,8 +85,18 @@ impl<T: AnyBitPattern + NoUninit> EncryptedMessage<T> {
         Self::from_buffer(buffer, id, ttl, flags, 0, trailer, scheme)
     }
 
-    /// Allocate a message with passed ID and TTL and additional data
-    /// and trailer bytes.
+    /// Creates a new encrypted message with additional data.
+    ///
+    /// # Arguments
+    /// * `id` - Message identifier
+    /// * `ttl` - Time-to-live value
+    /// * `flags` - Message flags
+    /// * `additional_data` - Size of additional data in bytes
+    /// * `trailer` - Size of trailer data in bytes
+    /// * `scheme` - The encryption scheme to use
+    ///
+    /// # Returns
+    /// A new `EncryptedMessage` instance with space for additional data
     pub fn new_with_ad(
         id: &MsgId,
         ttl: u32,
@@ -81,8 +118,19 @@ impl<T: AnyBitPattern + NoUninit> EncryptedMessage<T> {
         )
     }
 
-    /// Use existing buffer but make sure it has the right size.
+    /// Creates an encrypted message from an existing buffer.
     ///
+    /// # Arguments
+    /// * `buffer` - Existing buffer to use
+    /// * `id` - Message identifier
+    /// * `ttl` - Time-to-live value
+    /// * `flags` - Message flags
+    /// * `additional_data` - Size of additional data in bytes
+    /// * `trailer` - Size of trailer data in bytes
+    /// * `scheme` - The encryption scheme to use
+    ///
+    /// # Returns
+    /// A new `EncryptedMessage` instance using the provided buffer
     pub fn from_buffer(
         mut buffer: Vec<u8>,
         id: &MsgId,
@@ -105,8 +153,16 @@ impl<T: AnyBitPattern + NoUninit> EncryptedMessage<T> {
         }
     }
 
-    /// Return a mutable references to message payload object, trailer
-    /// and additional data byte slices.
+    /// Returns mutable references to the message payload, trailer, and additional data.
+    ///
+    /// # Arguments
+    /// * `scheme` - The encryption scheme to use
+    ///
+    /// # Returns
+    /// A tuple containing:
+    /// - Mutable reference to the payload object
+    /// - Mutable reference to the trailer bytes
+    /// - Mutable reference to the additional data bytes
     pub fn payload_with_ad(
         &mut self,
         scheme: &dyn EncryptionScheme,
@@ -124,7 +180,15 @@ impl<T: AnyBitPattern + NoUninit> EncryptedMessage<T> {
         (bytemuck::from_bytes_mut(msg), trailer, additional_data)
     }
 
-    /// Return a mutable reference to message payload object and trailer byte slice.
+    /// Returns mutable references to the message payload and trailer.
+    ///
+    /// # Arguments
+    /// * `scheme` - The encryption scheme to use
+    ///
+    /// # Returns
+    /// A tuple containing:
+    /// - Mutable reference to the payload object
+    /// - Mutable reference to the trailer bytes
     pub fn payload(
         &mut self,
         scheme: &dyn EncryptionScheme,
@@ -134,7 +198,14 @@ impl<T: AnyBitPattern + NoUninit> EncryptedMessage<T> {
         (msg, trailer)
     }
 
-    /// Encrypt message.
+    /// Encrypts the message using the provided encryption scheme.
+    ///
+    /// # Arguments
+    /// * `scheme` - The encryption scheme to use
+    /// * `receiver` - The ID of the intended receiver
+    ///
+    /// # Returns
+    /// The encrypted message as a byte vector, or `None` if encryption failed
     pub fn encrypt(
         self,
         scheme: &mut dyn EncryptionScheme,
@@ -155,8 +226,18 @@ impl<T: AnyBitPattern + NoUninit> EncryptedMessage<T> {
         Some(buffer)
     }
 
-    /// Decrypt message and return references to the payload, trailer
-    /// and additional data bytes.
+    /// Decrypts a message and returns references to the payload, trailer, and additional data.
+    ///
+    /// # Arguments
+    /// * `buffer` - The encrypted message buffer
+    /// * `additional_data` - Size of additional data in bytes
+    /// * `trailer` - Size of trailer data in bytes
+    /// * `scheme` - The encryption scheme to use
+    /// * `sender` - The ID of the message sender
+    ///
+    /// # Returns
+    /// A tuple containing references to the decrypted payload, trailer, and additional data,
+    /// or `None` if decryption failed
     pub fn decrypt_with_ad<'msg>(
         buffer: &'msg mut [u8],
         additional_data: usize,
@@ -187,7 +268,17 @@ impl<T: AnyBitPattern + NoUninit> EncryptedMessage<T> {
         ))
     }
 
-    /// Decrypte message and return reference to the payload and trailer bytes.
+    /// Decrypts a message and returns references to the payload and trailer.
+    ///
+    /// # Arguments
+    /// * `buffer` - The encrypted message buffer
+    /// * `trailer` - Size of trailer data in bytes
+    /// * `scheme` - The encryption scheme to use
+    /// * `sender` - The ID of the message sender
+    ///
+    /// # Returns
+    /// A tuple containing references to the decrypted payload and trailer,
+    /// or `None` if decryption failed
     pub fn decrypt<'msg>(
         buffer: &'msg mut [u8],
         trailer: usize,
