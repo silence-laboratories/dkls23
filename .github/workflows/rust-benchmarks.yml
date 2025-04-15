@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   benchmark:
-    name: Run Rust benchmark example
+    name: Make page
     runs-on: ubuntu-latest
 
     steps:
@@ -26,7 +26,7 @@ jobs:
           output-file-path: /tmp/output.txt
           github-token: ${{ secrets.GITHUB_TOKEN }}
           benchmark-data-dir-path: docs
-          auto-push: true
+#          auto-push: true
           comment-on-alert: true
           summary-always: true
   build_and_deploy:
