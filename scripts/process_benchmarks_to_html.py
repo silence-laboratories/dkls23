@@ -64,8 +64,8 @@ def process_benchmark_data(data, output_html_file):
     </div>
     """
 
-    html_content += create_styled_table(dkg_data, "dkg")
-    html_content += create_styled_table(dsg_data, "dsg")
+    html_content += create_styled_table(dkg_data, "DKLs23-KeyGen")
+    html_content += create_styled_table(dsg_data, "DKLs23-Sign")
 
     html_content += """
     </body>

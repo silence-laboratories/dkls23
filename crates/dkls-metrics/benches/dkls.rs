@@ -122,12 +122,12 @@ criterion_group!(
         Criterion::default(); //.measurement_time(std::time::Duration::from_secs(60));
 
     targets =
-        dkg_2x2,dsg_2x2
-        // dkg_3x2,dsg_3x2,
-        // dkg_5x3,dsg_5x3,
-        // dkg_15x9,dsg_15x9,
-        // dkg_20x11,dsg_20x11,
-        // dkg_27x15,dsg_27x15
+        dkg_2x2,dsg_2x2,
+        dkg_3x2,dsg_3x2,
+        dkg_5x3,dsg_5x3,
+        dkg_15x9,dsg_15x9,
+        dkg_20x11,dsg_20x11,
+        dkg_27x15,dsg_27x15
 
 );
 
