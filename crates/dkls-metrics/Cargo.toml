@@ -31,3 +31,6 @@ criterion = { version = "0.5", features = [ "async_tokio" ]}
 [[bench]]
 name = "dkls"
 harness = false
+
+[profile.bench]
+lto = true
