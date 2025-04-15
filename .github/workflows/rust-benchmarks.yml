@@ -19,6 +19,7 @@ jobs:
       - name: Run benchmark
         run:  cd crates/dkls-metrics/benches && cargo +nightly bench -- --output-format bencher  > /tmp/output.txt
 
+
       - name: Create benchmarks
         uses: benchmark-action/github-action-benchmark@v1.20.4
         with:
