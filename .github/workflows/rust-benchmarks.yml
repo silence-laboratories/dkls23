@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: rustup toolchain update nightly && rustup default nightly
       - name: Run benchmark
-        run:  cd crates/dkls-metrics/benches && cargo +nightly bench   > /tmp/output.txt
+        run:  cd crates/dkls-metrics/benches && cargo +nightly bench --output-format bencher > /tmp/output.txt
 
 
       - name: Create benchmarks
