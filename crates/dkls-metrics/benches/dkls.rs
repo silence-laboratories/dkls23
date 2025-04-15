@@ -20,7 +20,7 @@ fn bench_dkg(c: &mut Criterion, n: u8, t: u8) {
                 t,
                 Some(trace.clone()),
             )
-            .await;
+                .await;
 
             (instance, trace.messages(), shares)
         })
@@ -50,7 +50,7 @@ fn bench_dsg(c: &mut Criterion, n: u8, t: u8) {
                 "m",
                 Some(trace.clone()),
             )
-            .await;
+                .await;
 
             (instance, trace.messages())
         })
@@ -64,6 +64,10 @@ fn bench_dsg(c: &mut Criterion, n: u8, t: u8) {
         b.to_async(Runtime::new().unwrap())
             .iter(|| dsg::run_one(inst, shares, "m", relay))
     });
+}
+
+fn dkg_2x2(c: &mut Criterion) {
+    bench_dkg(c, 2, 2);
 }
 
 fn dkg_3x2(c: &mut Criterion) {
@@ -84,6 +88,10 @@ fn dkg_20x11(c: &mut Criterion) {
 
 fn dkg_27x15(c: &mut Criterion) {
     bench_dkg(c, 27, 15);
+}
+
+fn dsg_2x2(c: &mut Criterion) {
+    bench_dsg(c, 2, 2);
 }
 
 fn dsg_3x2(c: &mut Criterion) {
@@ -114,8 +122,8 @@ criterion_group!(
         Criterion::default(); //.measurement_time(std::time::Duration::from_secs(60));
 
     targets =
-        dkg_3x2, dkg_5x3,dkg_15x9,dkg_20x11,dkg_27x15,
-        dsg_3x2, dsg_5x3,dsg_15x9,dsg_20x11,dsg_27x15,
+        dkg_2x2,dkg_3x2, dkg_5x3,dkg_15x9,dkg_20x11,dkg_27x15,
+        dsg_2x2,dsg_3x2, dsg_5x3,dsg_15x9,dsg_20x11,dsg_27x15,
 
 );
 
