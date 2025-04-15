@@ -40,7 +40,8 @@ The repository implements threshold ECDSA signatures implementing DKLs23 protoco
 ### Tests
 `cargo test
 `
-### Benches
+### Benchmarks
+https://silence-laboratories.github.io/dkls23/
 #### Criterion
 `cd crates/dkls-metrics/benches`
 
