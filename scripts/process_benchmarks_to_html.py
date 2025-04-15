@@ -26,7 +26,7 @@ def process_benchmark_data(data, output_html_file):
         if not data:
             return f"<p style='text-align: center; font-style: italic;'>No data for {table_name}.</p>"
 
-        modified_data = [{"name": item["name"], "value": item["value"] / 1000000} for item in data]
+        modified_data = [{"Setting": item["name"], "Time": item["value"] / 1000000} for item in data]
 
         keys = modified_data[0].keys()
         html = f"<h2 style='text-align: center; color: #3366cc;'>{table_name.upper()} Benchmarks (ms)</h2>\n"

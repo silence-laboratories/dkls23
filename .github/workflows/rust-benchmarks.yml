@@ -33,33 +33,30 @@ jobs:
   make_the_html_page:
     runs-on: ubuntu-latest
     name: Create html page
-    needs: get_benchmark # Make this job dependent on build_page
+    needs: get_benchmark
 
     steps:
       - name: Checkout code (main)
         uses: actions/checkout@v4
         with:
-          ref: core-after-audit # Ensure we are on the 'main' branch
+          ref: core-after-audit
       - name: Checkout gh-pages branch
         uses: actions/checkout@v4
         with:
           ref: gh-pages
-          path: gh-pages # Checkout the gh-pages branch to a separate directory
+          path: gh-pages
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: 3.9 # Or any version you need
-      - name: Install dependencies (if any)
+          python-version: 3.9
+      - name: Write the html page
         run: |
           python -m pip install --upgrade pip
-      - name: Run the script
-        run: python scripts/process_benchmarks_to_html.py gh-pages/docs/data.js # Execute your Python script with the correct path
-      - name: Create the docs directory
-        run: mkdir -p docs # create the docs folder
-      - name: Move output
-        run: mv index.html docs/ # Move the generated HTML to the docs folder
+          python scripts/process_benchmarks_to_html.py gh-pages/docs/data.js
+          mkdir -p docs
+          mv index.html docs
       - name: Deploy to GitHub Pages
         uses: JamesIves/github-pages-deploy-action@v4
         with:
-          branch: gh-pages # The branch to deploy to
-          folder: docs # The folder containing the generated content
+          branch: gh-pages
+          folder: docs
