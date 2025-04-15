@@ -7,10 +7,12 @@ license-file ="../../LICENSE"
 [lib]
 path = "src/lib.rs"
 doctest = false
+bench = false
 
 [[bin]]
 name = "dkls-metrics"
 path = "src/main.rs"
+bench = false
 
 [dependencies]
 dkls23 = { path = "../..", features = [ "multi-thread", "test-support" ] }
