@@ -29,7 +29,7 @@ def process_benchmark_data(data, output_html_file):
         modified_data = [{"name": item["name"], "value": item["value"] / 1000000} for item in data]
 
         keys = modified_data[0].keys()
-        html = f"<h2 style='text-align: center; color: #3366cc;'>{table_name.upper()} Benchmarks (ms/iter)</h2>\n"
+        html = f"<h2 style='text-align: center; color: #3366cc;'>{table_name.upper()} Benchmarks (ms)</h2>\n"
         html += "<table style='width: 80%; margin: 20px auto; border-collapse: collapse; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);'>\n"
         html += "<thead style='background-color: #f0f8ff;'>\n"
         html += "<tr>\n"
