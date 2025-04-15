@@ -26,6 +26,6 @@ jobs:
         with:
           name: Rust Benchmark
           tool: 'cargo'
-          output-file-path: output.txt
+          output-file-path: ./crates/dkls-metrics/benches/output.txt
           github-token: ${{ secrets.GITHUB_TOKEN }}
           auto-push: true
