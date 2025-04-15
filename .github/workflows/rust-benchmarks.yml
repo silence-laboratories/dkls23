@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   get_benchmark:
-    name: Make page
+    name: Run Benchmarks
     runs-on: ubuntu-latest
 
     steps:
@@ -32,6 +32,7 @@ jobs:
 
   make_the_html_page:
     runs-on: ubuntu-latest
+    name: Create html page
     needs: get_benchmark # Make this job dependent on build_page
 
     steps:
