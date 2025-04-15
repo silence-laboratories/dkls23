@@ -27,4 +27,5 @@ jobs:
           tool: 'cargo'
           output-file-path: /tmp/output.txt
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          benchmark-data-dir-path: docs
           auto-push: true
