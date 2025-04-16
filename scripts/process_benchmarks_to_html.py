@@ -54,10 +54,21 @@ def process_benchmark_data(data, output_html_file):
     <title>Latest Benchmark Results</title>
     <style>
         body {{ font-family: 'Arial', sans-serif; margin: 20px; }}
-        .header {{ text-align: left; margin-bottom: 20px; }}
+        .header {{ text-align: right; margin-bottom: 20px; }}
     </style>
     </head>
     <body>
+    <p>
+            <img
+                src="sil.jpg"
+                style="
+                    width: 170px;
+                    height: 50px;
+                    margin-left: 25px;
+                    float: left;
+                "
+            />
+        </p>
     <div class="header">
         <p><strong>Last Timestamp:</strong> {last_timestamp}</p>
         <p><strong>Commit URL:</strong> <a href="{last_url}">{last_url}</a></p>
