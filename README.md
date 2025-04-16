@@ -26,7 +26,7 @@ The repository implements threshold ECDSA signatures implementing DKLs23 protoco
 ## Functionality
 
 - Distributed Key Generation (DKG)
-- Distributed Signature Generation (DSK)
+- Distributed Signature Generation (DSG)
 - Key refresh
 - Import a singleton key and distribute it among parties
 - Export a threshold key to a singleton one
