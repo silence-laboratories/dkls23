@@ -17,7 +17,8 @@
 - [Summary of Changes After Security Audit](#summary-of-changes-after-security-audit)
   - [Setup Messages](#setup-messages)
   - [Message Serialization](#message-serialization)
-
+- [Contributing](#contributing)
+- [Security](#security)
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
 ## DKLs23
@@ -225,3 +226,11 @@ memory copies.
 
 Key share for a 3-party case is about 130kb; messages are: 16kb, 37kb,
 and 49kb.
+
+## Contributing
+
+Please see [Contributing](CONTRIBUTING.md) section
+
+## Security
+
+Please see [Security](SECURITY.md) section
