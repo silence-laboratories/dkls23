@@ -54,13 +54,16 @@ def process_benchmark_data(data, output_html_file):
     <title>Latest Benchmark Results</title>
     <style>
         body {{ font-family: 'Arial', sans-serif; margin: 20px; }}
-        .header {{ text-align: center; margin-bottom: 20px; }}
+        .header {{ text-align: left; margin-bottom: 20px; }}
     </style>
     </head>
     <body>
     <div class="header">
         <p><strong>Last Timestamp:</strong> {last_timestamp}</p>
         <p><strong>Commit URL:</strong> <a href="{last_url}">{last_url}</a></p>
+        <p><strong>CPU:</strong>48 CPU cores: Intel Xeon Gold 5412U (48) @ 3.900GHz</p>
+        <p><strong>RAM:</strong> 256 GB</p>
+
     </div>
     """
 
