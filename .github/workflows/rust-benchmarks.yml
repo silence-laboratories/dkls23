@@ -61,7 +61,9 @@ jobs:
           python -m pip install --upgrade pip
           python scripts/process_benchmarks_to_html.py gh-pages/docs/data.js
           mkdir -p docs
+          mv gh-pages/docs/* docs 
           mv index.html docs
+
       - name: Deploy to GitHub Pages
         uses: JamesIves/github-pages-deploy-action@v4
         with:
