@@ -6,7 +6,7 @@ We appreciate you are willing to spend your valuable time at this repo
 https://www.rust-lang.org/policies/code-of-conduct
 ## How to Contribute
 
-If you are willing to mention a new feature, a bug or anything else please open an Issue
+If you are willing to mention a new feature or suspected bug please open an Issue
 
 ## Licensing
 
