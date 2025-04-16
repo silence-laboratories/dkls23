@@ -19,6 +19,8 @@
   - [Message Serialization](#message-serialization)
 - [Contributing](#contributing)
 - [Security](#security)
+- [Audit](#audit)
+
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
 ## DKLs23
@@ -234,3 +236,7 @@ Please see [Contributing](CONTRIBUTING.md) section
 ## Security
 
 Please see [Security](SECURITY.md) section
+
+## Audit
+
+Trail of bits has [audited](docs/ToB-SilenceLaboratories_2024.04.10.pdf) commit hash `1510c2fafe3cd6866581ce3e2c43c565561b929b` from [dkls23](https://github.com/silence-laboratories/dkls23/commit/1510c2fafe3cd6866581ce3e2c43c565561b929b) and commit hash `a6b014722a29027d813bcb58720412da68f63d07` from [sl-crypto](https://github.com/silence-laboratories/sl-crypto/commit/a6b014722a29027d813bcb58720412da68f63d07) repo.
