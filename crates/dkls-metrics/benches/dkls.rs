@@ -5,64 +5,30 @@ use criterion::{criterion_group, criterion_main, Criterion};
 
 use tokio::runtime::Runtime;
 
-use dkls_metrics::{dkg, dsg, relay::MessageTrace};
+use dkls_metrics::{dkg, dsg};
+
 
 fn bench_dkg(c: &mut Criterion, n: u8, t: u8) {
-    let (inst, messages, shares) = {
-        Runtime::new().unwrap().block_on(async {
-            let instance = rand::random();
-
-            let trace = MessageTrace::new();
-            let shares = dkg::run_inner(
-                Some(instance),
-                None,
-                n,
-                t,
-                Some(trace.clone()),
-            )
-                .await;
-
-            (instance, trace.messages(), shares)
-        })
-    };
-
-    let trace = dkg::Trace::new(inst, shares, messages);
-
-    c.bench_function(&format!("dkg-{}x{}", n, t), move |b| {
-        b.to_async(Runtime::new().unwrap())
-            .iter(|| trace.run_one(None, n, t))
-    });
+    {
+        c.bench_function(&format!("dkg {}x{}", n, t), move |b| {
+            b.to_async(Runtime::new().unwrap()).iter(|| async {
+                dkg::run_inner(None, None, n, t, None).await;
+            })
+        });
+    }
 }
 
 fn bench_dsg(c: &mut Criterion, n: u8, t: u8) {
-    let shares = Runtime::new()
-        .unwrap()
-        .block_on(dkg::run_inner(None, None, n, t, None));
+    let shares =
+        Runtime::new()
+            .unwrap()
+            .block_on(dkg::run_inner(None, None, n, t, None));
 
-    let (inst, messages) = {
-        Runtime::new().unwrap().block_on(async {
-            let instance = rand::random();
 
-            let trace = MessageTrace::new();
-            dsg::run_inner(
-                Some(instance),
-                &shares[0..t as usize],
-                "m",
-                Some(trace.clone()),
-            )
-                .await;
-
-            (instance, trace.messages())
+    c.bench_function(&format!("dsg {}x{}", n, t), move |b| {
+        b.to_async(Runtime::new().unwrap()).iter(|| async {
+            dsg::run_inner(None, &shares[0..t as usize], "m", None).await;
         })
-    };
-
-    let trace = dkg::Trace::new(inst, shares, messages);
-    let relay = trace.relay();
-    let shares = &trace.shares()[0..t as usize];
-
-    c.bench_function(&format!("dsg-{}x{}", n, t), move |b| {
-        b.to_async(Runtime::new().unwrap())
-            .iter(|| dsg::run_one(inst, shares, "m", relay))
     });
 }
 
