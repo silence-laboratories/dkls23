@@ -3,6 +3,11 @@ on:
   push:
     branches:
       - core-after-audit
+    paths:
+      - 'src/**'
+      - 'scripts/**'
+      - 'crates/**'
+
 
 permissions:
   contents: write
