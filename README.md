@@ -7,7 +7,7 @@
 - [Installing, Testing, Benchmarks](#installing-testing-benchmarks)
   - [Build](#build)
   - [Tests](#tests)
-  - [Benches](#benches)
+  - [Benchmarks](#benchmarks)
     - [Criterion](#criterion)
     - [Detailed Metrics](#detailed-metrics)
 - [Crates structure](#crates-structure)
