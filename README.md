@@ -49,7 +49,7 @@ https://silence-laboratories.github.io/dkls23/
 `cd crates/dkls-metrics/benches`
 
 `cargo bench`
-#### Detailed Metrics
+#### Detailed Metrics (total message sizes sent and received)
 `cargo run -p dkls-metrics -r -- dkg --n 3 --t 2 --dsg
 `
 ##  Crates structure
