@@ -42,7 +42,7 @@ pub async fn main() {
             let relay = coord.connect();
             // At that point we have created the correct setup msgs for each party with the aforementioned helper function, which
             // in real world does not exist but the consumers of the library node should create. The next step is to execute each
-            // task in a an async fashion. That function in a real world example runs by each node independently.
+            // task in an async fashion. That function in a real world example runs by each node independently.
             let mut rng = ChaCha20Rng::from_entropy();
             keygen::run(setup, rng.gen(), relay)
         });
