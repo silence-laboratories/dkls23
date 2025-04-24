@@ -23,10 +23,6 @@ jobs:
         with:
           components: rustfmt clippy
 
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: "build"
-
       - name: Run cargo fmt
         run: |
           cargo +stable fmt --all -- --check
