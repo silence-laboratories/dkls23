@@ -1,0 +1,53 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches:
+      - core-after-audit
+
+  pull_request:
+    branches:
+      - core-after-audit
+
+
+jobs:
+  lints:
+    name: Lints
+    runs-on: github-builder
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@1.85
+        with:
+          components: rustfmt clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "build"
+
+      - name: Run cargo fmt
+        run: |
+          cargo fmt --all -- --check
+
+      - name: Run cargo clippy
+        run: cargo clippy --all -- -D warnings
+
+
+  build-and-test:
+    name: Rust tests
+    runs-on: github-builder
+    needs: lints
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@1.85
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "build"
+
+      - run: cargo test --tests --all --release
+
