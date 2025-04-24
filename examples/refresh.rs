@@ -1,11 +1,11 @@
-use std::sync::Arc;
+use dkls23::keygen::key_refresh::KeyshareForRefresh;
 use k256::elliptic_curve::group::GroupEncoding;
 use rand::Rng;
 use rand_chacha::ChaCha20Rng;
 use rand_core::SeedableRng;
 use sl_mpc_mate::coord::SimpleMessageRelay;
+use std::sync::Arc;
 use tokio::task::JoinSet;
-use dkls23::keygen::key_refresh::KeyshareForRefresh;
 
 mod common;
 
@@ -30,7 +30,6 @@ pub async fn main() {
     // One task for each node to run the dkls23 ecdsa refresh algorithm
     let mut parties = JoinSet::new();
 
-
     // Tag into a new type the old key shares in order to be identifiable as key shares to be refreshed from the existing refresh
     let key_shares_for_refresh: Vec<KeyshareForRefresh> = old_shares
         .iter()
@@ -46,15 +45,18 @@ pub async fn main() {
     // other key shares that will be potentially created, the public signature keys of each other node in order to
     // verify authenticity and integrity of p2p and broadcast messages, and the secret signing key of the node boostraping the protocol which is
     // unique and different per node.
-    for (setup, share) in
-        common::shared::setup_keygen(2, 3, None)
-            .into_iter()
-            .zip(key_shares_for_refresh)
-            .collect::<Vec<_>>()
-
+    for (setup, share) in common::shared::setup_keygen(2, 3, None)
+        .into_iter()
+        .zip(key_shares_for_refresh)
+        .collect::<Vec<_>>()
     {
         // run the keyrefresh protocol for each node
-        parties.spawn(dkls23::keygen::key_refresh::run(setup, rng.gen(), coord.connect(), share));
+        parties.spawn(dkls23::keygen::key_refresh::run(
+            setup,
+            rng.gen(),
+            coord.connect(),
+            share,
+        ));
     }
 
     let mut new_shares = vec![];
@@ -77,7 +79,10 @@ pub async fn main() {
     }
 
     //check that this is equal the old key share public key
-    println!("Old PK{}", hex::encode(old_shares[0].public_key().to_bytes()));
+    println!(
+        "Old PK{}",
+        hex::encode(old_shares[0].public_key().to_bytes())
+    );
 
     // sign with new key_shares and verify
     let coord = SimpleMessageRelay::new();

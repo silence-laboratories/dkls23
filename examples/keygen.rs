@@ -1,9 +1,9 @@
 use dkls23::keygen;
+use k256::elliptic_curve::group::GroupEncoding;
 use rand::Rng;
 use rand_chacha::ChaCha20Rng;
 use rand_core::SeedableRng;
 use std::sync::Arc;
-use k256::elliptic_curve::group::GroupEncoding;
 
 mod common;
 
@@ -67,7 +67,6 @@ pub async fn main() {
 
     //print the common public key created from each user key share
     for keyshare in shares.iter() {
-        println!("PK{}",hex::encode(keyshare.public_key().to_bytes()));
-
+        println!("PK{}", hex::encode(keyshare.public_key().to_bytes()));
     }
 }

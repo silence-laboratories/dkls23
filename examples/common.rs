@@ -1,13 +1,12 @@
 pub mod shared {
-    use std::str::FromStr;
     use dkls23::keygen;
     use dkls23::keygen::Keyshare;
+    use dkls23::setup::sign::SetupMessage as SignSetupMessage;
     use dkls23::setup::{
         keygen::SetupMessage, keygen::SetupMessage as KeygenSetupMessage, NoSigningKey,
         NoVerifyingKey,
     };
-    use dkls23::{
-        setup::{sign::SetupMessage as SignSetupMessage}};
+    use std::str::FromStr;
 
     use rand::Rng;
     use rand_chacha::ChaCha20Rng;
@@ -64,7 +63,7 @@ pub mod shared {
                     &ranks,
                     t as usize,
                 )
-                    .with_ttl(Duration::from_secs(1000)) // for dkls-metrics benchmarks
+                .with_ttl(Duration::from_secs(1000)) // for dkls-metrics benchmarks
             })
             .collect::<Vec<_>>()
     }
@@ -97,7 +96,10 @@ pub mod shared {
 
         shares
     }
-    pub fn setup_dsg(shares: &[Arc<Keyshare>], chain_path: &str) -> Vec<dkls23::setup::sign::SetupMessage> {
+    pub fn setup_dsg(
+        shares: &[Arc<Keyshare>],
+        chain_path: &str,
+    ) -> Vec<dkls23::setup::sign::SetupMessage> {
         let chain_path = DerivationPath::from_str(chain_path).unwrap();
 
         let t = shares[0].threshold as usize;
@@ -126,9 +128,9 @@ pub mod shared {
                     party_vk.clone(),
                     share.clone(),
                 )
-                    .with_chain_path(chain_path.clone())
-                    .with_hash([1; 32])
-                    .with_ttl(Duration::from_secs(1000))
+                .with_chain_path(chain_path.clone())
+                .with_hash([1; 32])
+                .with_ttl(Duration::from_secs(1000))
             })
             .collect::<Vec<_>>()
     }

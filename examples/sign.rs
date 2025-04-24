@@ -7,7 +7,7 @@ use rand_core::SeedableRng;
 use k256::ecdsa::{RecoveryId, VerifyingKey};
 
 use dkls23::sign;
-use sl_mpc_mate::{coord::SimpleMessageRelay};
+use sl_mpc_mate::coord::SimpleMessageRelay;
 
 mod common;
 
