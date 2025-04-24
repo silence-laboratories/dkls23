@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["check_abort","create_abort_message","decode_affine","decode_nonzero","decode_point","decode_scalar","encode_affine","encode_point","encode_scalar"],"mod":["tags"],"struct":["EncryptedMessage","MessageTag","MsgHdr","SignedMessage"],"trait":["EncryptionScheme","FixedExternalSize","Relay","Wrap"],"type":["PointBytes","ScalarBytes","Scheme"]};
