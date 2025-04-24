@@ -111,13 +111,13 @@ pub trait EncryptionScheme: Send {
     /// # Parameters
     ///
     /// - `associated_data`: A byte slice containing additional
-    ///    authenticated data (AAD) that will be used to ensure the
-    ///    integrity and authenticity of the encrypted data. This data is
-    ///    not encrypted but is included in the integrity check.
+    ///   authenticated data (AAD) that will be used to ensure the
+    ///   integrity and authenticity of the encrypted data. This data is
+    ///   not encrypted but is included in the integrity check.
     ///
     /// - `buffer`: A mutable byte slice containing the plaintext data
     ///   that will be encrypted in place. Upon successful encryption,
-    ///    this buffer will contain the ciphertext data.
+    ///   this buffer will contain the ciphertext data.
     ///
     /// - `tail`: A mutable byte slice representing the trailing
     ///   segment of the data buffer that may be used to store for
@@ -308,13 +308,13 @@ where
         associated_data: &[u8],
         buffer: &mut [u8],
         tail: &mut [u8],
-        receiver: usize,
+        receive: usize,
     ) -> Result<(), EncryptionError> {
         if tail.len() != self.overhead() {
             return Err(EncryptionError);
         }
 
-        let (key, public_key) = self.pk.find_pair_or_err(receiver, EncryptionError)?;
+        let (key, public_key) = self.pk.find_pair_or_err(receive, EncryptionError)?;
 
         let key = Zeroizing::new(
             Sha256::new_with_prefix(public_key)
