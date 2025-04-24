@@ -69,10 +69,11 @@ jobs:
           python scripts/process_benchmarks_to_html.py gh-pages/docs/data.js
           cargo doc --no-deps 
           mkdir -p docs
+          mkdir -p docs/dkls23
           cp scripts/sil.jpg docs
           mv gh-pages/* docs 
           mv index.html docs
-          mv target/doc/dkls23 docs/dkls23
+          mv target/doc/dkls23/* docs/dkls23
 
       - name: Deploy to GitHub Pages
         uses: JamesIves/github-pages-deploy-action@v4
