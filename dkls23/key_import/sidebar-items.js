@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["ecdsa_secret_shares"]};

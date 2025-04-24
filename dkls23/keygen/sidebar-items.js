@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["KeygenError"],"fn":["message_receivers","run"],"mod":["constants","key_refresh","keyshare","migration","quorum_change","utils"],"type":["Seed"]};
