@@ -69,9 +69,7 @@ async fn main() {
     // accounting in hashmap : messages: HashMap<MsgId, MsgEntry>
     let coord = SimpleMessageRelay::new();
 
-    // We locally generate some key shares in order to test the signing procedure. That would be identical
-    // in calling keygen:main
-
+    // We locally generate some key shares in order to test the signing procedure.
     let shares = common::shared::gen_keyshares(2, 3, Some(&[0, 0])).await;
 
     //fetch the public verification key from one of the keyshares
@@ -81,12 +79,12 @@ async fn main() {
     let chain_path = "m";
 
     // Here the parties are simulated as in a real world example but locally as a set of rust async tasks:
-    // One task for each node to run the dkls23 ecdsa keygen algorithm
+    // One task for each node to run the dkls23 ecdsa sign algorithm
     let mut parties = JoinSet::new();
 
-    // For each node in the protocol a setup msg should be created tailored for that keygen protocol. The setupmsg
+    // For each node in the protocol a setup msg should be created tailored for that sign protocol. The setupmsg
     // contains information about the public parameters of the protocol: number of nodes = n, minimum threshold = t dictating
-    // the minimum required nodes that need to be online in order to compute the distributed signature, a unique instance id for the keygen protocol
+    // the minimum required nodes that need to be online in order to compute the distributed signature, a unique instance id for the sign protocol
     // a unique id that identifies that key share id that will be created common for all nodes in order to distinguish from
     // other key shares that will be potentially created, the public signature keys of each other node in order to
     // verify authenticity and integrity of p2p and broadcast messages, and the secret signing key of the node boostraping the protocol which is
