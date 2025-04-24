@@ -91,12 +91,8 @@ impl KeyshareForRefresh {
         }
     }
     /// Create KeyshareForRefresh struct from Keyshare
-    pub fn from_keyshare(
-        keyshare: &Keyshare,
-        lost_keyshare_party_ids: Option<Vec<u8>>,
-    ) -> Self {
-        let lost_keyshare_party_ids =
-            lost_keyshare_party_ids.unwrap_or_default();
+    pub fn from_keyshare(keyshare: &Keyshare, lost_keyshare_party_ids: Option<Vec<u8>>) -> Self {
+        let lost_keyshare_party_ids = lost_keyshare_party_ids.unwrap_or_default();
         Self {
             rank_list: keyshare.rank_list(),
             threshold: keyshare.threshold,
@@ -186,9 +182,8 @@ impl KeyshareForRefresh {
 
         let threshold = read_byte()?;
 
-        let public_key = read_data(33).and_then(|b| {
-            ProjectivePoint::from_bytes(b.into()).into_option()
-        })?;
+        let public_key =
+            read_data(33).and_then(|b| ProjectivePoint::from_bytes(b.into()).into_option())?;
 
         let root_chain_code: [u8; 32] = read_data(32)?.try_into().ok()?;
 
@@ -204,8 +199,7 @@ impl KeyshareForRefresh {
             let mut x_i_list = Vec::with_capacity(x_i_list_len as usize);
             for _ in 0..x_i_list_len {
                 let x_i_bytes: [u8; 32] = read_data(32)?.try_into().ok()?;
-                let x_i: NonZeroScalar =
-                    Option::from(NonZeroScalar::from_repr(x_i_bytes.into()))?;
+                let x_i: NonZeroScalar = Option::from(NonZeroScalar::from_repr(x_i_bytes.into()))?;
                 x_i_list.push(x_i);
             }
             Some(x_i_list)
@@ -276,9 +270,7 @@ where
         let x_i = &x_i_list[my_party_id as usize];
 
         let party_ids_with_keyshares = (0..n as u8)
-            .filter(|p| {
-                !old_keyshare.lost_keyshare_party_ids.contains(&{ *p })
-            })
+            .filter(|p| !old_keyshare.lost_keyshare_party_ids.contains(&{ *p }))
             .collect::<Vec<_>>();
 
         let all_ranks_zero = rank_list.iter().all(|r| r == &0u8);
@@ -286,14 +278,10 @@ where
         let lambda = if all_ranks_zero {
             get_lagrange_coeff(x_i, x_i_list, &party_ids_with_keyshares)
         } else {
-            get_birkhoff_coefficients(
-                rank_list,
-                x_i_list,
-                &party_ids_with_keyshares,
-            )
-            .get(&(my_party_id as usize))
-            .cloned()
-            .unwrap_or(Scalar::ZERO)
+            get_birkhoff_coefficients(rank_list, x_i_list, &party_ids_with_keyshares)
+                .get(&(my_party_id as usize))
+                .cloned()
+                .unwrap_or(Scalar::ZERO)
         };
 
         s_i_0 = lambda * s_i;
@@ -312,13 +300,9 @@ where
     let new_keyshare = match result {
         Ok(eph_keyshare) => eph_keyshare,
 
-        Err(KeygenError::AbortProtocol(p)) => {
-            return Err(KeygenError::AbortProtocol(p))
-        }
+        Err(KeygenError::AbortProtocol(p)) => return Err(KeygenError::AbortProtocol(p)),
 
-        Err(KeygenError::SendMessage) => {
-            return Err(KeygenError::SendMessage)
-        }
+        Err(KeygenError::SendMessage) => return Err(KeygenError::SendMessage),
 
         Err(err_message) => {
             #[cfg(feature = "tracing")]
@@ -466,12 +450,9 @@ mod tests {
         ));
 
         // recover lost key_share
-        for (setup, seed, share) in setup_key_refresh(
-            t,
-            n,
-            Some(&[0, 0, 0, 0]),
-            key_shares_for_refresh,
-        ) {
+        for (setup, seed, share) in
+            setup_key_refresh(t, n, Some(&[0, 0, 0, 0]), key_shares_for_refresh)
+        {
             parties.spawn(run(setup, seed, coord.connect(), share));
         }
 

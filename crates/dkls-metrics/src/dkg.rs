@@ -32,11 +32,7 @@ pub struct Trace {
 }
 
 impl Trace {
-    pub fn new(
-        instance: [u8; 32],
-        shares: Vec<Arc<Keyshare>>,
-        messages: Vec<Vec<u8>>,
-    ) -> Self {
+    pub fn new(instance: [u8; 32], shares: Vec<Arc<Keyshare>>, messages: Vec<Vec<u8>>) -> Self {
         let relay = MsgRelay::new(None);
 
         for msg in messages {
@@ -70,27 +66,22 @@ impl Trace {
         &self.shares
     }
 
-    pub fn load<P: AsRef<Path>>(
-        key_id: &[u8],
-        base: P,
-    ) -> anyhow::Result<Trace> {
+    pub fn load<P: AsRef<Path>>(key_id: &[u8], base: P) -> anyhow::Result<Trace> {
         let base = base.as_ref().to_path_buf();
         let key_id_str = hex::encode(key_id);
 
         let relay = MsgRelay::new(None);
 
-        let msg_list_file = BufReader::new(File::open(
-            base.join(format!("{}.messages", key_id_str)),
-        )?);
+        let msg_list_file =
+            BufReader::new(File::open(base.join(format!("{}.messages", key_id_str)))?);
 
         for msg_id in msg_list_file.lines() {
             relay.send(std::fs::read(base.join(format!("{}.msg", msg_id?)))?);
         }
 
-        let instance =
-            std::fs::read(base.join(format!("{}.instance", key_id_str)))?
-                .try_into()
-                .map_err(|_| anyhow!("invalid size of instance-id"))?;
+        let instance = std::fs::read(base.join(format!("{}.instance", key_id_str)))?
+            .try_into()
+            .map_err(|_| anyhow!("invalid size of instance-id"))?;
 
         let mut shares = Vec::new();
 
@@ -136,10 +127,7 @@ impl Trace {
 
         let key_id = hex::encode(shares[0].key_id);
 
-        std::fs::write(
-            base.join(format!("{}.messages", &key_id)),
-            message_list,
-        )?;
+        std::fs::write(base.join(format!("{}.messages", &key_id)), message_list)?;
 
         for share in shares {
             let id = share.party_id;
@@ -207,10 +195,7 @@ pub async fn run_inner(
     keyshares
 }
 
-pub async fn run_cmd(
-    ranks: Vec<u8>,
-    opts: flags::Dkg,
-) -> Result<(), anyhow::Error> {
+pub async fn run_cmd(ranks: Vec<u8>, opts: flags::Dkg) -> Result<(), anyhow::Error> {
     let trace = {
         let instance = rand::random();
 
@@ -259,10 +244,7 @@ pub async fn run_cmd(
         let stats = stats.lock().unwrap();
         println!(
             "DKG: send {} {}, recv {} {}",
-            stats.send_count,
-            stats.send_size,
-            stats.recv_count,
-            stats.recv_size,
+            stats.send_count, stats.send_size, stats.recv_count, stats.recv_size,
         );
     }
 

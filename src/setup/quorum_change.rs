@@ -52,9 +52,7 @@ impl<SK, VK, MS, KS, PK> SetupMessage<SK, VK, MS, KS, PK> {
 
         assert!(this_party < total_parties);
 
-        assert!(
-            old_parties.iter().max().unwrap_or(&usize::MAX) < &total_parties
-        );
+        assert!(old_parties.iter().max().unwrap_or(&usize::MAX) < &total_parties);
 
         assert!(
             new_parties
@@ -98,8 +96,7 @@ impl<SK, VK, MS, KS, PK> SetupMessage<SK, VK, MS, KS, PK> {
     }
 }
 
-impl<SK, VK, MS, KS, PK> ProtocolParticipant
-    for SetupMessage<SK, VK, MS, KS, PK>
+impl<SK, VK, MS, KS, PK> ProtocolParticipant for SetupMessage<SK, VK, MS, KS, PK>
 where
     SK: Signer<MS>,
     MS: SignatureEncoding,
@@ -134,8 +131,7 @@ where
     }
 }
 
-impl<SK, VK, MS, KS, PK> QuorumChangeSetupMessage<KS, PK>
-    for SetupMessage<SK, VK, MS, KS, PK>
+impl<SK, VK, MS, KS, PK> QuorumChangeSetupMessage<KS, PK> for SetupMessage<SK, VK, MS, KS, PK>
 where
     SK: Signer<MS>,
     MS: SignatureEncoding,

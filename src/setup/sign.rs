@@ -21,12 +21,7 @@ use crate::{
 
 const DEFAULT_TTL: u64 = 100; // smaller timeout might fail tests
 
-pub struct SetupMessage<
-    SK = NoSigningKey,
-    VK = NoVerifyingKey,
-    MS = NoSignature,
-    KS = Keyshare,
-> {
+pub struct SetupMessage<SK = NoSigningKey, VK = NoVerifyingKey, MS = NoSignature, KS = Keyshare> {
     party_idx: usize,
     sk: SK,
     vk: Vec<VK>,

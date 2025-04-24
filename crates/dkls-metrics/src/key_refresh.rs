@@ -5,8 +5,7 @@ use std::sync::Arc;
 
 use dkls23::keygen::key_refresh::KeyshareForRefresh;
 use dkls23::keygen::{
-    key_refresh::run as run_key_refresh, key_refresh::setup_key_refresh,
-    Keyshare,
+    key_refresh::run as run_key_refresh, key_refresh::setup_key_refresh, Keyshare,
 };
 use sl_mpc_mate::coord::SimpleMessageRelay;
 use tokio::task::JoinSet;
@@ -29,18 +28,10 @@ pub async fn run(
         let coord = SimpleMessageRelay::new();
 
         let mut parties = JoinSet::new();
-        for (setup, seed, share) in setup_key_refresh(
-            opts.t,
-            opts.n,
-            Some(ranks),
-            key_shares_for_refresh.clone(),
-        ) {
-            parties.spawn(run_key_refresh(
-                setup,
-                seed,
-                coord.connect(),
-                share,
-            ));
+        for (setup, seed, share) in
+            setup_key_refresh(opts.t, opts.n, Some(ranks), key_shares_for_refresh.clone())
+        {
+            parties.spawn(run_key_refresh(setup, seed, coord.connect(), share));
         }
 
         let mut new_keyshares = vec![];

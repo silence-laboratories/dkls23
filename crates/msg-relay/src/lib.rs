@@ -70,11 +70,7 @@ impl MsgRelay {
         }
     }
 
-    pub fn handle_message(
-        &self,
-        msg: Vec<u8>,
-        tx: Option<(u64, &mpsc::UnboundedSender<Vec<u8>>)>,
-    ) {
+    pub fn handle_message(&self, msg: Vec<u8>, tx: Option<(u64, &mpsc::UnboundedSender<Vec<u8>>)>) {
         self.inner.lock().unwrap().handle_message(msg, tx);
     }
 
@@ -214,11 +210,7 @@ impl Inner {
         }
     }
 
-    fn handle_message(
-        &mut self,
-        msg: Vec<u8>,
-        tx: Option<(u64, &mpsc::UnboundedSender<Vec<u8>>)>,
-    ) {
+    fn handle_message(&mut self, msg: Vec<u8>, tx: Option<(u64, &mpsc::UnboundedSender<Vec<u8>>)>) {
         let hdr = match <&MsgHdr>::try_from(msg.as_slice()) {
             Ok(hdr) => hdr,
             Err(_) => return, // TODO report invalid message?
@@ -247,11 +239,7 @@ impl Inner {
                             // Got an ASK for a Ready message.
                             // Send the message immediately.
                             if let Some((_, tx)) = tx {
-                                tracing::debug!(
-                                    "rdy-msg {:X} {}",
-                                    id,
-                                    msg.len()
-                                );
+                                tracing::debug!("rdy-msg {:X} {}", id, msg.len());
                                 let _ = tx.send(msg.clone());
                             }
                         }
@@ -262,32 +250,18 @@ impl Inner {
                             // join other waiters
                             if let Some((w_id, tx)) = tx {
                                 let cnt = waiters.len();
-                                if !waiters
-                                    .iter()
-                                    .any(|(tx_id, _)| *tx_id == w_id)
-                                {
-                                    tracing::debug!(
-                                        "add-ask {:X} {} {}",
-                                        id,
-                                        msg.len(),
-                                        cnt + 1
-                                    );
+                                if !waiters.iter().any(|(tx_id, _)| *tx_id == w_id) {
+                                    tracing::debug!("add-ask {:X} {} {}", id, msg.len(), cnt + 1);
 
                                     *expire = msg_expire.max(*expire);
                                     waiters.push((w_id, tx.clone()));
-                                    if let Some(on_ask_msg) = &self.on_ask_msg
-                                    {
+                                    if let Some(on_ask_msg) = &self.on_ask_msg {
                                         on_ask_msg(&msg);
                                     }
                                 }
                             }
                         } else {
-                            tracing::debug!(
-                                "wak-msg {:X} {} {}",
-                                id,
-                                msg.len(),
-                                waiters.len()
-                            );
+                            tracing::debug!("wak-msg {:X} {} {}", id, msg.len(), waiters.len());
                             // wake up all waiters
                             for (_, tx) in waiters.drain(..) {
                                 let _ = tx.send(msg.clone()); // TODO handle error
@@ -332,10 +306,7 @@ impl Inner {
 impl Stream for MsgRelayConnection {
     type Item = Vec<u8>;
 
-    fn poll_next(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Option<Self::Item>> {
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
         let msg = ready!(this.rx.poll_recv(cx));
 
@@ -351,17 +322,11 @@ impl Stream for MsgRelayConnection {
 impl Sink<Vec<u8>> for MsgRelayConnection {
     type Error = MessageSendError;
 
-    fn poll_ready(
-        self: Pin<&mut Self>,
-        _cx: &mut Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
+    fn poll_ready(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
     }
 
-    fn start_send(
-        self: Pin<&mut Self>,
-        item: Vec<u8>,
-    ) -> Result<(), Self::Error> {
+    fn start_send(self: Pin<&mut Self>, item: Vec<u8>) -> Result<(), Self::Error> {
         let this = self.get_mut();
         this.stats.send_count += 1;
         this.stats.send_size += item.len();
@@ -375,17 +340,11 @@ impl Sink<Vec<u8>> for MsgRelayConnection {
         Ok(())
     }
 
-    fn poll_flush(
-        self: Pin<&mut Self>,
-        _cx: &mut Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
     }
 
-    fn poll_close(
-        self: Pin<&mut Self>,
-        _cx: &mut Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
+    fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         Poll::Ready(Ok(()))
     }
 }

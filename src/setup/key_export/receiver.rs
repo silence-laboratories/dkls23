@@ -4,11 +4,7 @@
 use super::*;
 
 /// Setup message for a key receiver in a key export protocol.
-pub struct KeyExportReceiver<
-    SK = NoSigningKey,
-    VK = NoVerifyingKey,
-    MS = NoSignature,
-> {
+pub struct KeyExportReceiver<SK = NoSigningKey, VK = NoVerifyingKey, MS = NoSignature> {
     party_id: usize,
     sk: SK,
     vk: Vec<VK>,

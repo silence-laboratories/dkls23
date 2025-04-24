@@ -36,10 +36,7 @@ pub async fn run_one(
     stats
 }
 
-pub async fn run(
-    keyshares: &[Arc<Keyshare>],
-    opts: &flags::Dkg,
-) -> Result<(), anyhow::Error> {
+pub async fn run(keyshares: &[Arc<Keyshare>], opts: &flags::Dkg) -> Result<(), anyhow::Error> {
     let chain_path = "m";
     let subset = &keyshares[0..opts.t as usize];
 
@@ -48,8 +45,7 @@ pub async fn run(
 
         let trace = MessageTrace::new();
 
-        run_inner(Some(instance), subset, chain_path, Some(trace.clone()))
-            .await;
+        run_inner(Some(instance), subset, chain_path, Some(trace.clone())).await;
 
         (instance, trace.messages())
     };
@@ -83,10 +79,7 @@ pub async fn run(
         let stats = stats.lock().unwrap();
         println!(
             "DSG: send {} {}, recv {} {}",
-            stats.send_count,
-            stats.send_size,
-            stats.recv_count,
-            stats.recv_size,
+            stats.send_count, stats.send_size, stats.recv_count, stats.recv_size,
         );
     }
 

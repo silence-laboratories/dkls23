@@ -90,11 +90,7 @@ impl AsRef<[u8]> for NoVerifyingKey {
 }
 
 impl Verifier<NoSignature> for NoVerifyingKey {
-    fn verify(
-        &self,
-        _: &[u8],
-        _: &NoSignature,
-    ) -> Result<(), signature::Error> {
+    fn verify(&self, _: &[u8], _: &NoSignature) -> Result<(), signature::Error> {
         Ok(())
     }
 }

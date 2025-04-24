@@ -18,11 +18,7 @@ use crate::setup::{
     KeygenSetupMessage, ProtocolParticipant,
 };
 
-pub struct SetupMessage<
-    SK = NoSigningKey,
-    VK = NoVerifyingKey,
-    MS = NoSignature,
-> {
+pub struct SetupMessage<SK = NoSigningKey, VK = NoVerifyingKey, MS = NoSignature> {
     n: usize,
     t: usize,
     party_id: usize,

@@ -21,13 +21,10 @@ const EXPORTED_KEYSHARE_RECEIVER: usize = 0;
 use crate::{
     keygen::Keyshare,
     pairs::Pairs,
-    proto::{
-        check_abort, decode_scalar, tags::*, EncryptedMessage,
-        EncryptionScheme, ScalarBytes,
-    },
+    proto::{check_abort, decode_scalar, tags::*, EncryptedMessage, EncryptionScheme, ScalarBytes},
     setup::{
-        KeyExportReceiverSetupMessage, KeyExporterSetupMessage,
-        ProtocolParticipant, ABORT_MESSAGE_TAG,
+        KeyExportReceiverSetupMessage, KeyExporterSetupMessage, ProtocolParticipant,
+        ABORT_MESSAGE_TAG,
     },
     sign::get_lagrange_coeff_list,
 };
@@ -36,9 +33,7 @@ use crate::{
 #[allow(missing_docs)]
 /// Distributed key generation errors
 pub enum KeyExportError {
-    #[error(
-        "Error while deserializing message or invalid message data length"
-    )]
+    #[error("Error while deserializing message or invalid message data length")]
     InvalidMessage,
 
     #[error("Public key mismatch after combining keyshares")]
@@ -161,9 +156,7 @@ pub fn decrypt_share(
 
     scheme.receiver_public_key(0, enc_pub_key).ok()?;
 
-    let (s_i, pid, _) = EncryptedMessage::<[u8; 32]>::decrypt_with_ad(
-        &mut msg, 32, 1, &scheme, 0,
-    )?;
+    let (s_i, pid, _) = EncryptedMessage::<[u8; 32]>::decrypt_with_ad(&mut msg, 32, 1, &scheme, 0)?;
 
     let party_id = pid[0];
 
@@ -173,10 +166,7 @@ pub fn decrypt_share(
 }
 
 /// Receive exported key shares, combine them and calculate private key.
-pub async fn receive_keyshares<S, R>(
-    setup: S,
-    relay: R,
-) -> Result<Scalar, KeyExportError>
+pub async fn receive_keyshares<S, R>(setup: S, relay: R) -> Result<Scalar, KeyExportError>
 where
     S: KeyExportReceiverSetupMessage<ReusableSecret>,
     R: Relay,
@@ -203,8 +193,7 @@ where
             rank_list[share.party_id as usize] as usize,
         ),
     );
-    let mut s_i_list =
-        Pairs::new_with_item(share.party_id as usize, share.s_i());
+    let mut s_i_list = Pairs::new_with_item(share.party_id as usize, share.s_i());
 
     let mut round = Round::new(
         setup.total_participants() - 1,
@@ -214,21 +203,15 @@ where
 
     while let Some((msg, party_idx, is_abort)) = round.recv().await? {
         if is_abort {
-            check_abort(
-                &setup,
-                &msg,
-                party_idx,
-                KeyExportError::AbortProtocol,
-            )?;
+            check_abort(&setup, &msg, party_idx, KeyExportError::AbortProtocol)?;
             round.put_back(&msg, ABORT_MESSAGE_TAG, party_idx);
             continue;
         }
 
         let msg = Zeroizing::new(msg);
 
-        let (s_i, party_id) =
-            decrypt_share(msg, setup.receiver_private_key())
-                .ok_or(KeyExportError::InvalidMessage)?;
+        let (s_i, party_id) = decrypt_share(msg, setup.receiver_private_key())
+            .ok_or(KeyExportError::InvalidMessage)?;
 
         let x_j = x_i_list
             .get(party_id as usize)
@@ -240,9 +223,8 @@ where
         s_i_list.push(party_id as usize, s_i);
     }
 
-    let private_key =
-        combine_shares(&x_i_list_2.remove_ids(), &s_i_list.remove_ids(), &pk)
-            .ok_or(KeyExportError::PublicKeyMismatch)?;
+    let private_key = combine_shares(&x_i_list_2.remove_ids(), &s_i_list.remove_ids(), &pk)
+        .ok_or(KeyExportError::PublicKeyMismatch)?;
 
     Ok(private_key)
 }
@@ -276,16 +258,12 @@ mod tests {
         key_import::ecdsa_secret_shares,
         keygen::utils::gen_keyshares,
         setup::{
-            key_export::{
-                exporter::KeyExporter, receiver::KeyExportReceiver,
-            },
+            key_export::{exporter::KeyExporter, receiver::KeyExportReceiver},
             NoSigningKey, NoVerifyingKey,
         },
     };
 
-    use super::{
-        combine_shares, export_keyshare, receive_keyshares, PublicKey,
-    };
+    use super::{combine_shares, export_keyshare, receive_keyshares, PublicKey};
 
     #[test]
     fn test_combine() {
@@ -299,17 +277,10 @@ mod tests {
 
         let root_chain_code = [1u8; 32];
 
-        let shares = ecdsa_secret_shares(
-            T,
-            vec![0; N],
-            &private_key,
-            root_chain_code,
-            None,
-            &mut rng,
-        );
+        let shares =
+            ecdsa_secret_shares(T, vec![0; N], &private_key, root_chain_code, None, &mut rng);
 
-        let s_i_list =
-            shares.iter().map(|s| s.s_i.unwrap()).collect::<Vec<_>>();
+        let s_i_list = shares.iter().map(|s| s.s_i.unwrap()).collect::<Vec<_>>();
 
         let x_i_list = shares[0]
             .x_i_list
@@ -321,8 +292,7 @@ mod tests {
 
         for t in T as usize..=N {
             let recovered_private_key =
-                combine_shares(&x_i_list[..t], &s_i_list[..t], &public_key)
-                    .unwrap();
+                combine_shares(&x_i_list[..t], &s_i_list[..t], &public_key).unwrap();
 
             assert_eq!(recovered_private_key, *private_key);
         }
@@ -340,8 +310,7 @@ mod tests {
 
         let inst = rand::random();
 
-        let vk: Vec<NoVerifyingKey> =
-            (0..N as usize).map(NoVerifyingKey::new).collect();
+        let vk: Vec<NoVerifyingKey> = (0..N as usize).map(NoVerifyingKey::new).collect();
 
         for _ in 0..10 {
             // let's try 10 different permutation of shares.
@@ -384,8 +353,7 @@ mod tests {
                     enc_key,
                 );
 
-                let sk =
-                    receive_keyshares(recv, relay.connect()).await.unwrap();
+                let sk = receive_keyshares(recv, relay.connect()).await.unwrap();
 
                 assert_eq!(ProjectivePoint::GENERATOR * sk, pk);
             }

@@ -237,8 +237,7 @@ where
             return Err(EncryptionError);
         }
 
-        let (key, public_key) =
-            self.pk.find_pair_or_err(receiver, EncryptionError)?;
+        let (key, public_key) = self.pk.find_pair_or_err(receiver, EncryptionError)?;
 
         let key = Zeroizing::new(
             Sha256::new_with_prefix(public_key)
@@ -270,8 +269,7 @@ where
             return Err(EncryptionError);
         }
 
-        let (key, public_key) =
-            self.pk.find_pair_or_err(sender, EncryptionError)?;
+        let (key, public_key) = self.pk.find_pair_or_err(sender, EncryptionError)?;
 
         let key = Zeroizing::new(
             Sha256::new_with_prefix(self.public_key)

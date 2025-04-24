@@ -36,11 +36,7 @@ impl<T: AnyBitPattern + NoUninit> EncryptedMessage<T> {
     const T_SIZE: usize = core::mem::size_of::<T>();
 
     /// Size of the whole message with additional data and trailer bytes.
-    pub fn size(
-        ad: usize,
-        trailer: usize,
-        scheme: &dyn EncryptionScheme,
-    ) -> usize {
+    pub fn size(ad: usize, trailer: usize, scheme: &dyn EncryptionScheme) -> usize {
         MESSAGE_HEADER_SIZE + ad + Self::T_SIZE + trailer + scheme.overhead()
     }
 
@@ -70,15 +66,7 @@ impl<T: AnyBitPattern + NoUninit> EncryptedMessage<T> {
     ) -> Self {
         let buffer = vec![0u8; Self::size(additional_data, trailer, scheme)];
 
-        Self::from_buffer(
-            buffer,
-            id,
-            ttl,
-            flags,
-            additional_data,
-            trailer,
-            scheme,
-        )
+        Self::from_buffer(buffer, id, ttl, flags, additional_data, trailer, scheme)
     }
 
     /// Use existing buffer but make sure it has the right size.
@@ -116,8 +104,7 @@ impl<T: AnyBitPattern + NoUninit> EncryptedMessage<T> {
         // body = ad | payload | trailer
         let body = &mut self.buffer[MESSAGE_HEADER_SIZE..tag_offset];
 
-        let (additional_data, msg_and_trailer) =
-            body.split_at_mut(self.additional_data);
+        let (additional_data, msg_and_trailer) = body.split_at_mut(self.additional_data);
 
         let (msg, trailer) = msg_and_trailer.split_at_mut(Self::T_SIZE);
 
@@ -125,21 +112,14 @@ impl<T: AnyBitPattern + NoUninit> EncryptedMessage<T> {
     }
 
     /// Return a mutable reference to message payload object and trailer byte slice.
-    pub fn payload(
-        &mut self,
-        scheme: &dyn EncryptionScheme,
-    ) -> (&mut T, &mut [u8]) {
+    pub fn payload(&mut self, scheme: &dyn EncryptionScheme) -> (&mut T, &mut [u8]) {
         let (msg, trailer, _) = self.payload_with_ad(scheme);
 
         (msg, trailer)
     }
 
     /// Encrypt message.
-    pub fn encrypt(
-        self,
-        scheme: &mut dyn EncryptionScheme,
-        receiver: usize,
-    ) -> Option<Vec<u8>> {
+    pub fn encrypt(self, scheme: &mut dyn EncryptionScheme, receiver: usize) -> Option<Vec<u8>> {
         let mut buffer = self.buffer;
 
         let last = buffer.len() - scheme.overhead();
@@ -168,11 +148,9 @@ impl<T: AnyBitPattern + NoUninit> EncryptedMessage<T> {
             return None;
         }
 
-        let (associated_data, body) =
-            buffer.split_at_mut(MESSAGE_HEADER_SIZE + additional_data);
+        let (associated_data, body) = buffer.split_at_mut(MESSAGE_HEADER_SIZE + additional_data);
 
-        let (ciphertext, tail) =
-            body.split_at_mut(body.len() - scheme.overhead());
+        let (ciphertext, tail) = body.split_at_mut(body.len() - scheme.overhead());
 
         scheme
             .decrypt(associated_data, ciphertext, tail, sender)

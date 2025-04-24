@@ -10,8 +10,7 @@ use zeroize::ZeroizeOnDrop;
 use sl_oblivious::soft_spoken::{ReceiverOTSeed, SenderOTSeed};
 
 use sl_mpc_mate::bip32::{
-    derive_child_pubkey, derive_xpub, get_finger_print, BIP32Error,
-    KeyFingerPrint, Prefix, XPubKey,
+    derive_child_pubkey, derive_xpub, get_finger_print, BIP32Error, KeyFingerPrint, Prefix, XPubKey,
 };
 
 use crate::proto::*;
@@ -41,10 +40,7 @@ impl Keyshare {
     fn calculate_size(n: u8, extra: usize) -> usize {
         assert!(n > 1);
 
-        Self::INFO
-            + (n as usize) * Self::EACH
-            + (n as usize - 1) * Self::OTHER
-            + extra
+        Self::INFO + (n as usize) * Self::EACH + (n as usize - 1) * Self::OTHER + extra
     }
 
     /// Allocate an instance of a key share with given parameters.
@@ -72,11 +68,7 @@ impl Keyshare {
             return false;
         }
 
-        let info = match bytemuck::try_from_bytes::<KeyshareInfo>(
-            &buffer[..Self::INFO],
-        )
-        .ok()
-        {
+        let info = match bytemuck::try_from_bytes::<KeyshareInfo>(&buffer[..Self::INFO]).ok() {
             Some(info) => info,
             _ => return false,
         };
@@ -154,8 +146,7 @@ impl Keyshare {
     }
 
     pub(crate) fn get_x_i(&self, party_id: u8) -> NonZeroScalar {
-        NonZeroScalar::new(decode_scalar(&self.each(party_id).x_i).unwrap())
-            .unwrap()
+        NonZeroScalar::new(decode_scalar(&self.each(party_id).x_i).unwrap()).unwrap()
     }
 
     /// Return true if all parties has rank zero.
@@ -200,10 +191,7 @@ impl Keyshare {
         bytemuck::from_bytes_mut(bytes)
     }
 
-    pub(crate) fn other_mut(
-        &mut self,
-        party_id: u8,
-    ) -> &mut details::OtherParty {
+    pub(crate) fn other_mut(&mut self, party_id: u8) -> &mut details::OtherParty {
         assert!(party_id < self.info().total_parties);
 
         let n = self.info().total_parties as usize;
@@ -212,8 +200,7 @@ impl Keyshare {
         let idx = self.get_idx_from_id(party_id);
         let bytes = &mut self.buffer[offset..][..Self::OTHER * (n - 1)];
 
-        let others: &mut [details::OtherParty] =
-            bytemuck::cast_slice_mut(bytes);
+        let others: &mut [details::OtherParty] = bytemuck::cast_slice_mut(bytes);
 
         &mut others[idx]
     }
@@ -231,10 +218,7 @@ impl Keyshare {
         &others[self.get_idx_from_id(party_id)]
     }
 
-    pub(crate) fn each_mut(
-        &mut self,
-        party_id: u8,
-    ) -> &mut details::EachParty {
+    pub(crate) fn each_mut(&mut self, party_id: u8) -> &mut details::EachParty {
         assert!(party_id < self.info().total_parties);
 
         let n = self.info().total_parties as usize;

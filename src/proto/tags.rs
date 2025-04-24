@@ -14,8 +14,8 @@ use sl_mpc_mate::coord::*;
 use crate::{
     pairs::Pairs,
     proto::{
-        check_abort, EncryptedMessage, EncryptionScheme, MessageTag, MsgId,
-        Relay, SignedMessage, Wrap,
+        check_abort, EncryptedMessage, EncryptionScheme, MessageTag, MsgId, Relay, SignedMessage,
+        Wrap,
     },
     setup::{ProtocolParticipant, ABORT_MESSAGE_TAG},
 };
@@ -76,10 +76,7 @@ impl<R: Relay> FilteredMsgRelay<R> {
 
     /// Receive an expected message with given tag, and return a
     /// party-id associated with it.
-    pub async fn recv(
-        &mut self,
-        tag: MessageTag,
-    ) -> Result<(Vec<u8>, usize, bool), Error> {
+    pub async fn recv(&mut self, tag: MessageTag) -> Result<(Vec<u8>, usize, bool), Error> {
         // flush output message messages.
         self.relay.flush().await.map_err(|_| Error::Recv)?;
 
@@ -122,13 +119,8 @@ impl<R: Relay> FilteredMsgRelay<R> {
         tag: MessageTag,
         p2p: bool,
     ) -> Result<usize, MessageSendError> {
-        self.ask_messages_from_iter(
-            setup,
-            tag,
-            setup.all_other_parties(),
-            p2p,
-        )
-        .await
+        self.ask_messages_from_iter(setup, tag, setup.all_other_parties(), p2p)
+            .await
     }
 
     /// Ask set of messages with a given `tag` from a set of `parties`.
@@ -181,13 +173,8 @@ impl<R: Relay> FilteredMsgRelay<R> {
         P: ProtocolParticipant,
         I: IntoIterator<Item = &'a usize>,
     {
-        self.ask_messages_from_iter(
-            setup,
-            tag,
-            from_parties.into_iter().copied(),
-            p2p,
-        )
-        .await
+        self.ask_messages_from_iter(setup, tag, from_parties.into_iter().copied(), p2p)
+            .await
     }
 
     /// Create a round
@@ -219,11 +206,7 @@ pub struct Round<'a, R> {
 
 impl<'a, R: Relay> Round<'a, R> {
     /// Create a new round with a given number of messages to receive.
-    pub fn new(
-        count: usize,
-        tag: MessageTag,
-        relay: &'a mut FilteredMsgRelay<R>,
-    ) -> Self {
+    pub fn new(count: usize, tag: MessageTag, relay: &'a mut FilteredMsgRelay<R>) -> Self {
         Self { count, tag, relay }
     }
 
@@ -231,9 +214,7 @@ impl<'a, R: Relay> Round<'a, R> {
     /// On success returns Ok(Some(message, party_index, is_abort_flag)).
     /// At the end of the round it returns Ok(None).
     ///
-    pub async fn recv(
-        &mut self,
-    ) -> Result<Option<(Vec<u8>, usize, bool)>, Error> {
+    pub async fn recv(&mut self) -> Result<Option<(Vec<u8>, usize, bool)>, Error> {
         Ok(if self.count > 0 {
             let msg = self.relay.recv(self.tag).await;
             #[cfg(feature = "tracing")]
@@ -312,12 +293,7 @@ impl<'a, R: Relay> Round<'a, R> {
     where
         T: AnyBitPattern + NoUninit,
         P: ProtocolParticipant,
-        F: FnMut(
-            &T,
-            usize,
-            &[u8],
-            &mut dyn EncryptionScheme,
-        ) -> Result<Option<Vec<u8>>, E>,
+        F: FnMut(&T, usize, &[u8], &mut dyn EncryptionScheme) -> Result<Option<Vec<u8>>, E>,
         E: From<Error>,
     {
         while let Some((msg, party_index, is_abort)) = self.recv().await? {
@@ -329,21 +305,16 @@ impl<'a, R: Relay> Round<'a, R> {
 
             let mut msg = Zeroizing::new(msg);
 
-            let (msg, trailer) = match EncryptedMessage::<T>::decrypt(
-                &mut msg,
-                trailer,
-                scheme,
-                party_index,
-            ) {
-                Some(refs) => refs,
-                _ => {
-                    self.put_back(&msg, self.tag, party_index);
-                    continue;
-                }
-            };
+            let (msg, trailer) =
+                match EncryptedMessage::<T>::decrypt(&mut msg, trailer, scheme, party_index) {
+                    Some(refs) => refs,
+                    _ => {
+                        self.put_back(&msg, self.tag, party_index);
+                        continue;
+                    }
+                };
 
-            if let Some(replay) = handler(msg, party_index, trailer, scheme)?
-            {
+            if let Some(replay) = handler(msg, party_index, trailer, scheme)? {
                 self.relay.send(replay).await.map_err(|_| Error::Send)?;
             }
         }
@@ -408,8 +379,7 @@ impl<'a, R: Relay> Round<'a, R> {
 
         self.relay.send(buffer).await.map_err(|_| Error::Send)?;
 
-        let (mut p0, mut p1, mut p2, mut p3) =
-            self.recv_broadcast_4(setup, &sizes).await?;
+        let (mut p0, mut p1, mut p2, mut p3) = self.recv_broadcast_4(setup, &sizes).await?;
 
         p0.push(my_party_id, msg.0);
         p1.push(my_party_id, msg.1);
@@ -468,14 +438,10 @@ impl<'a, R: Relay> Round<'a, R> {
                 }
             };
 
-            let (buf, v1) =
-                T1::decode(buf, sizes[0]).ok_or(Error::InvalidMessage)?;
-            let (buf, v2) =
-                T2::decode(buf, sizes[1]).ok_or(Error::InvalidMessage)?;
-            let (buf, v3) =
-                T3::decode(buf, sizes[2]).ok_or(Error::InvalidMessage)?;
-            let (_bu, v4) =
-                T4::decode(buf, sizes[3]).ok_or(Error::InvalidMessage)?;
+            let (buf, v1) = T1::decode(buf, sizes[0]).ok_or(Error::InvalidMessage)?;
+            let (buf, v2) = T2::decode(buf, sizes[1]).ok_or(Error::InvalidMessage)?;
+            let (buf, v3) = T3::decode(buf, sizes[2]).ok_or(Error::InvalidMessage)?;
+            let (_bu, v4) = T4::decode(buf, sizes[3]).ok_or(Error::InvalidMessage)?;
 
             p0.push(party_id, v1);
             p1.push(party_id, v2);

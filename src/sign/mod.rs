@@ -30,11 +30,8 @@ pub enum DsgVariant {
 ///
 /// Call the passed closure for each pair (msg_id, receiver)
 ///
-pub fn message_receivers<S, F>(
-    setup: &S,
-    variant: DsgVariant,
-    mut msg_receiver: F,
-) where
+pub fn message_receivers<S, F>(setup: &S, variant: DsgVariant, mut msg_receiver: F)
+where
     S: ProtocolParticipant,
     F: FnMut(MsgId, &S::MessageVerifier),
 {
@@ -72,8 +69,8 @@ mod support {
         keygen::Keyshare,
         setup::ProtocolParticipant,
         setup::{
-            finish::SetupMessage as FinishSetupMsg, sign::SetupMessage,
-            NoSigningKey, NoVerifyingKey,
+            finish::SetupMessage as FinishSetupMsg, sign::SetupMessage, NoSigningKey,
+            NoVerifyingKey,
         },
         sign::PreSign,
         Seed,

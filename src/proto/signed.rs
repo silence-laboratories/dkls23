@@ -122,10 +122,7 @@ impl<S: SignatureEncoding, T: AnyBitPattern + NoUninit> SignedMessage<T, S> {
     }
 
     /// Verify signed message and return a payload reference.
-    pub fn verify<'msg, V: Verifier<S>>(
-        buffer: &'msg [u8],
-        verify_key: &V,
-    ) -> Option<&'msg T> {
+    pub fn verify<'msg, V: Verifier<S>>(buffer: &'msg [u8], verify_key: &V) -> Option<&'msg T> {
         Self::verify_with_trailer(buffer, 0, verify_key).map(|(m, _)| m)
     }
 }
@@ -133,10 +130,7 @@ impl<S: SignatureEncoding, T: AnyBitPattern + NoUninit> SignedMessage<T, S> {
 impl<S: SignatureEncoding> SignedMessage<(), S> {
     /// Verify message in the passed buffer and return range
     /// containing message payload.
-    pub fn verify_buffer<V: Verifier<S>>(
-        buffer: &[u8],
-        verify_key: &V,
-    ) -> Option<Range<usize>> {
+    pub fn verify_buffer<V: Verifier<S>>(buffer: &[u8], verify_key: &V) -> Option<Range<usize>> {
         let overhead = MESSAGE_HEADER_SIZE + Self::S_SIZE;
 
         if buffer.len() > overhead {

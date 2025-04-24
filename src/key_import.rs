@@ -25,8 +25,7 @@ pub fn ecdsa_secret_shares<T: RngCore + CryptoRng>(
     let public_key = ProjectivePoint::GENERATOR * private_key;
 
     // u_i_k
-    let mut polynomial =
-        Polynomial::<ProjectivePoint>::random(rng, threshold as usize - 1);
+    let mut polynomial = Polynomial::<ProjectivePoint>::random(rng, threshold as usize - 1);
 
     polynomial.set_constant(*private_key); // making a copy of private key
 
@@ -65,9 +64,7 @@ pub fn ecdsa_secret_shares<T: RngCore + CryptoRng>(
 mod tests {
     use std::sync::Arc;
 
-    use k256::{
-        elliptic_curve::sec1::ToEncodedPoint, NonZeroScalar, ProjectivePoint,
-    };
+    use k256::{elliptic_curve::sec1::ToEncodedPoint, NonZeroScalar, ProjectivePoint};
     use rand::Rng;
     use sl_mpc_mate::coord::SimpleMessageRelay;
     use tokio::task::JoinSet;
@@ -81,15 +78,11 @@ mod tests {
         sign::setup_dsg,
     };
 
-    async fn refresh(
-        keyshares: Vec<KeyshareForRefresh>,
-    ) -> Vec<Arc<Keyshare>> {
+    async fn refresh(keyshares: Vec<KeyshareForRefresh>) -> Vec<Arc<Keyshare>> {
         let coord = SimpleMessageRelay::new();
         let mut parties = JoinSet::new();
 
-        for (setup, seed, share) in
-            setup_key_refresh(2, 3, Some(&[0, 0, 0]), keyshares)
-        {
+        for (setup, seed, share) in setup_key_refresh(2, 3, Some(&[0, 0, 0]), keyshares) {
             parties.spawn(run(setup, seed, coord.connect(), share));
         }
 
@@ -116,14 +109,8 @@ mod tests {
         let private_key = NonZeroScalar::random(&mut rng);
         let original_pubkey = ProjectivePoint::GENERATOR * *private_key;
 
-        let keyshares = ecdsa_secret_shares(
-            2,
-            vec![0, 0, 0],
-            &private_key,
-            rng.gen(),
-            None,
-            &mut rng,
-        );
+        let keyshares =
+            ecdsa_secret_shares(2, vec![0, 0, 0], &private_key, rng.gen(), None, &mut rng);
         let original_chain_code = keyshares[0].root_chain_code;
 
         let mut new_shares = refresh(keyshares).await;

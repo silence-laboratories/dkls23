@@ -19,12 +19,7 @@ use crate::{
 
 const DEFAULT_TTL: u64 = 100; // smaller timeout might fail tests
 
-pub struct SetupMessage<
-    SK = NoSigningKey,
-    VK = NoVerifyingKey,
-    MS = NoSignature,
-    PS = PreSign,
-> {
+pub struct SetupMessage<SK = NoSigningKey, VK = NoVerifyingKey, MS = NoSignature, PS = PreSign> {
     party_idx: usize,
     sk: SK,
     vk: Vec<VK>,
@@ -36,13 +31,7 @@ pub struct SetupMessage<
 }
 
 impl<SK, VK, MS, PS> SetupMessage<SK, VK, MS, PS> {
-    pub fn new(
-        instance: InstanceId,
-        party_idx: usize,
-        sk: SK,
-        vk: Vec<VK>,
-        pre: PS,
-    ) -> Self {
+    pub fn new(instance: InstanceId, party_idx: usize, sk: SK, vk: Vec<VK>, pre: PS) -> Self {
         Self {
             party_idx,
             sk,

@@ -202,8 +202,7 @@ impl Wrap for NonZeroScalar {
     }
 
     fn read(buffer: &[u8]) -> Option<Self> {
-        decode_scalar(buffer.try_into().ok()?)
-            .and_then(|s| NonZeroScalar::new(s).into())
+        decode_scalar(buffer.try_into().ok()?).and_then(|s| NonZeroScalar::new(s).into())
     }
 }
 
@@ -293,8 +292,7 @@ impl Wrap for GroupPolynomial<ProjectivePoint> {
 }
 
 impl FixedExternalSize for DLogProof {
-    const SIZE: usize =
-        mem::size_of::<PointBytes>() + mem::size_of::<ScalarBytes>();
+    const SIZE: usize = mem::size_of::<PointBytes>() + mem::size_of::<ScalarBytes>();
 }
 
 impl Wrap for DLogProof {

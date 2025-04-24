@@ -15,10 +15,7 @@ use sha2::{Digest, Sha256};
 
 use sl_mpc_mate::{
     coord::*,
-    math::{
-        feldman_verify, polynomial_coeff_multipliers, GroupPolynomial,
-        Polynomial,
-    },
+    math::{feldman_verify, polynomial_coeff_multipliers, GroupPolynomial, Polynomial},
     message::MsgId,
     SessionId,
 };
@@ -33,10 +30,7 @@ use crate::{
         constants::*,
         get_all_but_one_session_id, get_base_ot_session_id,
         messages::*,
-        utils::{
-            check_secret_recovery, get_birkhoff_coefficients,
-            get_lagrange_coeff,
-        },
+        utils::{check_secret_recovery, get_birkhoff_coefficients, get_lagrange_coeff},
         KeygenError, Keyshare,
     },
     pairs::Pairs,
@@ -57,11 +51,7 @@ where
 }
 
 /// Execute Quorum change protocol.
-pub async fn run<T, R>(
-    setup: T,
-    seed: Seed,
-    relay: R,
-) -> Result<Option<Keyshare>, KeygenError>
+pub async fn run<T, R>(setup: T, seed: Seed, relay: R) -> Result<Option<Keyshare>, KeygenError>
 where
     T: QuorumChangeSetupMessage<Keyshare, ProjectivePoint>,
     R: Relay,
@@ -71,9 +61,7 @@ where
 
     let result = match run_inner(setup, seed, &mut relay).await {
         Ok(share) => Ok(share),
-        Err(KeygenError::AbortProtocol(p)) => {
-            Err(KeygenError::AbortProtocol(p))
-        }
+        Err(KeygenError::AbortProtocol(p)) => Err(KeygenError::AbortProtocol(p)),
         Err(KeygenError::SendMessage) => Err(KeygenError::SendMessage),
         Err(err) => {
             // ignore error of sending abort message
@@ -129,24 +117,14 @@ where
     relay.ask_messages(&setup, ABORT_MESSAGE_TAG, false).await?;
 
     let _r0 = relay
-        .ask_messages_from_slice(
-            &setup,
-            QC_MSG_R0,
-            setup.old_party_indices(),
-            false,
-        )
+        .ask_messages_from_slice(&setup, QC_MSG_R0, setup.old_party_indices(), false)
         .await?;
 
     relay.ask_messages(&setup, QC_MSG_R1, false).await?;
 
     let _p2p_1 = if my_party_is_new {
         relay
-            .ask_messages_from_slice(
-                &setup,
-                QC_MSG_P2P_1,
-                setup.old_party_indices(),
-                true,
-            )
+            .ask_messages_from_slice(&setup, QC_MSG_P2P_1, setup.old_party_indices(), true)
             .await?
     } else {
         0
@@ -154,24 +132,14 @@ where
 
     let _p2p_2 = if my_party_is_new {
         relay
-            .ask_messages_from_slice(
-                &setup,
-                QC_MSG_P2P_2,
-                setup.old_party_indices(),
-                true,
-            )
+            .ask_messages_from_slice(&setup, QC_MSG_P2P_2, setup.old_party_indices(), true)
             .await?
     } else {
         0
     };
 
     let _r2 = relay
-        .ask_messages_from_slice(
-            &setup,
-            QC_MSG_R2,
-            setup.old_party_indices(),
-            false,
-        )
+        .ask_messages_from_slice(&setup, QC_MSG_R2, setup.old_party_indices(), false)
         .await?;
 
     let sid_i = SessionId::new(rng.gen());
@@ -218,10 +186,7 @@ where
             let old_x_i_list = keyshare.x_i_list();
             let x_i = old_x_i_list[my_old_party_id];
 
-            assert!(
-                setup.old_party_indices().len()
-                    >= keyshare.threshold as usize
-            );
+            assert!(setup.old_party_indices().len() >= keyshare.threshold as usize);
 
             let old_party_id_list = old_party_ids.remove_ids();
 
@@ -230,14 +195,10 @@ where
             let lambda = if all_ranks_zero {
                 get_lagrange_coeff(&x_i, &old_x_i_list, &old_party_id_list)
             } else {
-                get_birkhoff_coefficients(
-                    &old_rank_list,
-                    &old_x_i_list,
-                    &old_party_id_list,
-                )
-                .get(&my_old_party_id)
-                .copied()
-                .unwrap_or_default()
+                get_birkhoff_coefficients(&old_rank_list, &old_x_i_list, &old_party_id_list)
+                    .get(&my_old_party_id)
+                    .copied()
+                    .unwrap_or_default()
             };
 
             lambda * s_i
@@ -287,9 +248,7 @@ where
         let my_new_party_id = my_new_party_id.unwrap();
         let my_new_rank = setup.new_participant_rank(my_new_party_id);
         let x_i = new_x_i_list[my_new_party_id as usize];
-        let p_i_i = block_in_place(|| {
-            polynomial.derivative_at(my_new_rank as usize, &x_i)
-        });
+        let p_i_i = block_in_place(|| polynomial.derivative_at(my_new_rank as usize, &x_i));
         p_i_list.push(my_old_party_id, p_i_i);
     }
 
@@ -308,9 +267,7 @@ where
 
             let party_j_rank = setup.new_participant_rank(receiver_id);
             let x_j = new_x_i_list[receiver_id as usize];
-            let p_i_j = block_in_place(|| {
-                polynomial.derivative_at(party_j_rank as usize, &x_j)
-            });
+            let p_i_j = block_in_place(|| polynomial.derivative_at(party_j_rank as usize, &x_j));
             p_i_j_list.push(receiver_id, p_i_j);
 
             let commitment_2_i = hash_commitment_2(
@@ -356,8 +313,7 @@ where
             0,
             KeygenError::AbortProtocol,
             |p2p_msg1: &QCP2PMsg1, from_party_index, _, _| {
-                let from_party_id =
-                    *old_party_ids.find_pair(from_party_index);
+                let from_party_id = *old_party_ids.find_pair(from_party_index);
 
                 commitment2_list.push(from_party_id, p2p_msg1.commitment_2_i);
 
@@ -405,10 +361,9 @@ where
         }
 
         // Broadcast 2 from old parties to all
-        let (big_p_j_poly_list, r1_j_list, _, _) =
-            Round::new(_r2, QC_MSG_R2, relay)
-                .broadcast_4(&setup, (big_p_i_poly.clone(), r1_i, (), ()))
-                .await?;
+        let (big_p_j_poly_list, r1_j_list, _, _) = Round::new(_r2, QC_MSG_R2, relay)
+            .broadcast_4(&setup, (big_p_i_poly.clone(), r1_i, (), ()))
+            .await?;
 
         // checks for old party
         for &old_party_index in setup.old_party_indices() {
@@ -425,8 +380,7 @@ where
                 return Err(KeygenError::InvalidPolynomialPoint);
             }
 
-            let commit_hash1 =
-                hash_commitment_1(sid_j, old_party_index, big_p_i_poly, r1_j);
+            let commit_hash1 = hash_commitment_1(sid_j, old_party_index, big_p_i_poly, r1_j);
             if commit_hash1.ct_ne(commitment1).into() {
                 return Err(KeygenError::InvalidCommitmentHash);
             }
@@ -453,9 +407,7 @@ where
 
     let mut root_chain_code_list = setup
         .old_keyshare()
-        .map(|share| {
-            Pairs::new_with_item(share.party_id, share.root_chain_code)
-        })
+        .map(|share| Pairs::new_with_item(share.party_id, share.root_chain_code))
         .unwrap_or_default();
 
     // new_party processes all old_t decommits2 from old parties
@@ -467,11 +419,9 @@ where
             0,
             KeygenError::AbortProtocol,
             |p2p_msg2: &QCP2PMsg2, from_party_index, _, _| {
-                let from_party_id =
-                    *old_party_ids.find_pair(from_party_index);
+                let from_party_id = *old_party_ids.find_pair(from_party_index);
 
-                let p_j_i = decode_scalar(&p2p_msg2.p_i)
-                    .ok_or(KeygenError::InvalidMessage)?;
+                let p_j_i = decode_scalar(&p2p_msg2.p_i).ok_or(KeygenError::InvalidMessage)?;
 
                 let commitment2 = commitment2_list.find_pair(from_party_id);
 
@@ -489,8 +439,7 @@ where
 
                 p_i_list.push(from_party_id, p_j_i);
 
-                root_chain_code_list
-                    .push(from_party_id, p2p_msg2.root_chain_code);
+                root_chain_code_list.push(from_party_id, p2p_msg2.root_chain_code);
 
                 Ok(None)
             },
@@ -512,13 +461,9 @@ where
     } else {
         // only for new parties, not for old parties
 
-        let (big_p_j_poly_list, r1_j_list, _, _) =
-            Round::new(_r2, QC_MSG_R2, relay)
-                .recv_broadcast_4::<_, _, _, (), ()>(
-                    &setup,
-                    &[big_p_i_poly.external_size(), 32, 0, 0],
-                )
-                .await?;
+        let (big_p_j_poly_list, r1_j_list, _, _) = Round::new(_r2, QC_MSG_R2, relay)
+            .recv_broadcast_4::<_, _, _, (), ()>(&setup, &[big_p_i_poly.external_size(), 32, 0, 0])
+            .await?;
 
         // checks for new party
         for &old_party_index in setup.old_party_indices() {
@@ -536,8 +481,7 @@ where
                 return Err(KeygenError::InvalidPolynomialPoint);
             }
 
-            let commit_hash1 =
-                hash_commitment_1(sid_j, old_party_index, big_p_i_vec, r1_j);
+            let commit_hash1 = hash_commitment_1(sid_j, old_party_index, big_p_i_vec, r1_j);
             if commit_hash1.ct_ne(commitment1).into() {
                 return Err(KeygenError::InvalidCommitmentHash);
             }
@@ -573,8 +517,7 @@ where
 
     // check that P_j(x_i) = p_j_i * G
     for (big_p_j, p_j_i) in big_p_j_poly_list.iter().zip(&p_i_list) {
-        let coeffs =
-            block_in_place(|| big_p_j.derivative_coeffs(my_rank as usize));
+        let coeffs = block_in_place(|| big_p_j.derivative_coeffs(my_rank as usize));
         let valid = feldman_verify(
             coeffs,
             &new_x_i_list[my_party_id as usize],
@@ -591,8 +534,7 @@ where
     // check if p_i is correct, P(x_i) = p_i * G
     let big_p_i = ProjectivePoint::GENERATOR * p_i;
     let x_i = new_x_i_list[my_party_id as usize];
-    let coeff_multipliers =
-        polynomial_coeff_multipliers(&x_i, my_rank as usize, NEW_T);
+    let coeff_multipliers = polynomial_coeff_multipliers(&x_i, my_rank as usize, NEW_T);
 
     let expected_point: ProjectivePoint = big_p_poly
         .points()
@@ -616,8 +558,7 @@ where
         .map(|(party_id, x_i)| {
             let party_rank = setup.new_participant_rank(party_id as u8);
 
-            let coeff_multipliers =
-                polynomial_coeff_multipliers(x_i, party_rank as usize, NEW_T);
+            let coeff_multipliers = polynomial_coeff_multipliers(x_i, party_rank as usize, NEW_T);
 
             big_p_poly
                 .points()
@@ -635,12 +576,7 @@ where
 
     if !rank_list.iter().all(|&r| r == 0) {
         // check that rank_list is correct and participants can sign
-        check_secret_recovery(
-            &new_x_i_list,
-            &rank_list,
-            &big_s_list,
-            &public_key,
-        )?;
+        check_secret_recovery(&new_x_i_list, &rank_list, &big_s_list, &public_key)?;
     }
 
     let mut new_keyshare = Keyshare::new(
@@ -654,8 +590,7 @@ where
     new_keyshare.info_mut().root_chain_code = root_chain_code;
     new_keyshare.info_mut().public_key = encode_point(&public_key);
     new_keyshare.info_mut().s_i = encode_scalar(&p_i);
-    new_keyshare.info_mut().key_id =
-        setup.derive_key_id(&public_key.to_bytes());
+    new_keyshare.info_mut().key_id = setup.derive_key_id(&public_key.to_bytes());
 
     for p in 0..NEW_N {
         let each = new_keyshare.each_mut(p as u8);
@@ -669,21 +604,11 @@ where
     // new parties create OT seeds //
     /////////////////////////////////
     let _ot1 = relay
-        .ask_messages_from_slice(
-            &setup,
-            QC_MSG_OT1,
-            setup.new_party_indices(),
-            true,
-        )
+        .ask_messages_from_slice(&setup, QC_MSG_OT1, setup.new_party_indices(), true)
         .await?;
 
     let _ot2 = relay
-        .ask_messages_from_slice(
-            &setup,
-            QC_MSG_OT2,
-            setup.new_party_indices(),
-            true,
-        )
+        .ask_messages_from_slice(&setup, QC_MSG_OT2, setup.new_party_indices(), true)
         .await?;
 
     let mut base_ot_receivers: Pairs<EndemicOTReceiver> = Pairs::new();
@@ -694,11 +619,7 @@ where
 
         let receiver_id = setup.new_party_id(receiver_index).unwrap();
 
-        let sid = get_base_ot_session_id(
-            my_party_id,
-            receiver_id,
-            &new_keyshare.final_session_id,
-        );
+        let sid = get_base_ot_session_id(my_party_id, receiver_id, &new_keyshare.final_session_id);
 
         let mut enc_ot_msg1 = EncryptedMessage::<EndemicOTMsg1>::new(
             &setup.msg_id(Some(receiver_index), QC_MSG_OT1),
@@ -777,8 +698,7 @@ where
 
                 if receiver_id > my_party_id {
                     rng.fill_bytes(&mut msg3.seed_i_j);
-                    new_keyshare.each_mut(receiver_id - 1).zeta_seed =
-                        msg3.seed_i_j;
+                    new_keyshare.each_mut(receiver_id - 1).zeta_seed = msg3.seed_i_j;
                 };
 
                 Ok(Some(
@@ -800,9 +720,8 @@ where
                 let party_id = setup.new_party_id(party_index).unwrap();
 
                 let receiver = base_ot_receivers.pop_pair(party_id);
-                let receiver_output =
-                    block_in_place(|| receiver.process(&msg3.base_ot_msg2))
-                        .map_err(|_| KeygenError::InvalidMessage)?;
+                let receiver_output = block_in_place(|| receiver.process(&msg3.base_ot_msg2))
+                    .map_err(|_| KeygenError::InvalidMessage)?;
                 let all_but_one_session_id = get_all_but_one_session_id(
                     party_id as usize,
                     my_party_id as usize,
@@ -898,17 +817,11 @@ where
         msg_receiver(setup.msg_id(None, QC_MSG_R1), receiver);
 
         if my_party_is_old && new.contains(&receiver_idx) {
-            msg_receiver(
-                setup.msg_id(Some(receiver_idx), QC_MSG_P2P_1),
-                receiver,
-            );
+            msg_receiver(setup.msg_id(Some(receiver_idx), QC_MSG_P2P_1), receiver);
         }
 
         if my_party_is_old && new.contains(&receiver_idx) {
-            msg_receiver(
-                setup.msg_id(Some(receiver_idx), QC_MSG_P2P_2),
-                receiver,
-            );
+            msg_receiver(setup.msg_id(Some(receiver_idx), QC_MSG_P2P_2), receiver);
         }
 
         if my_party_is_old {
@@ -916,17 +829,11 @@ where
         }
 
         if my_party_is_new && new.contains(&receiver_idx) {
-            msg_receiver(
-                setup.msg_id(Some(receiver_idx), QC_MSG_OT1),
-                receiver,
-            );
+            msg_receiver(setup.msg_id(Some(receiver_idx), QC_MSG_OT1), receiver);
         }
 
         if my_party_is_new && new.contains(&receiver_idx) {
-            msg_receiver(
-                setup.msg_id(Some(receiver_idx), QC_MSG_OT2),
-                receiver,
-            );
+            msg_receiver(setup.msg_id(Some(receiver_idx), QC_MSG_OT2), receiver);
         }
     })
 }
@@ -948,8 +855,7 @@ mod tests {
 
     use crate::{
         keygen::utils::{
-            gen_keyshares, setup_quorum_change,
-            setup_quorum_change_extend_parties,
+            gen_keyshares, setup_quorum_change, setup_quorum_change_extend_parties,
             setup_quorum_change_threshold,
         },
         setup::quorum_change::SetupMessage as QuorumChangeSetupMessage,
@@ -966,8 +872,7 @@ mod tests {
         S: MessageRelayService<MessageRelay = R>,
         R: Relay + Send + 'static,
     {
-        let parties =
-            setup_quorum_change(old_keyshares, new_threshold, &new_ranks);
+        let parties = setup_quorum_change(old_keyshares, new_threshold, &new_ranks);
 
         sim_parties(parties, coord).await
     }
@@ -1002,11 +907,7 @@ mod tests {
         S: MessageRelayService<MessageRelay = R>,
         R: Relay + Send + 'static,
     {
-        let parties = setup_quorum_change_threshold(
-            old_keyshares,
-            new_threshold,
-            &new_ranks,
-        );
+        let parties = setup_quorum_change_threshold(old_keyshares, new_threshold, &new_ranks);
         sim_parties(parties, coord).await
     }
 
@@ -1052,8 +953,7 @@ mod tests {
         let shares = gen_keyshares(old_threshold, old_n, Some(&ranks)).await;
         let expected_public_key = shares[0].public_key;
 
-        let shares =
-            [shares[1].clone(), shares[0].clone(), shares[2].clone()];
+        let shares = [shares[1].clone(), shares[0].clone(), shares[2].clone()];
 
         let new_threshold = 3;
         let new_n = 4;
@@ -1066,8 +966,7 @@ mod tests {
         )
         .await;
 
-        let mut new_shares: Vec<Arc<Keyshare>> =
-            result.iter().flatten().cloned().collect();
+        let mut new_shares: Vec<Arc<Keyshare>> = result.iter().flatten().cloned().collect();
         assert_eq!(new_shares.len(), new_n as usize);
         assert_eq!(expected_public_key, new_shares[0].public_key);
 
@@ -1100,8 +999,7 @@ mod tests {
         let shares = gen_keyshares(old_threshold, old_n, Some(&ranks)).await;
         let expected_public_key = shares[0].public_key;
 
-        let shares =
-            [shares[1].clone(), shares[0].clone(), shares[2].clone()];
+        let shares = [shares[1].clone(), shares[0].clone(), shares[2].clone()];
 
         let new_threshold = 2;
         let new_parties_len = 2;
@@ -1116,8 +1014,7 @@ mod tests {
         )
         .await;
 
-        let mut new_shares: Vec<Arc<Keyshare>> =
-            result.iter().flatten().cloned().collect();
+        let mut new_shares: Vec<Arc<Keyshare>> = result.iter().flatten().cloned().collect();
         assert_eq!(new_shares.len(), new_n as usize);
         assert_eq!(expected_public_key, new_shares[0].public_key);
 
@@ -1147,8 +1044,7 @@ mod tests {
         let old_threshold = 2;
         let old_n = 4;
         let ranks = [0, 0, 0, 0];
-        let mut shares =
-            gen_keyshares(old_threshold, old_n, Some(&ranks)).await;
+        let mut shares = gen_keyshares(old_threshold, old_n, Some(&ranks)).await;
         let expected_public_key = shares[0].public_key;
 
         shares.shuffle(&mut thread_rng());
@@ -1156,16 +1052,11 @@ mod tests {
         let new_threshold = 3;
         let new_n = old_n;
         let new_ranks = vec![0, 0, 0, 0];
-        let result = sim_only_change_threshold(
-            &shares,
-            new_threshold,
-            new_ranks,
-            SimpleMessageRelay::new(),
-        )
-        .await;
+        let result =
+            sim_only_change_threshold(&shares, new_threshold, new_ranks, SimpleMessageRelay::new())
+                .await;
 
-        let mut new_shares: Vec<Arc<Keyshare>> =
-            result.iter().flatten().cloned().collect();
+        let mut new_shares: Vec<Arc<Keyshare>> = result.iter().flatten().cloned().collect();
         assert_eq!(new_shares.len(), new_n as usize);
         assert_eq!(expected_public_key, new_shares[0].public_key);
 

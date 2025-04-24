@@ -9,9 +9,7 @@ use sl_mpc_mate::coord::MessageSendError;
 /// Distributed key generation errors
 pub enum KeygenError {
     /// error while serializing or deserializing or invalid message data length
-    #[error(
-        "Error while deserializing message or invalid message data length"
-    )]
+    #[error("Error while deserializing message or invalid message data length")]
     InvalidMessage,
 
     /// Invalid commitment hash
@@ -117,9 +115,7 @@ mod tests {
 
         assert_eq!(
             result,
-            Scalar::from_uint_unchecked(
-                order.wrapping_sub(&U256::from(2_u64))
-            )
+            Scalar::from_uint_unchecked(order.wrapping_sub(&U256::from(2_u64)))
         );
     }
 

@@ -7,8 +7,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use k256::{
-    elliptic_curve::subtle::ConstantTimeEq, NonZeroScalar, ProjectivePoint,
-    Scalar, Secp256k1,
+    elliptic_curve::subtle::ConstantTimeEq, NonZeroScalar, ProjectivePoint, Scalar, Secp256k1,
 };
 #[cfg(any(test, feature = "test-support"))]
 use rand::prelude::*;
@@ -57,9 +56,7 @@ pub(crate) fn get_birkhoff_coefficients(
 ) -> HashMap<usize, Scalar> {
     let params = party_ids
         .iter()
-        .map(|&pid| {
-            (x_i_list[pid as usize], rank_list[pid as usize] as usize)
-        })
+        .map(|&pid| (x_i_list[pid as usize], rank_list[pid as usize] as usize))
         .collect::<Vec<_>>();
 
     let betta_vec = birkhoff_coeffs::<Secp256k1>(&params);
@@ -182,11 +179,7 @@ pub fn setup_keygen(
 
 /// Execute DGK for given parameters
 #[cfg(any(test, feature = "test-support"))]
-pub async fn gen_keyshares(
-    t: u8,
-    n: u8,
-    ranks: Option<&[u8]>,
-) -> Vec<Arc<Keyshare>> {
+pub async fn gen_keyshares(t: u8, n: u8, ranks: Option<&[u8]>) -> Vec<Arc<Keyshare>> {
     let coord = sl_mpc_mate::coord::SimpleMessageRelay::new();
 
     let mut parties = tokio::task::JoinSet::new();
@@ -365,8 +358,7 @@ pub fn setup_quorum_change_threshold(
 
     let old_parties = (0..old_keyshares.len()).collect::<Vec<_>>();
 
-    let new_parties =
-        new_n_i_list.iter().copied().enumerate().collect::<Vec<_>>();
+    let new_parties = new_n_i_list.iter().copied().enumerate().collect::<Vec<_>>();
 
     let mut rng = rand::thread_rng();
 

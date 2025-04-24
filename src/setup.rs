@@ -114,12 +114,7 @@ pub trait ProtocolParticipant {
     /// Generate ID of a message from given sender to a given
     /// receiver.  Receiver is designed by its index and is None for a
     /// broadcase message.
-    fn msg_id_from(
-        &self,
-        sender: usize,
-        receiver: Option<usize>,
-        tag: MessageTag,
-    ) -> MsgId {
+    fn msg_id_from(&self, sender: usize, receiver: Option<usize>, tag: MessageTag) -> MsgId {
         let receiver = receiver
             .map(|p| self.verifier(p))
             .map(AsRef::<[u8]>::as_ref);
@@ -293,9 +288,7 @@ pub trait QuorumChangeSetupMessage<KS, PK>: ProtocolParticipant {
     fn derive_key_id(&self, public_key: &[u8]) -> [u8; 32];
 }
 
-impl<KS, PK, M: QuorumChangeSetupMessage<KS, PK>>
-    QuorumChangeSetupMessage<KS, PK> for &M
-{
+impl<KS, PK, M: QuorumChangeSetupMessage<KS, PK>> QuorumChangeSetupMessage<KS, PK> for &M {
     fn old_keyshare(&self) -> Option<&KS> {
         (**self).old_keyshare()
     }

@@ -7,10 +7,7 @@
 use std::collections::HashMap;
 
 use k256::{
-    ecdsa::{
-        signature::hazmat::PrehashVerifier, RecoveryId, Signature,
-        VerifyingKey,
-    },
+    ecdsa::{signature::hazmat::PrehashVerifier, RecoveryId, Signature, VerifyingKey},
     elliptic_curve::{
         group::GroupEncoding,
         ops::Reduce,
@@ -32,12 +29,10 @@ use sl_oblivious::rvole::{RVOLEReceiver, RVOLESender};
 
 use crate::{
     keygen::Keyshare,
-    proto::{
-        create_abort_message, tags::*, EncryptedMessage, SignedMessage, *,
-    },
+    proto::{create_abort_message, tags::*, EncryptedMessage, SignedMessage, *},
     setup::{
-        FinalSignSetupMessage, PreSignSetupMessage, ProtocolParticipant,
-        SignSetupMessage, ABORT_MESSAGE_TAG,
+        FinalSignSetupMessage, PreSignSetupMessage, ProtocolParticipant, SignSetupMessage,
+        ABORT_MESSAGE_TAG,
     },
     sign::constants::*,
     sign::messages::*,
@@ -73,15 +68,11 @@ async fn pre_signature_inner<R: Relay, S: PreSignSetupMessage>(
     let big_r_i = ProjectivePoint::GENERATOR * r_i;
 
     // TODO: Replace with SmallVec 2?
-    let mut commitments =
-        vec![([0; 32], [0; 32]); setup.total_participants()];
+    let mut commitments = vec![([0; 32], [0; 32]); setup.total_participants()];
 
     commitments[my_party_idx].0 = rng.gen(); // generate SessionId
-    commitments[my_party_idx].1 = hash_commitment_r_i(
-        &commitments[my_party_idx].0,
-        &big_r_i,
-        &blind_factor,
-    );
+    commitments[my_party_idx].1 =
+        hash_commitment_r_i(&commitments[my_party_idx].0, &big_r_i, &blind_factor);
 
     relay
         .send(SignedMessage::build(
@@ -170,11 +161,9 @@ async fn pre_signature_inner<R: Relay, S: PreSignSetupMessage>(
             .map(|party_idx| {
                 let sender_id = find_party_id(party_idx);
 
-                let sid =
-                    mta_session_id(&final_session_id, sender_id, my_party_id);
+                let sid = mta_session_id(&final_session_id, sender_id, my_party_id);
 
-                let sender_ot_results =
-                    setup.keyshare().sender_seed(sender_id);
+                let sender_ot_results = setup.keyshare().sender_seed(sender_id);
 
                 let mut enc_msg = EncryptedMessage::<SignMsg2>::new(
                     &setup.msg_id(Some(party_idx), DSG_MSG_R2),
@@ -187,12 +176,8 @@ async fn pre_signature_inner<R: Relay, S: PreSignSetupMessage>(
                 let (msg2, _) = enc_msg.payload(&scheme);
                 msg2.final_session_id = final_session_id;
 
-                let (mta_receiver, chi_i_j) = RVOLEReceiver::new(
-                    sid,
-                    sender_ot_results,
-                    &mut msg2.mta_msg1,
-                    &mut rng,
-                );
+                let (mta_receiver, chi_i_j) =
+                    RVOLEReceiver::new(sid, sender_ot_results, &mut msg2.mta_msg1, &mut rng);
 
                 to_send.push(
                     enc_msg
@@ -211,14 +196,12 @@ async fn pre_signature_inner<R: Relay, S: PreSignSetupMessage>(
 
     relay.flush().await?;
 
-    let zeta_i =
-        get_zeta_i(setup.keyshare(), &party_idx_to_id_map, &digest_i);
+    let zeta_i = get_zeta_i(setup.keyshare(), &party_idx_to_id_map, &digest_i);
 
     let coeff = if setup.keyshare().zero_ranks() {
         get_lagrange_coeff(setup.keyshare(), &party_idx_to_id_map)
     } else {
-        let betta_coeffs =
-            get_birkhoff_coefficients(setup.keyshare(), &party_idx_to_id_map);
+        let betta_coeffs = get_birkhoff_coefficients(setup.keyshare(), &party_idx_to_id_map);
 
         *betta_coeffs
             .get(&(my_party_id as usize))
@@ -239,8 +222,7 @@ async fn pre_signature_inner<R: Relay, S: PreSignSetupMessage>(
 
     let mut sender_additive_shares = vec![];
 
-    let mut round =
-        Round::new(setup.total_participants() - 1, DSG_MSG_R2, relay);
+    let mut round = Round::new(setup.total_participants() - 1, DSG_MSG_R2, relay);
 
     while let Some((msg, party_idx, is_abort)) = round.recv().await? {
         if is_abort {
@@ -250,9 +232,7 @@ async fn pre_signature_inner<R: Relay, S: PreSignSetupMessage>(
         }
 
         let mut msg = Zeroizing::new(msg);
-        let msg2 = match EncryptedMessage::<SignMsg2>::decrypt(
-            &mut msg, 0, &scheme, party_idx,
-        ) {
+        let msg2 = match EncryptedMessage::<SignMsg2>::decrypt(&mut msg, 0, &scheme, party_idx) {
             Some((refs, _)) => refs,
             _ => {
                 round.put_back(&msg, DSG_MSG_R2, party_idx);
@@ -324,8 +304,7 @@ async fn pre_signature_inner<R: Relay, S: PreSignSetupMessage>(
 
     let mut receiver_additive_shares = vec![];
 
-    let mut round =
-        Round::new(setup.total_participants() - 1, DSG_MSG_R3, relay);
+    let mut round = Round::new(setup.total_participants() - 1, DSG_MSG_R3, relay);
 
     while let Some((msg, party_idx, is_abort)) = round.recv().await? {
         if is_abort {
@@ -335,9 +314,7 @@ async fn pre_signature_inner<R: Relay, S: PreSignSetupMessage>(
         }
 
         let mut msg = Zeroizing::new(msg);
-        let msg3 = match EncryptedMessage::<SignMsg3>::decrypt(
-            &mut msg, 0, &scheme, party_idx,
-        ) {
+        let msg3 = match EncryptedMessage::<SignMsg3>::decrypt(&mut msg, 0, &scheme, party_idx) {
             Some((refs, _)) => refs,
             _ => {
                 round.put_back(&msg, DSG_MSG_R3, party_idx);
@@ -352,22 +329,15 @@ async fn pre_signature_inner<R: Relay, S: PreSignSetupMessage>(
 
         let (mta_receiver, chi_i_j) = mta_receivers.pop_pair(party_idx);
 
-        let [d_u, d_v] =
-            mta_receiver.process(&msg3.mta_msg2).map_err(|_| {
-                SignError::AbortProtocolAndBanParty(party_idx as u8)
-            })?;
+        let [d_u, d_v] = mta_receiver
+            .process(&msg3.mta_msg2)
+            .map_err(|_| SignError::AbortProtocolAndBanParty(party_idx as u8))?;
 
         let (sid_i, commitment) = &commitments[party_idx];
 
-        let big_r_j =
-            decode_point(&msg3.big_r_i).ok_or(SignError::InvalidMessage)?;
+        let big_r_j = decode_point(&msg3.big_r_i).ok_or(SignError::InvalidMessage)?;
 
-        if !verify_commitment_r_i(
-            sid_i,
-            &big_r_j,
-            &msg3.blind_factor,
-            commitment,
-        ) {
+        if !verify_commitment_r_i(sid_i, &big_r_j, &msg3.blind_factor, commitment) {
             return Err(SignError::InvalidCommitment);
         }
 
@@ -375,26 +345,22 @@ async fn pre_signature_inner<R: Relay, S: PreSignSetupMessage>(
             return Err(SignError::InvalidDigest);
         }
 
-        let pk_j =
-            decode_point(&msg3.pk_i).ok_or(SignError::InvalidMessage)?;
+        let pk_j = decode_point(&msg3.pk_i).ok_or(SignError::InvalidMessage)?;
 
         big_r_star += big_r_j;
         sum_pk_j += pk_j;
-        sum_psi_j_i +=
-            decode_scalar(&msg3.psi).ok_or(SignError::InvalidMessage)?;
+        sum_psi_j_i += decode_scalar(&msg3.psi).ok_or(SignError::InvalidMessage)?;
 
         let cond1 = (big_r_j * chi_i_j)
             == (ProjectivePoint::GENERATOR * d_u
-                + decode_point(&msg3.gamma_u)
-                    .ok_or(SignError::InvalidMessage)?);
+                + decode_point(&msg3.gamma_u).ok_or(SignError::InvalidMessage)?);
         if !cond1 {
             return Err(SignError::AbortProtocolAndBanParty(party_idx as u8));
         }
 
         let cond2 = (pk_j * chi_i_j)
             == (ProjectivePoint::GENERATOR * d_v
-                + decode_point(&msg3.gamma_v)
-                    .ok_or(SignError::InvalidMessage)?);
+                + decode_point(&msg3.gamma_v).ok_or(SignError::InvalidMessage)?);
         if !cond2 {
             return Err(SignError::AbortProtocolAndBanParty(party_idx as u8));
         }
@@ -447,22 +413,17 @@ fn create_partial_signature(
 ) -> Result<PartialSignature, SignError> {
     let m = Scalar::reduce(U256::from_be_slice(&message_hash));
 
-    let phi_i = decode_scalar(&pre_sign_result.phi_i)
-        .ok_or(SignError::InvalidPreSign)?;
+    let phi_i = decode_scalar(&pre_sign_result.phi_i).ok_or(SignError::InvalidPreSign)?;
 
-    let s_0 = decode_scalar(&pre_sign_result.s_0)
-        .ok_or(SignError::InvalidPreSign)?;
+    let s_0 = decode_scalar(&pre_sign_result.s_0).ok_or(SignError::InvalidPreSign)?;
 
     let s_0 = m * phi_i + s_0;
 
-    let s_1 = decode_scalar(&pre_sign_result.s_1)
-        .ok_or(SignError::InvalidPreSign)?;
+    let s_1 = decode_scalar(&pre_sign_result.s_1).ok_or(SignError::InvalidPreSign)?;
 
-    let r =
-        decode_point(&pre_sign_result.r).ok_or(SignError::InvalidPreSign)?;
+    let r = decode_point(&pre_sign_result.r).ok_or(SignError::InvalidPreSign)?;
 
-    let public_key = decode_point(&pre_sign_result.public_key)
-        .ok_or(SignError::InvalidPreSign)?;
+    let public_key = decode_point(&pre_sign_result.public_key).ok_or(SignError::InvalidPreSign)?;
 
     Ok(PartialSignature {
         final_session_id: pre_sign_result.final_session_id,
@@ -496,9 +457,7 @@ fn combine_partial_signature(
     }
 
     if check.into() {
-        return Err(SignError::FailedCheck(
-            "Invalid list of partial signatures",
-        ));
+        return Err(SignError::FailedCheck("Invalid list of partial signatures"));
     }
 
     let r = p0.r.to_affine();
@@ -562,8 +521,7 @@ async fn run_inner<R: Relay, S: SignSetupMessage>(
 ) -> Result<(Signature, RecoveryId), SignError> {
     let t = setup.total_participants();
 
-    let pre_signature_result =
-        pre_signature_inner(&setup, seed, relay).await?;
+    let pre_signature_result = pre_signature_inner(&setup, seed, relay).await?;
 
     let msg_hash = setup.message_hash();
 
@@ -635,8 +593,7 @@ async fn run_final<R: Relay, S: ProtocolParticipant>(
     let public_key = decode_point(&pre_signature_result.public_key).unwrap();
     let r = decode_point(&pre_signature_result.r).unwrap();
 
-    let partial_signature =
-        create_partial_signature(pre_signature_result, msg_hash)?;
+    let partial_signature = create_partial_signature(pre_signature_result, msg_hash)?;
 
     relay
         .send(SignedMessage::build(
@@ -665,10 +622,8 @@ async fn run_final<R: Relay, S: ProtocolParticipant>(
                     final_session_id: msg.session_id,
                     public_key,
                     message_hash: msg_hash,
-                    s_0: decode_scalar(&msg.s_0)
-                        .ok_or(SignError::InvalidMessage)?,
-                    s_1: decode_scalar(&msg.s_1)
-                        .ok_or(SignError::InvalidMessage)?,
+                    s_0: decode_scalar(&msg.s_0).ok_or(SignError::InvalidMessage)?,
+                    s_1: decode_scalar(&msg.s_1).ok_or(SignError::InvalidMessage)?,
                     r,
                 });
 
@@ -695,11 +650,7 @@ fn hash_commitment_r_i(
     hasher.finalize().into()
 }
 
-fn get_zeta_i(
-    keyshare: &Keyshare,
-    party_id_list: &[(usize, u8)],
-    sig_id: &[u8],
-) -> Scalar {
+fn get_zeta_i(keyshare: &Keyshare, party_id_list: &[(usize, u8)], sig_id: &[u8]) -> Scalar {
     let mut sum_p_0 = Scalar::ZERO;
     for &(_, p_0_party) in party_id_list {
         if p_0_party >= keyshare.party_id {
@@ -741,9 +692,7 @@ fn get_birkhoff_coefficients(
 ) -> HashMap<usize, Scalar> {
     let params = sign_party_ids
         .iter()
-        .map(|&(_, pid)| {
-            (keyshare.get_x_i(pid), keyshare.get_rank(pid) as usize)
-        })
+        .map(|&(_, pid)| (keyshare.get_x_i(pid), keyshare.get_rank(pid) as usize))
         .collect::<Vec<_>>();
 
     let betta_vec = birkhoff_coeffs::<Secp256k1>(&params);
@@ -755,10 +704,7 @@ fn get_birkhoff_coefficients(
         .collect::<HashMap<_, _>>()
 }
 
-fn get_lagrange_coeff(
-    keyshare: &Keyshare,
-    sign_party_ids: &[(usize, u8)],
-) -> Scalar {
+fn get_lagrange_coeff(keyshare: &Keyshare, sign_party_ids: &[(usize, u8)]) -> Scalar {
     let mut coeff = Scalar::from(1u64);
     let pid = keyshare.party_id;
     let x_i = &keyshare.get_x_i(pid) as &Scalar;
@@ -807,11 +753,7 @@ fn verify_commitment_r_i(
     commitment.ct_eq(&compare_commitment).into()
 }
 
-fn mta_session_id(
-    final_session_id: &[u8],
-    sender_id: u8,
-    receiver_id: u8,
-) -> [u8; 32] {
+fn mta_session_id(final_session_id: &[u8], sender_id: u8, receiver_id: u8) -> [u8; 32] {
     let mut h = Sha256::new();
     h.update(DSG_LABEL);
     h.update(final_session_id);
@@ -866,9 +808,7 @@ mod tests {
 
         let shares = gen_keyshares(2, 3, Some(&[0, 1, 1])).await;
 
-        let vk =
-            VerifyingKey::from_affine(shares[0].public_key().to_affine())
-                .unwrap();
+        let vk = VerifyingKey::from_affine(shares[0].public_key().to_affine()).unwrap();
 
         let chain_path = "m";
 
@@ -888,9 +828,7 @@ mod tests {
 
             let hash = [1u8; 32];
 
-            let recid2 =
-                RecoveryId::trial_recovery_from_prehash(&vk, &hash, &sign)
-                    .unwrap();
+            let recid2 = RecoveryId::trial_recovery_from_prehash(&vk, &hash, &sign).unwrap();
 
             assert_eq!(recid, recid2);
         }
@@ -902,9 +840,7 @@ mod tests {
 
         let shares = gen_keyshares(2, 3, Some(&[0, 1, 1])).await;
 
-        let vk =
-            VerifyingKey::from_affine(shares[0].public_key().to_affine())
-                .unwrap();
+        let vk = VerifyingKey::from_affine(shares[0].public_key().to_affine()).unwrap();
 
         let chain_path = "m";
 
@@ -924,9 +860,7 @@ mod tests {
 
             let hash = [1u8; 32];
 
-            let recid2 =
-                RecoveryId::trial_recovery_from_prehash(&vk, &hash, &sign)
-                    .unwrap();
+            let recid2 = RecoveryId::trial_recovery_from_prehash(&vk, &hash, &sign).unwrap();
 
             assert_eq!(recid, recid2);
         }
@@ -938,9 +872,7 @@ mod tests {
 
         let shares = gen_keyshares(3, 5, Some(&[0, 1, 1, 1, 1])).await;
 
-        let vk =
-            VerifyingKey::from_affine(shares[0].public_key().to_affine())
-                .unwrap();
+        let vk = VerifyingKey::from_affine(shares[0].public_key().to_affine()).unwrap();
 
         let chain_path = "m";
 
@@ -960,9 +892,7 @@ mod tests {
 
             let hash = [1u8; 32];
 
-            let recid2 =
-                RecoveryId::trial_recovery_from_prehash(&vk, &hash, &sign)
-                    .unwrap();
+            let recid2 = RecoveryId::trial_recovery_from_prehash(&vk, &hash, &sign).unwrap();
 
             assert_eq!(recid, recid2);
         }

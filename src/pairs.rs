@@ -66,13 +66,8 @@ impl<T, I: Ord> Pairs<T, I> {
     }
 
     /// Removes an item by given id and return it. Return error if the item not found.
-    pub fn pop_pair_or_err<E>(
-        &mut self,
-        party_id: I,
-        err: E,
-    ) -> Result<T, E> {
-        let pos =
-            self.0.iter().position(|(p, _)| *p == party_id).ok_or(err)?;
+    pub fn pop_pair_or_err<E>(&mut self, party_id: I, err: E) -> Result<T, E> {
+        let pos = self.0.iter().position(|(p, _)| *p == party_id).ok_or(err)?;
 
         Ok(self.0.remove(pos).1)
     }

@@ -19,10 +19,7 @@ use sha2::{Digest, Sha256};
 
 use sl_mpc_mate::{
     coord::*,
-    math::{
-        feldman_verify, polynomial_coeff_multipliers, GroupPolynomial,
-        Polynomial,
-    },
+    math::{feldman_verify, polynomial_coeff_multipliers, GroupPolynomial, Polynomial},
     message::*,
     SessionId,
 };
@@ -35,10 +32,7 @@ use sl_oblivious::{
 };
 
 use crate::{
-    keygen::{
-        constants::*, messages::*, utils::check_secret_recovery, KeygenError,
-        Keyshare,
-    },
+    keygen::{constants::*, messages::*, utils::check_secret_recovery, KeygenError, Keyshare},
     proto::{tags::*, *},
     setup::{KeygenSetupMessage, ProtocolParticipant, ABORT_MESSAGE_TAG},
 };
@@ -78,11 +72,7 @@ pub(crate) struct KeyRefreshData {
 }
 
 /// Execute DKG protocol.
-pub async fn run<T, R>(
-    setup: T,
-    seed: Seed,
-    relay: R,
-) -> Result<Keyshare, KeygenError>
+pub async fn run<T, R>(setup: T, seed: Seed, relay: R) -> Result<Keyshare, KeygenError>
 where
     T: KeygenSetupMessage,
     R: Relay,
@@ -92,9 +82,7 @@ where
 
     let result = match run_inner(setup, seed, &mut relay, None).await {
         Ok(share) => Ok(share),
-        Err(KeygenError::AbortProtocol(p)) => {
-            Err(KeygenError::AbortProtocol(p))
-        }
+        Err(KeygenError::AbortProtocol(p)) => Err(KeygenError::AbortProtocol(p)),
         Err(KeygenError::SendMessage) => Err(KeygenError::SendMessage),
         Err(err) => {
             // ignore error of sending abort message
@@ -143,15 +131,14 @@ where
     if let Some(v) = key_refresh_data {
         let cond1 = v.expected_public_key == ProjectivePoint::IDENTITY;
         let cond2 = v.lost_keyshare_party_ids.len() > (N - T);
-        let cond3 = (v.s_i_0 == Scalar::ZERO)
-            && (!v.lost_keyshare_party_ids.contains(&my_party_id));
+        let cond3 =
+            (v.s_i_0 == Scalar::ZERO) && (!v.lost_keyshare_party_ids.contains(&my_party_id));
         if cond1 || cond2 || cond3 {
             return Err(KeygenError::InvalidKeyRefresh);
         }
     }
 
-    let mut keyshare =
-        Keyshare::new(N as u8, T as u8, my_party_id, setup.keyshare_extra());
+    let mut keyshare = Keyshare::new(N as u8, T as u8, my_party_id, setup.keyshare_extra());
 
     let session_id = SessionId::new(rng.gen());
     let r_i = rng.gen();
@@ -245,11 +232,8 @@ where
     let mut base_ot_receivers: Pairs<EndemicOTReceiver> = Pairs::new();
 
     for receiver_id in setup.all_other_parties() {
-        let sid = get_base_ot_session_id(
-            my_party_id,
-            receiver_id as u8,
-            &keyshare.final_session_id,
-        );
+        let sid =
+            get_base_ot_session_id(my_party_id, receiver_id as u8, &keyshare.final_session_id);
 
         let mut enc_msg1 = EncryptedMessage::<EndemicOTMsg1>::new(
             &setup.msg_id(Some(receiver_id), DKG_MSG_OT1),
@@ -289,23 +273,18 @@ where
     };
     let r_i_2 = rng.gen();
 
-    let (big_f_i_vecs, r_i_list, commitment_list_2, dlog_proofs_i_list) =
-        broadcast_4(
-            &setup,
-            relay,
-            DKG_MSG_R2,
-            (
-                big_f_i_vec,
-                r_i,
-                hash_commitment_2(
-                    &keyshare.final_session_id,
-                    &chain_code_sid,
-                    &r_i_2,
-                ),
-                dlog_proofs,
-            ),
-        )
-        .await?;
+    let (big_f_i_vecs, r_i_list, commitment_list_2, dlog_proofs_i_list) = broadcast_4(
+        &setup,
+        relay,
+        DKG_MSG_R2,
+        (
+            big_f_i_vec,
+            r_i,
+            hash_commitment_2(&keyshare.final_session_id, &chain_code_sid, &r_i_2),
+            dlog_proofs,
+        ),
+    )
+    .await?;
 
     for party_id in 0..N {
         let r_i = &r_i_list[party_id];
@@ -427,14 +406,11 @@ where
 
                 if receiver_id > my_party_id {
                     rng.fill_bytes(&mut msg3.seed_i_j);
-                    keyshare.each_mut(receiver_id - 1).zeta_seed =
-                        msg3.seed_i_j;
+                    keyshare.each_mut(receiver_id - 1).zeta_seed = msg3.seed_i_j;
                 };
 
                 let x_i = &x_i_list[receiver_id as usize];
-                let d_i = block_in_place(|| {
-                    polynomial.derivative_at(rank as usize, x_i)
-                });
+                let d_i = block_in_place(|| polynomial.derivative_at(rank as usize, x_i));
 
                 msg3.d_i = encode_scalar(&d_i);
                 msg3.chain_code_sid = chain_code_sid;
@@ -451,8 +427,7 @@ where
         )
         .await?;
 
-    let mut chain_code_sids =
-        Pairs::new_with_item(my_party_id, chain_code_sid);
+    let mut chain_code_sids = Pairs::new_with_item(my_party_id, chain_code_sid);
 
     if let Some(v) = key_refresh_data {
         if v.lost_keyshare_party_ids.contains(&my_party_id) {
@@ -468,22 +443,20 @@ where
             KeygenError::AbortProtocol,
             |msg3: &KeygenMsg3, party_index, trailer, _| {
                 let party_id = party_index as u8;
-                let msg3_big_f_vec =
-                    <GroupPolynomial<ProjectivePoint> as Wrap>::read(trailer)
-                        .ok_or(KeygenError::InvalidMessage)?;
+                let msg3_big_f_vec = <GroupPolynomial<ProjectivePoint> as Wrap>::read(trailer)
+                    .ok_or(KeygenError::InvalidMessage)?;
 
                 // also checks that msg3.big_f_vec.coeffs.len() == T
                 if msg3_big_f_vec != big_f_vec {
                     return Err(KeygenError::BigFVecMismatch);
                 }
 
-                d_i_list[party_id as usize] = decode_scalar(&msg3.d_i)
-                    .ok_or(KeygenError::InvalidMessage)?;
+                d_i_list[party_id as usize] =
+                    decode_scalar(&msg3.d_i).ok_or(KeygenError::InvalidMessage)?;
 
                 let receiver = base_ot_receivers.pop_pair(party_id);
-                let receiver_output =
-                    block_in_place(|| receiver.process(&msg3.base_ot_msg2))
-                        .map_err(|_| KeygenError::InvalidMessage)?;
+                let receiver_output = block_in_place(|| receiver.process(&msg3.base_ot_msg2))
+                    .map_err(|_| KeygenError::InvalidMessage)?;
                 let all_but_one_session_id = get_all_but_one_session_id(
                     party_id as usize,
                     my_party_id as usize,
@@ -554,9 +527,7 @@ where
     }
 
     for (big_f_i_vec, f_i_val) in big_f_i_vecs.into_iter().zip(&d_i_list) {
-        let coeffs = block_in_place(|| {
-            big_f_i_vec.derivative_coeffs(my_rank as usize)
-        });
+        let coeffs = block_in_place(|| big_f_i_vec.derivative_coeffs(my_rank as usize));
         let valid = feldman_verify(
             coeffs,
             &x_i_list[my_party_id as usize],
@@ -576,12 +547,9 @@ where
     let final_session_id_with_root_chain_code = {
         let mut buf = [0u8; 32];
         let mut transcript = Transcript::new(&DKG_LABEL);
-        transcript
-            .append_message(b"final_session_id", &keyshare.final_session_id);
-        transcript
-            .append_message(b"root_chain_code", &keyshare.root_chain_code);
-        transcript
-            .challenge_bytes(&DLOG_SESSION_ID_WITH_CHAIN_CODE, &mut buf);
+        transcript.append_message(b"final_session_id", &keyshare.final_session_id);
+        transcript.append_message(b"root_chain_code", &keyshare.root_chain_code);
+        transcript.challenge_bytes(&DLOG_SESSION_ID_WITH_CHAIN_CODE, &mut buf);
         SessionId::new(buf)
     };
 
@@ -593,21 +561,11 @@ where
             &DKG_LABEL,
         );
 
-        DLogProof::prove(
-            &s_i,
-            &ProjectivePoint::GENERATOR,
-            &mut transcript,
-            &mut rng,
-        )
+        DLogProof::prove(&s_i, &ProjectivePoint::GENERATOR, &mut transcript, &mut rng)
     };
 
-    let (public_key_list, big_s_list, proof_list, _) = broadcast_4(
-        &setup,
-        relay,
-        DKG_MSG_R4,
-        (public_key, big_s_i, proof, ()),
-    )
-    .await?;
+    let (public_key_list, big_s_list, proof_list, _) =
+        broadcast_4(&setup, relay, DKG_MSG_R4, (public_key, big_s_i, proof, ())).await?;
 
     if public_key_list.into_iter().any(|pk| pk != public_key) {
         return Err(KeygenError::PublicKeyMismatch);
@@ -643,8 +601,7 @@ where
     for (party_id, x_i) in x_i_list.iter().enumerate() {
         let party_rank = setup.participant_rank(party_id);
 
-        let coeff_multipliers =
-            polynomial_coeff_multipliers(x_i, party_rank as usize, N);
+        let coeff_multipliers = polynomial_coeff_multipliers(x_i, party_rank as usize, N);
 
         let expected_point: ProjectivePoint = big_f_vec
             .points()
@@ -703,11 +660,7 @@ fn hash_commitment(
     hasher.finalize().into()
 }
 
-fn hash_commitment_2(
-    session_id: &[u8],
-    chain_code_sid: &[u8; 32],
-    r_i: &[u8; 32],
-) -> [u8; 32] {
+fn hash_commitment_2(session_id: &[u8], chain_code_sid: &[u8; 32], r_i: &[u8; 32]) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(DKG_LABEL);
     hasher.update(session_id);
@@ -762,20 +715,12 @@ fn verify_dlog_proofs(
     proofs: &[DLogProof],
     points: &[ProjectivePoint],
 ) -> Result<(), KeygenError> {
-    let mut dlog_transcript = Transcript::new_dlog_proof(
-        final_session_id,
-        party_id,
-        &DLOG_PROOF1_LABEL,
-        &DKG_LABEL,
-    );
+    let mut dlog_transcript =
+        Transcript::new_dlog_proof(final_session_id, party_id, &DLOG_PROOF1_LABEL, &DKG_LABEL);
 
     let mut ok = Choice::from(1);
     for (proof, point) in proofs.iter().zip(points) {
-        ok &= proof.verify(
-            point,
-            &ProjectivePoint::GENERATOR,
-            &mut dlog_transcript,
-        );
+        ok &= proof.verify(point, &ProjectivePoint::GENERATOR, &mut dlog_transcript);
     }
 
     if ok.unwrap_u8() == 0 {
@@ -799,10 +744,9 @@ where
     T3: Wrap,
     T4: Wrap,
 {
-    let (v0, v1, v2, v3) =
-        Round::new(setup.total_participants() - 1, tag, relay)
-            .broadcast_4(setup, msg)
-            .await?;
+    let (v0, v1, v2, v3) = Round::new(setup.total_participants() - 1, tag, relay)
+        .broadcast_4(setup, msg)
+        .await?;
 
     Ok((v0.into(), v1.into(), v2.into(), v3.into()))
 }
@@ -829,10 +773,7 @@ mod tests {
         sim_parties(parties, coord).await
     }
 
-    async fn sim_parties<S, R>(
-        parties: Vec<(SetupMessage, [u8; 32])>,
-        coord: S,
-    ) -> Vec<Keyshare>
+    async fn sim_parties<S, R>(parties: Vec<(SetupMessage, [u8; 32])>, coord: S) -> Vec<Keyshare>
     where
         S: MessageRelayService<MessageRelay = R>,
         R: Send + Relay + 'static,

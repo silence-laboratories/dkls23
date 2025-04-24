@@ -4,12 +4,7 @@
 use super::*;
 
 /// Setup message for a key export .
-pub struct KeyExporter<
-    SK = NoSigningKey,
-    VK = NoVerifyingKey,
-    MS = NoSignature,
-    KS = Keyshare,
-> {
+pub struct KeyExporter<SK = NoSigningKey, VK = NoVerifyingKey, MS = NoSignature, KS = Keyshare> {
     party_id: usize,
     sk: SK,
     vk: Vec<VK>,
@@ -89,8 +84,7 @@ where
     }
 }
 
-impl<SK, VK, MS, KS> setup::KeyExporterSetupMessage<PublicKey, KS>
-    for KeyExporter<SK, VK, MS, KS>
+impl<SK, VK, MS, KS> setup::KeyExporterSetupMessage<PublicKey, KS> for KeyExporter<SK, VK, MS, KS>
 where
     SK: Signer<MS>,
     MS: SignatureEncoding,

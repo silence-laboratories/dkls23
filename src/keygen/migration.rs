@@ -33,19 +33,14 @@ where
     };
 
     let result: Result<Keyshare, KeygenError> =
-        keygen::run_inner(setup, seed, &mut relay, Some(&key_refresh_data))
-            .await;
+        keygen::run_inner(setup, seed, &mut relay, Some(&key_refresh_data)).await;
 
     let new_keyshare = match result {
         Ok(eph_keyshare) => eph_keyshare,
 
-        Err(KeygenError::AbortProtocol(p)) => {
-            return Err(KeygenError::AbortProtocol(p))
-        }
+        Err(KeygenError::AbortProtocol(p)) => return Err(KeygenError::AbortProtocol(p)),
 
-        Err(KeygenError::SendMessage) => {
-            return Err(KeygenError::SendMessage)
-        }
+        Err(KeygenError::SendMessage) => return Err(KeygenError::SendMessage),
 
         Err(err_message) => {
             #[cfg(feature = "tracing")]
@@ -80,16 +75,32 @@ mod tests {
 
         let mut parties = JoinSet::new();
 
-        let binding = hex::decode("02eba32793892022121314aed023df242292d313cb657f6f69016d90b6cfc92d33".as_bytes()).unwrap();
-        let public_key = ProjectivePoint::from_bytes(
-            CompressedPoint::from_slice(&binding),
-        );
+        let binding = hex::decode(
+            "02eba32793892022121314aed023df242292d313cb657f6f69016d90b6cfc92d33".as_bytes(),
+        )
+        .unwrap();
+        let public_key = ProjectivePoint::from_bytes(CompressedPoint::from_slice(&binding));
 
         let mut s_i_0 = VecDeque::new();
 
-        s_i_0.push_back(NonZeroScalar::from_uint(U256::from_be_hex("3B6661CC3A28C174AF9D0FDD966E9F9D9D2A96682A504E1E9165D700BDC47809")).unwrap());
-        s_i_0.push_back(NonZeroScalar::from_uint(U256::from_be_hex("3361D26EBB452DDA716E38F20405B42E3ABDC890CAEE1150AB0D019D45091DC4")).unwrap());
-        s_i_0.push_back(NonZeroScalar::from_uint(U256::from_be_hex("71FDD4E9358DB270FA0EF15F4D72A6267B012781D154D2A380ECFCA86E85BEA2")).unwrap());
+        s_i_0.push_back(
+            NonZeroScalar::from_uint(U256::from_be_hex(
+                "3B6661CC3A28C174AF9D0FDD966E9F9D9D2A96682A504E1E9165D700BDC47809",
+            ))
+            .unwrap(),
+        );
+        s_i_0.push_back(
+            NonZeroScalar::from_uint(U256::from_be_hex(
+                "3361D26EBB452DDA716E38F20405B42E3ABDC890CAEE1150AB0D019D45091DC4",
+            ))
+            .unwrap(),
+        );
+        s_i_0.push_back(
+            NonZeroScalar::from_uint(U256::from_be_hex(
+                "71FDD4E9358DB270FA0EF15F4D72A6267B012781D154D2A380ECFCA86E85BEA2",
+            ))
+            .unwrap(),
+        );
 
         let sk = s_i_0.iter().fold(Scalar::ZERO, |sum, val| sum.add(val));
         let pub_key = ProjectivePoint::mul_by_generator(&sk);
@@ -103,8 +114,7 @@ mod tests {
                 .collect::<Vec<_>>()
                 .join(".")
         );
-        let root_chain_code = "253453627f65463253453627f6546321".as_bytes()
-            [0..32]
+        let root_chain_code = "253453627f65463253453627f6546321".as_bytes()[0..32]
             .try_into()
             .unwrap();
 
