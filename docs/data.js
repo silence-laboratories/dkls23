@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1745534809215,
+  "lastUpdate": 1745536538407,
   "repoUrl": "https://github.com/silence-laboratories/dkls23",
   "entries": {
     "Rust Benchmark": [
@@ -827,6 +827,38 @@ window.BENCHMARK_DATA = {
             "name": "dsg-2x2",
             "value": 9908732,
             "range": "± 1589606",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "silence-laboratories",
+            "username": "silence-laboratories"
+          },
+          "committer": {
+            "name": "silence-laboratories",
+            "username": "silence-laboratories"
+          },
+          "id": "8d47f655782de187f2b86906f418ec1c9dc4e25b",
+          "message": "Examples and rustdocs",
+          "timestamp": "2025-04-17T09:48:27Z",
+          "url": "https://github.com/silence-laboratories/dkls23/pull/1/commits/8d47f655782de187f2b86906f418ec1c9dc4e25b"
+        },
+        "date": 1745536536969,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "dkg-2x2",
+            "value": 135438502,
+            "range": "± 10363119",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "dsg-2x2",
+            "value": 9849591,
+            "range": "± 1496927",
             "unit": "ns/iter"
           }
         ]
