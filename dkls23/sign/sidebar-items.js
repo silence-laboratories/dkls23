@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["DsgVariant","SignError"],"fn":["finish","message_receivers","pre_signature","run"],"struct":["PreSign","RecoveryId"],"type":["Signature","VerifyingKey"]};
