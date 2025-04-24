@@ -47,7 +47,6 @@ use sl_mpc_mate::coord::Relay;
 /// * `KeygenError::AbortProtocol` - If the protocol is aborted by a participant
 /// * `KeygenError::SendMessage` - If there's an error sending messages
 /// * Other `KeygenError` variants for various protocol failures
-
 pub async fn run<R, S>(
     setup: S,
     seed: Seed,

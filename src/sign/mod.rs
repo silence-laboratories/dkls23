@@ -65,7 +65,6 @@ pub enum DsgVariant {
 /// * `setup` - The protocol setup configuration
 /// * `variant` - The variant of the DSG protocol to run
 /// * `msg_receiver` - A closure that will be called for each (message_id, verifier) pair
-
 pub fn message_receivers<S, F>(setup: &S, variant: DsgVariant, mut msg_receiver: F)
 where
     S: ProtocolParticipant,
