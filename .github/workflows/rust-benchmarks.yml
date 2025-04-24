@@ -8,7 +8,14 @@ on:
       - 'scripts/**'
       - 'crates/**'
       - '.github/**'
-
+  pull_request:
+    branches:
+      - core-after-audit
+    paths:
+      - 'src/**'
+      - 'scripts/**'
+      - 'crates/**'
+      - '.github/**'
 
 permissions:
   contents: write
