@@ -84,9 +84,9 @@ fn dkg_2x2(c: &mut Criterion) {
 //     bench_dkg(c, 27, 15);
 // }
 
-// fn dsg_2x2(c: &mut Criterion) {
-//     bench_dsg(c, 2, 2);
-// }
+fn dsg_2x2(c: &mut Criterion) {
+    bench_dsg(c, 2, 2);
+}
 
 // fn dsg_3x2(c: &mut Criterion) {
 //     bench_dsg(c, 3, 2);
