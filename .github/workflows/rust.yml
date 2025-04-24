@@ -18,8 +18,10 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
 
-      - name: Run benchmark
-        run: rustup component add --toolchain stable-x86_64-unknown-linux-gnu rustfmt
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@1.85
+        with:
+          components: rustfmt clippy
 
       - uses: Swatinem/rust-cache@v2
         with:
