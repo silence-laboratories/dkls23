@@ -5,8 +5,8 @@ use criterion::{criterion_group, criterion_main, Criterion};
 
 use tokio::runtime::Runtime;
 
-use dkls_metrics::{dkg, dsg};
 use dkls_metrics::relay::MessageTrace;
+use dkls_metrics::{dkg, dsg};
 
 fn bench_dkg(c: &mut Criterion, n: u8, t: u8) {
     let (inst, messages, shares) = {
@@ -21,7 +21,7 @@ fn bench_dkg(c: &mut Criterion, n: u8, t: u8) {
                 t,
                 Some(trace.clone()),
             )
-                .await;
+            .await;
 
             (instance, trace.messages(), shares)
         })
@@ -51,7 +51,7 @@ fn bench_dsg(c: &mut Criterion, n: u8, t: u8) {
                 "m",
                 Some(trace.clone()),
             )
-                .await;
+            .await;
 
             (instance, trace.messages())
         })

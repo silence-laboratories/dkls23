@@ -1,0 +1,120 @@
+name: CI and Benchmarks
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'scripts/**'
+      - 'crates/**'
+      - '.github/**'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'scripts/**'
+      - 'crates/**'
+      - '.github/**'
+
+permissions:
+  contents: write
+  deployments: write
+
+jobs:
+  lints:
+    name: Lints
+    runs-on: github-builder
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@1.85
+        with:
+          components: rustfmt clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "build"
+
+      - name: Run cargo fmt
+        run: |
+          cargo fmt --all -- --check
+
+      - name: Run cargo clippy
+        run: cargo clippy --all -- -D warnings
+
+  build-and-test:
+    name: Rust tests
+    runs-on: github-builder
+    needs: lints
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@1.85
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "build"
+      - run: cargo test --tests --all --release
+
+  get_benchmark:
+    name: Run Benchmarks
+    runs-on: github-builder
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@1.85
+      - name: Run benchmark
+        run: cd crates/dkls-metrics/benches && cargo +nightly bench -- --output-format bencher > /tmp/output.txt
+      - name: Create benchmarks
+        uses: benchmark-action/github-action-benchmark@v1.20.4
+        with:
+          name: Rust Benchmark
+          tool: 'cargo'
+          output-file-path: /tmp/output.txt
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          benchmark-data-dir-path: docs
+          auto-push: true
+          comment-on-alert: true
+          summary-always: true
+
+  make_the_html_page:
+    name: Create HTML page
+    runs-on: github-builder
+    needs: get_benchmark
+    steps:
+      - name: Checkout code (main)
+        uses: actions/checkout@v4
+      - name: Checkout gh-pages branch
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: gh-pages
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.9
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@1.85
+        with:
+          toolchain: 1.85
+      - name: Write the HTML page
+        run: |
+          python -m pip install --upgrade pip
+          python scripts/process_benchmarks_to_html.py gh-pages/docs/data.js
+          cargo clean
+          cargo doc --no-deps
+          mkdir -p docs/rustdocs
+          cp scripts/sil.jpg docs
+          mv gh-pages/* docs
+          mv index.html docs
+          cp -rf target/doc/* docs/rustdocs
+      - name: Deploy to GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          branch: gh-pages
+          folder: docs
