@@ -1,10 +1,4 @@
-use std::str::FromStr;
-use std::sync::Arc;
-use std::time::Duration;
-
 use tokio::task::JoinSet;
-
-use derivation_path::DerivationPath;
 
 use rand::Rng;
 use rand_chacha::ChaCha20Rng;
@@ -12,49 +6,11 @@ use rand_core::SeedableRng;
 
 use k256::ecdsa::{RecoveryId, VerifyingKey};
 
-use dkls23::{
-    keygen::Keyshare,
-    setup::{sign::SetupMessage, NoSigningKey, NoVerifyingKey},
-    sign,
-};
-use sl_mpc_mate::{coord::SimpleMessageRelay, message::*};
+use dkls23::sign;
+use sl_mpc_mate::{coord::SimpleMessageRelay};
 
 mod common;
-pub fn setup_dsg(shares: &[Arc<Keyshare>], chain_path: &str) -> Vec<SetupMessage> {
-    let chain_path = DerivationPath::from_str(chain_path).unwrap();
 
-    let t = shares[0].threshold as usize;
-    assert!(shares.len() >= t);
-
-    // make sure that first share has rank 0
-    assert_eq!(shares[0].get_rank(0), 0);
-
-    // fetch some randomness in order to uniquely identify that protocol execution with an instance id
-    let mut rnd = ChaCha20Rng::from_entropy();
-    let instance = rnd.gen();
-
-    let party_vk: Vec<NoVerifyingKey> = shares
-        .iter()
-        .map(|share| NoVerifyingKey::new(share.party_id as _))
-        .collect();
-
-    shares
-        .iter()
-        .enumerate()
-        .map(|(party_idx, share)| {
-            SetupMessage::new(
-                InstanceId::new(instance),
-                NoSigningKey,
-                party_idx,
-                party_vk.clone(),
-                share.clone(),
-            )
-            .with_chain_path(chain_path.clone())
-            .with_hash([1; 32])
-            .with_ttl(Duration::from_secs(1000))
-        })
-        .collect::<Vec<_>>()
-}
 #[tokio::main]
 async fn main() {
     // Logic: The relayer follows the Actor model: It spawns from the caller task, does the assigned task
@@ -70,7 +26,7 @@ async fn main() {
     let coord = SimpleMessageRelay::new();
 
     // We locally generate some key shares in order to test the signing procedure.
-    let shares = common::shared::gen_keyshares(2, 3, Some(&[0, 0])).await;
+    let shares = common::shared::gen_keyshares(2, 3).await;
 
     //fetch the public verification key from one of the keyshares
     let vk = VerifyingKey::from_affine(shares[0].public_key().to_affine()).unwrap();
@@ -89,7 +45,7 @@ async fn main() {
     // other key shares that will be potentially created, the public signature keys of each other node in order to
     // verify authenticity and integrity of p2p and broadcast messages, and the secret signing key of the node boostraping the protocol which is
     // unique and different per node.
-    for setup in setup_dsg(&shares[0..2], chain_path) {
+    for setup in common::shared::setup_dsg(&shares[0..2], chain_path) {
         let mut rng = ChaCha20Rng::from_entropy();
         // Each task representing a different node is "connecting" to the coordinator relayer: a new mpsc channel is created
         // in a new per node relay, whereby each relay shares the same  Arc<Mutex> messages object which has been created outside the loop

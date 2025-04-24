@@ -3,6 +3,8 @@ use rand::Rng;
 use rand_chacha::ChaCha20Rng;
 use rand_core::SeedableRng;
 use std::sync::Arc;
+use k256::elliptic_curve::group::GroupEncoding;
+
 mod common;
 
 #[tokio::main]
@@ -50,7 +52,7 @@ pub async fn main() {
     // In a real world each node receives each secret keyshare and nothing else
     let mut shares = vec![];
 
-    // After all the tasks have finished we extract the create key share per node and store it
+    // After all the tasks have finished we extract the  key share per node and store it
     // in the shares vector in order to later test that they all agree on the public key
     while let Some(fini) = parties.join_next().await {
         if let Err(ref err) = fini {
@@ -65,14 +67,7 @@ pub async fn main() {
 
     //print the common public key created from each user key share
     for keyshare in shares.iter() {
-        println!(
-            "{:?}",
-            keyshare
-                .public_key
-                .iter()
-                .map(|v| format!("{:02X}", v))
-                .collect::<Vec<_>>()
-                .join(".")
-        );
+        println!("PK{}",hex::encode(keyshare.public_key().to_bytes()));
+
     }
 }

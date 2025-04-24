@@ -7,6 +7,7 @@
 - [Installing, Testing, Benchmarks](#installing-testing-benchmarks)
   - [Build](#build)
   - [Tests](#tests)
+  - [Examples](#examples)
   - [Benchmarks](#benchmarks)
     - [Criterion](#criterion)
     - [Detailed Metrics](#detailed-metrics)
@@ -36,7 +37,7 @@ The repository implements threshold ECDSA signatures implementing DKLs23 protoco
 - Quorum Change: change dynamically the set of participants adding or removing
 - Migration: Migrate from compatible curve protocols like: GG** or CMP to DKLs23
 
-## Installing, Testing, Benchmarks 
+## Installing, Testing, Benchmarks and Examples
 ### Build
 `cargo build
 `
@@ -52,6 +53,14 @@ https://silence-laboratories.github.io/dkls23/
 #### Detailed Metrics (total message sizes sent and received)
 `cargo run -p dkls-metrics -r -- dkg --n 3 --t 2 --dsg
 `
+### Examples
+Under `/examples` directory there are example codes to keygen,sign and refresh:
+
+- `cargo run --example keygen`
+- `cargo run --example sign`
+- `cargo run --example refresh`
+
+
 ##  Crates structure
 
 ### Protocols 
