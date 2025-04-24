@@ -172,7 +172,7 @@ pub trait KeygenSetupMessage: ProtocolParticipant {
     /// Threshold parameter.
     fn threshold(&self) -> u8;
 
-    /// Return a rank of a participat with given index.
+    /// Return a rank of a participant with given index.
     /// May panic is index is out of range.
     fn participant_rank(&self, _party_index: usize) -> u8 {
         0
@@ -181,7 +181,7 @@ pub trait KeygenSetupMessage: ProtocolParticipant {
     /// Derive key_id from a public_key.
     fn derive_key_id(&self, public_key: &[u8]) -> [u8; 32];
 
-    /// Additional data to incorpatate into resulting Keyshare.
+    /// Additional data to amend into the Keyshare.
     fn keyshare_extra(&self) -> &[u8] {
         &[]
     }
