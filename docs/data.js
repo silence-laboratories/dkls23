@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1745578907591,
+  "lastUpdate": 1745579020628,
   "repoUrl": "https://github.com/silence-laboratories/dkls23",
   "entries": {
     "Rust Benchmark": [
@@ -1843,6 +1843,98 @@ window.BENCHMARK_DATA = {
             "name": "dsg-27x15",
             "value": 163196807,
             "range": "± 198479",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "silence-laboratories",
+            "username": "silence-laboratories"
+          },
+          "committer": {
+            "name": "silence-laboratories",
+            "username": "silence-laboratories"
+          },
+          "id": "8c9d223d9fb4024fe05ec1c8f5387c54909a9e7e",
+          "message": "Examples and rustdocs",
+          "timestamp": "2025-04-17T09:48:27Z",
+          "url": "https://github.com/silence-laboratories/dkls23/pull/1/commits/8c9d223d9fb4024fe05ec1c8f5387c54909a9e7e"
+        },
+        "date": 1745579014535,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "dkg-2x2",
+            "value": 154903477,
+            "range": "± 3444996",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "dsg-2x2",
+            "value": 12286860,
+            "range": "± 72062",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "dkg-3x2",
+            "value": 306592767,
+            "range": "± 3955466",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "dsg-3x2",
+            "value": 12280591,
+            "range": "± 27873",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "dkg-5x3",
+            "value": 615308642,
+            "range": "± 3938325",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "dsg-5x3",
+            "value": 24260742,
+            "range": "± 43058",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "dkg-15x9",
+            "value": 2184080380,
+            "range": "± 13778056",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "dsg-15x9",
+            "value": 95726813,
+            "range": "± 3318432",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "dkg-20x11",
+            "value": 2977448774,
+            "range": "± 14703499",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "dsg-20x11",
+            "value": 119561861,
+            "range": "± 210320",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "dkg-27x15",
+            "value": 4118689766,
+            "range": "± 16080428",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "dsg-27x15",
+            "value": 167009010,
+            "range": "± 1900776",
             "unit": "ns/iter"
           }
         ]
