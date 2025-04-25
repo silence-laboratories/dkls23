@@ -98,7 +98,69 @@
 <a href="#97" id="97">97</a>
 <a href="#98" id="98">98</a>
 <a href="#99" id="99">99</a>
-<a href="#100" id="100">100</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
+<a href="#100" id="100">100</a>
+<a href="#101" id="101">101</a>
+<a href="#102" id="102">102</a>
+<a href="#103" id="103">103</a>
+<a href="#104" id="104">104</a>
+<a href="#105" id="105">105</a>
+<a href="#106" id="106">106</a>
+<a href="#107" id="107">107</a>
+<a href="#108" id="108">108</a>
+<a href="#109" id="109">109</a>
+<a href="#110" id="110">110</a>
+<a href="#111" id="111">111</a>
+<a href="#112" id="112">112</a>
+<a href="#113" id="113">113</a>
+<a href="#114" id="114">114</a>
+<a href="#115" id="115">115</a>
+<a href="#116" id="116">116</a>
+<a href="#117" id="117">117</a>
+<a href="#118" id="118">118</a>
+<a href="#119" id="119">119</a>
+<a href="#120" id="120">120</a>
+<a href="#121" id="121">121</a>
+<a href="#122" id="122">122</a>
+<a href="#123" id="123">123</a>
+<a href="#124" id="124">124</a>
+<a href="#125" id="125">125</a>
+<a href="#126" id="126">126</a>
+<a href="#127" id="127">127</a>
+<a href="#128" id="128">128</a>
+<a href="#129" id="129">129</a>
+<a href="#130" id="130">130</a>
+<a href="#131" id="131">131</a>
+<a href="#132" id="132">132</a>
+<a href="#133" id="133">133</a>
+<a href="#134" id="134">134</a>
+<a href="#135" id="135">135</a>
+<a href="#136" id="136">136</a>
+<a href="#137" id="137">137</a>
+<a href="#138" id="138">138</a>
+<a href="#139" id="139">139</a>
+<a href="#140" id="140">140</a>
+<a href="#141" id="141">141</a>
+<a href="#142" id="142">142</a>
+<a href="#143" id="143">143</a>
+<a href="#144" id="144">144</a>
+<a href="#145" id="145">145</a>
+<a href="#146" id="146">146</a>
+<a href="#147" id="147">147</a>
+<a href="#148" id="148">148</a>
+<a href="#149" id="149">149</a>
+<a href="#150" id="150">150</a>
+<a href="#151" id="151">151</a>
+<a href="#152" id="152">152</a>
+<a href="#153" id="153">153</a>
+<a href="#154" id="154">154</a>
+<a href="#155" id="155">155</a>
+<a href="#156" id="156">156</a>
+<a href="#157" id="157">157</a>
+<a href="#158" id="158">158</a>
+<a href="#159" id="159">159</a>
+<a href="#160" id="160">160</a>
+<a href="#161" id="161">161</a>
+<a href="#162" id="162">162</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
 
 </span><span class="attr">#![allow(missing_docs)]
@@ -107,7 +169,10 @@
 
 <span class="kw">use </span>signature::{Keypair, SignatureEncoding, Signer, Verifier};
 
-<span class="doccomment">/// Type of empty signature.
+<span class="doccomment">/// A zero-sized type representing an empty signature.
+/// This type is used when no actual signature is needed, but the type system
+/// requires a signature type. It implements `SignatureEncoding` with an empty
+/// byte array representation.
 </span><span class="attr">#[derive(Clone)]
 </span><span class="kw">pub struct </span>NoSignature;
 
@@ -118,7 +183,15 @@
 <span class="kw">impl</span>&lt;<span class="lifetime">'a</span>&gt; TryFrom&lt;<span class="kw-2">&amp;</span><span class="lifetime">'a </span>[u8]&gt; <span class="kw">for </span>NoSignature {
     <span class="kw">type </span>Error = ();
 
-    <span class="kw">fn </span>try_from(value: <span class="kw-2">&amp;</span><span class="lifetime">'a </span>[u8]) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="self">Self</span>, <span class="self">Self</span>::Error&gt; {
+    <span class="doccomment">/// Attempts to create a `NoSignature` from a byte slice.
+    ///
+    /// # Arguments
+    /// * `value` - The byte slice to convert
+    ///
+    /// # Returns
+    /// * `Ok(NoSignature)` if the slice is empty
+    /// * `Err(())` if the slice contains any bytes
+    </span><span class="kw">fn </span>try_from(value: <span class="kw-2">&amp;</span><span class="lifetime">'a </span>[u8]) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="self">Self</span>, <span class="self">Self</span>::Error&gt; {
         <span class="kw">if </span>!value.is_empty() {
             <span class="kw">return </span><span class="prelude-val">Err</span>(());
         }
@@ -129,29 +202,62 @@
 <span class="kw">impl </span>TryInto&lt;[u8; <span class="number">0</span>]&gt; <span class="kw">for </span>NoSignature {
     <span class="kw">type </span>Error = ();
 
-    <span class="kw">fn </span>try_into(<span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;[u8; <span class="number">0</span>], <span class="self">Self</span>::Error&gt; {
+    <span class="doccomment">/// Converts a `NoSignature` into an empty byte array.
+    ///
+    /// # Returns
+    /// * `Ok([0; 0])` - An empty byte array
+    </span><span class="kw">fn </span>try_into(<span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;[u8; <span class="number">0</span>], <span class="self">Self</span>::Error&gt; {
         <span class="prelude-val">Ok</span>([<span class="number">0</span>; <span class="number">0</span>])
     }
 }
 
-<span class="kw">pub struct </span>NoSigningKey;
+<span class="doccomment">/// A zero-sized type representing a signing key that produces no signatures.
+/// This type is used when no actual signing is needed, but the type system
+/// requires a signing key type. It implements `Signer&lt;NoSignature&gt;` and always
+/// returns `NoSignature` when signing.
+</span><span class="kw">pub struct </span>NoSigningKey;
 
 <span class="kw">impl </span>Signer&lt;NoSignature&gt; <span class="kw">for </span>NoSigningKey {
-    <span class="kw">fn </span>try_sign(<span class="kw-2">&amp;</span><span class="self">self</span>, _msg: <span class="kw-2">&amp;</span>[u8]) -&gt; <span class="prelude-ty">Result</span>&lt;NoSignature, signature::Error&gt; {
+    <span class="doccomment">/// Attempts to sign a message, always returning `NoSignature`.
+    ///
+    /// # Arguments
+    /// * `_msg` - The message to sign (ignored)
+    ///
+    /// # Returns
+    /// * `Ok(NoSignature)` - Always succeeds
+    </span><span class="kw">fn </span>try_sign(<span class="kw-2">&amp;</span><span class="self">self</span>, _msg: <span class="kw-2">&amp;</span>[u8]) -&gt; <span class="prelude-ty">Result</span>&lt;NoSignature, signature::Error&gt; {
         <span class="prelude-val">Ok</span>(NoSignature)
     }
 }
 
-<span class="doccomment">/// Allow to pass Arc&lt;SK&gt; where expected SK: Signer
+<span class="doccomment">/// A wrapper around an `Arc&lt;T&gt;` that implements `Signer` for the inner type.
 ///
+/// This allows passing `Arc&lt;SK&gt;` where `SK: Signer` is expected.
+///
+/// # Type Parameters
+/// * `T` - The type being wrapped in an `Arc`
 </span><span class="kw">pub struct </span>ArcSigner&lt;T&gt;(<span class="kw">pub </span>Arc&lt;T&gt;);
 
 <span class="kw">impl</span>&lt;S, T: Signer&lt;S&gt;&gt; Signer&lt;S&gt; <span class="kw">for </span>ArcSigner&lt;T&gt; {
-    <span class="kw">fn </span>sign(<span class="kw-2">&amp;</span><span class="self">self</span>, msg: <span class="kw-2">&amp;</span>[u8]) -&gt; S {
+    <span class="doccomment">/// Signs a message using the inner signer.
+    ///
+    /// # Arguments
+    /// * `msg` - The message to sign
+    ///
+    /// # Returns
+    /// The signature produced by the inner signer
+    </span><span class="kw">fn </span>sign(<span class="kw-2">&amp;</span><span class="self">self</span>, msg: <span class="kw-2">&amp;</span>[u8]) -&gt; S {
         <span class="self">self</span>.<span class="number">0</span>.sign(msg)
     }
 
-    <span class="kw">fn </span>try_sign(<span class="kw-2">&amp;</span><span class="self">self</span>, msg: <span class="kw-2">&amp;</span>[u8]) -&gt; <span class="prelude-ty">Result</span>&lt;S, signature::Error&gt; {
+    <span class="doccomment">/// Attempts to sign a message using the inner signer.
+    ///
+    /// # Arguments
+    /// * `msg` - The message to sign
+    ///
+    /// # Returns
+    /// The signature produced by the inner signer, or an error if signing fails
+    </span><span class="kw">fn </span>try_sign(<span class="kw-2">&amp;</span><span class="self">self</span>, msg: <span class="kw-2">&amp;</span>[u8]) -&gt; <span class="prelude-ty">Result</span>&lt;S, signature::Error&gt; {
         <span class="self">self</span>.<span class="number">0</span>.try_sign(msg)
     }
 }
@@ -159,42 +265,60 @@
 <span class="kw">impl</span>&lt;T: Keypair&gt; Keypair <span class="kw">for </span>ArcSigner&lt;T&gt; {
     <span class="kw">type </span>VerifyingKey = T::VerifyingKey;
 
-    <span class="kw">fn </span>verifying_key(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="self">Self</span>::VerifyingKey {
+    <span class="doccomment">/// Returns the verifying key associated with the inner keypair.
+    </span><span class="kw">fn </span>verifying_key(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="self">Self</span>::VerifyingKey {
         <span class="self">self</span>.<span class="number">0</span>.verifying_key()
     }
 }
 
-<span class="doccomment">/// A verifying key for NoSignature. Verification always succeeds. In
-/// this case verifying key used as an idenitity ID and communication
-/// uses a secure transport and there is no need to verify
-/// authenticity of the messages.
+<span class="doccomment">/// A verifying key that always succeeds verification.
+/// This type is used when no actual verification is needed, but the type system
+/// requires a verifying key type. It's typically used when secure transport is
+/// already in place and message authenticity doesn't need to be verified.
+/// The inner `Vec&lt;u8&gt;` is used as an identity ID.
 </span><span class="attr">#[derive(Clone)]
 </span><span class="kw">pub struct </span>NoVerifyingKey(Vec&lt;u8&gt;);
 
 <span class="kw">impl </span>NoVerifyingKey {
-    <span class="kw">pub fn </span>new(id: usize) -&gt; <span class="self">Self </span>{
+    <span class="doccomment">/// Creates a new `NoVerifyingKey` from a participant ID.
+    ///
+    /// # Arguments
+    /// * `id` - The participant ID to use as the identity
+    ///
+    /// # Returns
+    /// A new `NoVerifyingKey` with the ID encoded as big-endian bytes
+    </span><span class="kw">pub fn </span>new(id: usize) -&gt; <span class="self">Self </span>{
         NoVerifyingKey((id <span class="kw">as </span>u64).to_be_bytes().into())
     }
 }
 
 <span class="kw">impl</span>&lt;T: Into&lt;Vec&lt;u8&gt;&gt;&gt; From&lt;T&gt; <span class="kw">for </span>NoVerifyingKey {
-    <span class="kw">fn </span>from(value: T) -&gt; <span class="self">Self </span>{
+    <span class="doccomment">/// Creates a `NoVerifyingKey` from any type that can be converted into a `Vec&lt;u8&gt;`.
+    ///
+    /// # Arguments
+    /// * `value` - The value to convert into a verifying key
+    </span><span class="kw">fn </span>from(value: T) -&gt; <span class="self">Self </span>{
         NoVerifyingKey(value.into())
     }
 }
 
 <span class="kw">impl </span>AsRef&lt;[u8]&gt; <span class="kw">for </span>NoVerifyingKey {
-    <span class="kw">fn </span>as_ref(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>[u8] {
+    <span class="doccomment">/// Returns a reference to the inner byte vector.
+    </span><span class="kw">fn </span>as_ref(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>[u8] {
         <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="number">0
     </span>}
 }
 
 <span class="kw">impl </span>Verifier&lt;NoSignature&gt; <span class="kw">for </span>NoVerifyingKey {
-    <span class="kw">fn </span>verify(
-        <span class="kw-2">&amp;</span><span class="self">self</span>,
-        <span class="kw">_</span>: <span class="kw-2">&amp;</span>[u8],
-        <span class="kw">_</span>: <span class="kw-2">&amp;</span>NoSignature,
-    ) -&gt; <span class="prelude-ty">Result</span>&lt;(), signature::Error&gt; {
+    <span class="doccomment">/// Verifies a signature, always succeeding.
+    ///
+    /// # Arguments
+    /// * `_` - The message (ignored)
+    /// * `_` - The signature (ignored)
+    ///
+    /// # Returns
+    /// * `Ok(())` - Always succeeds
+    </span><span class="kw">fn </span>verify(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="kw">_</span>: <span class="kw-2">&amp;</span>[u8], <span class="kw">_</span>: <span class="kw-2">&amp;</span>NoSignature) -&gt; <span class="prelude-ty">Result</span>&lt;(), signature::Error&gt; {
         <span class="prelude-val">Ok</span>(())
     }
 }

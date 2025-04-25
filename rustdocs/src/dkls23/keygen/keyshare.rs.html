@@ -360,8 +360,63 @@
 <a href="#359" id="359">359</a>
 <a href="#360" id="360">360</a>
 <a href="#361" id="361">361</a>
-<a href="#362" id="362">362</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
+<a href="#362" id="362">362</a>
+<a href="#363" id="363">363</a>
+<a href="#364" id="364">364</a>
+<a href="#365" id="365">365</a>
+<a href="#366" id="366">366</a>
+<a href="#367" id="367">367</a>
+<a href="#368" id="368">368</a>
+<a href="#369" id="369">369</a>
+<a href="#370" id="370">370</a>
+<a href="#371" id="371">371</a>
+<a href="#372" id="372">372</a>
+<a href="#373" id="373">373</a>
+<a href="#374" id="374">374</a>
+<a href="#375" id="375">375</a>
+<a href="#376" id="376">376</a>
+<a href="#377" id="377">377</a>
+<a href="#378" id="378">378</a>
+<a href="#379" id="379">379</a>
+<a href="#380" id="380">380</a>
+<a href="#381" id="381">381</a>
+<a href="#382" id="382">382</a>
+<a href="#383" id="383">383</a>
+<a href="#384" id="384">384</a>
+<a href="#385" id="385">385</a>
+<a href="#386" id="386">386</a>
+<a href="#387" id="387">387</a>
+<a href="#388" id="388">388</a>
+<a href="#389" id="389">389</a>
+<a href="#390" id="390">390</a>
+<a href="#391" id="391">391</a>
+<a href="#392" id="392">392</a>
+<a href="#393" id="393">393</a>
+<a href="#394" id="394">394</a>
+<a href="#395" id="395">395</a>
+<a href="#396" id="396">396</a>
+<a href="#397" id="397">397</a>
+<a href="#398" id="398">398</a>
+<a href="#399" id="399">399</a>
+<a href="#400" id="400">400</a>
+<a href="#401" id="401">401</a>
+<a href="#402" id="402">402</a>
+<a href="#403" id="403">403</a>
+<a href="#404" id="404">404</a>
+<a href="#405" id="405">405</a>
+<a href="#406" id="406">406</a>
+<a href="#407" id="407">407</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
+
+</span><span class="doccomment">//! This module provides functionality for managing key shares in a distributed key generation protocol.
+//! A key share represents a party's portion of a distributed secret key, along with associated metadata
+//! and cryptographic material needed for protocol operations.
+//!
+//! The `Keyshare` struct is the main type in this module, providing methods for:
+//! - Creating and validating key shares
+//! - Accessing key share components (public keys, ranks, etc.)
+//! - Deriving child keys and extended public keys
+//! - Managing oblivious transfer seeds for protocol operations
 
 </span><span class="kw">use </span>core::{mem, ops::Deref};
 
@@ -372,8 +427,7 @@
 <span class="kw">use </span>sl_oblivious::soft_spoken::{ReceiverOTSeed, SenderOTSeed};
 
 <span class="kw">use </span>sl_mpc_mate::bip32::{
-    derive_child_pubkey, derive_xpub, get_finger_print, BIP32Error,
-    KeyFingerPrint, Prefix, XPubKey,
+    derive_child_pubkey, derive_xpub, get_finger_print, BIP32Error, KeyFingerPrint, Prefix, XPubKey,
 };
 
 <span class="kw">use </span><span class="kw">crate</span>::proto::<span class="kw-2">*</span>;
@@ -382,14 +436,27 @@
 
 <span class="kw">mod </span>details;
 
-<span class="doccomment">/// Key share of a party.
+<span class="doccomment">/// A key share representing a party's portion of a distributed secret key.
+///
+/// This struct encapsulates all the information needed for a party to participate in
+/// distributed key generation and signing protocols. It includes:
+/// - The party's secret share
+/// - Public key components
+/// - Party ranks and identifiers
+/// - Oblivious transfer seeds
+/// - Additional protocol-specific data
+///
+/// The key share is stored in a compact binary format and provides methods for
+/// accessing its components and deriving child keys.
 </span><span class="attr">#[derive(Clone, ZeroizeOnDrop)]
 </span><span class="kw">pub struct </span>Keyshare {
     buffer: Vec&lt;u8&gt;,
 }
 
 <span class="kw">impl </span>Keyshare {
-    <span class="doccomment">/// Identified of key share data
+    <span class="doccomment">/// Magic number identifying valid key share data.
+    ///
+    /// This constant is used to validate that a byte buffer contains a valid key share.
     </span><span class="kw">pub const </span>MAGIC: [u8; <span class="number">4</span>] = [<span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">1</span>];
 }
 
@@ -403,13 +470,19 @@
     </span><span class="kw">fn </span>calculate_size(n: u8, extra: usize) -&gt; usize {
         <span class="macro">assert!</span>(n &gt; <span class="number">1</span>);
 
-        <span class="self">Self</span>::INFO
-            + (n <span class="kw">as </span>usize) * <span class="self">Self</span>::EACH
-            + (n <span class="kw">as </span>usize - <span class="number">1</span>) * <span class="self">Self</span>::OTHER
-            + extra
+        <span class="self">Self</span>::INFO + (n <span class="kw">as </span>usize) * <span class="self">Self</span>::EACH + (n <span class="kw">as </span>usize - <span class="number">1</span>) * <span class="self">Self</span>::OTHER + extra
     }
 
-    <span class="doccomment">/// Allocate an instance of a key share with given parameters.
+    <span class="doccomment">/// Creates a new key share with the specified parameters.
+    ///
+    /// # Arguments
+    /// * `n` - Total number of parties in the protocol
+    /// * `t` - Threshold value for the protocol
+    /// * `id` - ID of this party
+    /// * `extra` - Additional data to be embedded in the key share
+    ///
+    /// # Panics
+    /// Panics if `n` is less than 2.
     </span><span class="kw">pub fn </span>new(n: u8, t: u8, id: u8, extra: <span class="kw-2">&amp;</span>[u8]) -&gt; Keyshare {
         <span class="kw">let </span>size = <span class="self">Self</span>::calculate_size(n, extra.len());
         <span class="kw">let </span><span class="kw-2">mut </span>buffer = <span class="macro">vec!</span>[<span class="number">0u8</span>; size];
@@ -434,11 +507,7 @@
             <span class="kw">return </span><span class="bool-val">false</span>;
         }
 
-        <span class="kw">let </span>info = <span class="kw">match </span>bytemuck::try_from_bytes::&lt;KeyshareInfo&gt;(
-            <span class="kw-2">&amp;</span>buffer[..<span class="self">Self</span>::INFO],
-        )
-        .ok()
-        {
+        <span class="kw">let </span>info = <span class="kw">match </span>bytemuck::try_from_bytes::&lt;KeyshareInfo&gt;(<span class="kw-2">&amp;</span>buffer[..<span class="self">Self</span>::INFO]).ok() {
             <span class="prelude-val">Some</span>(info) =&gt; info,
             <span class="kw">_ </span>=&gt; <span class="kw">return </span><span class="bool-val">false</span>,
         };
@@ -470,7 +539,13 @@
         <span class="bool-val">true
     </span>}
 
-    <span class="doccomment">/// Create a key share from slice of bytes.
+    <span class="doccomment">/// Creates a key share from a byte slice.
+    ///
+    /// # Arguments
+    /// * `buffer` - Byte slice containing the key share data
+    ///
+    /// # Returns
+    /// `Some(Keyshare)` if the buffer contains valid key share data, `None` otherwise.
     </span><span class="kw">pub fn </span>from_bytes(buffer: <span class="kw-2">&amp;</span>[u8]) -&gt; <span class="prelude-ty">Option</span>&lt;<span class="self">Self</span>&gt; {
         <span class="kw">if </span><span class="self">Self</span>::is_valid_buffer(buffer) {
             <span class="prelude-val">Some</span>(<span class="self">Self </span>{
@@ -481,8 +556,13 @@
         </span>}
     }
 
-    <span class="doccomment">/// Create a key share from a given vector. Returns a passed
-    /// vector in case of an error.
+    <span class="doccomment">/// Creates a key share from a vector of bytes.
+    ///
+    /// # Arguments
+    /// * `buffer` - Vector containing the key share data
+    ///
+    /// # Returns
+    /// `Ok(Keyshare)` if the vector contains valid key share data, `Err(buffer)` otherwise.
     </span><span class="kw">pub fn </span>from_vec(buffer: Vec&lt;u8&gt;) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="self">Self</span>, Vec&lt;u8&gt;&gt; {
         <span class="kw">if </span><span class="self">Self</span>::is_valid_buffer(<span class="kw-2">&amp;</span>buffer) {
             <span class="prelude-val">Ok</span>(<span class="self">Self </span>{ buffer })
@@ -491,24 +571,24 @@
         }
     }
 
-    <span class="doccomment">/// Return underlying byte slice.
+    <span class="doccomment">/// Returns the underlying byte slice of the key share.
     </span><span class="kw">pub fn </span>as_slice(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>[u8] {
         <span class="kw-2">&amp;</span><span class="self">self</span>.buffer
     }
 
-    <span class="doccomment">/// Return public key as ProjectiveProint.
+    <span class="doccomment">/// Returns the public key as a `ProjectivePoint`.
     </span><span class="kw">pub fn </span>public_key(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; ProjectivePoint {
         decode_point(<span class="kw-2">&amp;</span><span class="self">self</span>.info().public_key).unwrap()
     }
 
-    <span class="doccomment">/// Return vector of ranks
+    <span class="doccomment">/// Returns a vector of ranks for all parties.
     </span><span class="kw">pub fn </span>rank_list(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Vec&lt;u8&gt; {
         (<span class="number">0</span>..<span class="self">self</span>.info().total_parties)
             .map(|p| <span class="self">self</span>.each(p).rank)
             .collect()
     }
 
-    <span class="doccomment">/// x_i_list
+    <span class="doccomment">/// Returns a vector of x-coordinates for all parties.
     </span><span class="kw">pub fn </span>x_i_list(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Vec&lt;NonZeroScalar&gt; {
         (<span class="number">0</span>..<span class="self">self</span>.info().total_parties)
             .map(|p| decode_nonzero(<span class="kw-2">&amp;</span><span class="self">self</span>.each(p).x_i).unwrap())
@@ -516,11 +596,10 @@
     }
 
     <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>get_x_i(<span class="kw-2">&amp;</span><span class="self">self</span>, party_id: u8) -&gt; NonZeroScalar {
-        NonZeroScalar::new(decode_scalar(<span class="kw-2">&amp;</span><span class="self">self</span>.each(party_id).x_i).unwrap())
-            .unwrap()
+        NonZeroScalar::new(decode_scalar(<span class="kw-2">&amp;</span><span class="self">self</span>.each(party_id).x_i).unwrap()).unwrap()
     }
 
-    <span class="doccomment">/// Return true if all parties has rank zero.
+    <span class="doccomment">/// Returns true if all parties have rank zero.
     </span><span class="kw">pub fn </span>zero_ranks(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
         <span class="kw">for </span>p <span class="kw">in </span><span class="number">0</span>..<span class="self">self</span>.info().total_parties {
             <span class="kw">if </span><span class="self">self</span>.each(p).rank != <span class="number">0 </span>{
@@ -531,19 +610,22 @@
         <span class="bool-val">true
     </span>}
 
-    <span class="doccomment">/// Return rank of a party.
+    <span class="doccomment">/// Returns the rank of a specific party.
+    ///
+    /// # Arguments
+    /// * `party_id` - ID of the party
     </span><span class="kw">pub fn </span>get_rank(<span class="kw-2">&amp;</span><span class="self">self</span>, party_id: u8) -&gt; u8 {
         <span class="self">self</span>.each(party_id).rank
     }
 
-    <span class="doccomment">/// Return the secret scalar s_i.
+    <span class="doccomment">/// Returns the secret scalar s_i for this party.
     </span><span class="kw">pub fn </span>s_i(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Scalar {
         decode_scalar(<span class="kw-2">&amp;</span><span class="self">self</span>.info().s_i).unwrap()
     }
 
-    <span class="doccomment">/// Return user defined data embedded into the key share. The data
-    /// is passed via setup message at time of key generation and are
-    /// immutable.
+    <span class="doccomment">/// Returns the user-defined data embedded in the key share.
+    ///
+    /// This data is passed via the setup message during key generation and is immutable.
     </span><span class="kw">pub fn </span>extra_data(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>[u8] {
         <span class="kw">let </span>n = <span class="self">self</span>.info().total_parties <span class="kw">as </span>usize;
         <span class="kw">let </span>offset = <span class="self">Self</span>::INFO + <span class="self">Self</span>::OTHER * (n - <span class="number">1</span>) + <span class="self">Self</span>::EACH * n;
@@ -562,10 +644,7 @@
         bytemuck::from_bytes_mut(bytes)
     }
 
-    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>other_mut(
-        <span class="kw-2">&amp;mut </span><span class="self">self</span>,
-        party_id: u8,
-    ) -&gt; <span class="kw-2">&amp;mut </span>details::OtherParty {
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>other_mut(<span class="kw-2">&amp;mut </span><span class="self">self</span>, party_id: u8) -&gt; <span class="kw-2">&amp;mut </span>details::OtherParty {
         <span class="macro">assert!</span>(party_id &lt; <span class="self">self</span>.info().total_parties);
 
         <span class="kw">let </span>n = <span class="self">self</span>.info().total_parties <span class="kw">as </span>usize;
@@ -574,8 +653,7 @@
         <span class="kw">let </span>idx = <span class="self">self</span>.get_idx_from_id(party_id);
         <span class="kw">let </span>bytes = <span class="kw-2">&amp;mut </span><span class="self">self</span>.buffer[offset..][..<span class="self">Self</span>::OTHER * (n - <span class="number">1</span>)];
 
-        <span class="kw">let </span>others: <span class="kw-2">&amp;mut </span>[details::OtherParty] =
-            bytemuck::cast_slice_mut(bytes);
+        <span class="kw">let </span>others: <span class="kw-2">&amp;mut </span>[details::OtherParty] = bytemuck::cast_slice_mut(bytes);
 
         <span class="kw-2">&amp;mut </span>others[idx]
     }
@@ -593,10 +671,7 @@
         <span class="kw-2">&amp;</span>others[<span class="self">self</span>.get_idx_from_id(party_id)]
     }
 
-    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>each_mut(
-        <span class="kw-2">&amp;mut </span><span class="self">self</span>,
-        party_id: u8,
-    ) -&gt; <span class="kw-2">&amp;mut </span>details::EachParty {
+    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>each_mut(<span class="kw-2">&amp;mut </span><span class="self">self</span>, party_id: u8) -&gt; <span class="kw-2">&amp;mut </span>details::EachParty {
         <span class="macro">assert!</span>(party_id &lt; <span class="self">self</span>.info().total_parties);
 
         <span class="kw">let </span>n = <span class="self">self</span>.info().total_parties <span class="kw">as </span>usize;
@@ -618,7 +693,10 @@
         <span class="kw-2">&amp;</span>each[party_id <span class="kw">as </span>usize]
     }
 
-    <span class="doccomment">/// Get the big S value of another party
+    <span class="doccomment">/// Returns the public key component for a specific party.
+    ///
+    /// # Arguments
+    /// * `party_id` - ID of the party
     </span><span class="kw">pub fn </span>big_s(<span class="kw-2">&amp;</span><span class="self">self</span>, party_id: u8) -&gt; ProjectivePoint {
         decode_point(<span class="kw-2">&amp;</span><span class="self">self</span>.each(party_id).big_s).unwrap()
     }
@@ -654,25 +732,30 @@
 }
 
 <span class="kw">impl </span>Keyshare {
-    <span class="doccomment">/// Returns root chain code
+    <span class="doccomment">/// Returns the root chain code.
     </span><span class="kw">pub fn </span>root_chain_code(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; [u8; <span class="number">32</span>] {
         <span class="self">self</span>.info().root_chain_code
     }
 
-    <span class="doccomment">/// Returns public key as ProjectivePoint
+    <span class="doccomment">/// Returns the root public key.
     </span><span class="kw">pub fn </span>root_public_key(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; ProjectivePoint {
         <span class="self">self</span>.public_key()
     }
 }
 
-<span class="comment">// Separate impl for BIP32 related functions
-</span><span class="kw">impl </span>Keyshare {
-    <span class="doccomment">/// Get the fingerprint of the root public key
+<span class="kw">impl </span>Keyshare {
+    <span class="doccomment">/// Returns the key fingerprint.
     </span><span class="kw">pub fn </span>get_finger_print(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; KeyFingerPrint {
         get_finger_print(<span class="kw-2">&amp;</span><span class="self">self</span>.root_public_key())
     }
 
-    <span class="doccomment">/// Get the additive offset of a key share for a given derivation path
+    <span class="doccomment">/// Derives a child key with the given chain path and offset.
+    ///
+    /// # Arguments
+    /// * `chain_path` - The derivation path to use
+    ///
+    /// # Returns
+    /// A tuple containing the derived scalar and public key, or an error if derivation fails.
     </span><span class="kw">pub fn </span>derive_with_offset(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         chain_path: <span class="kw-2">&amp;</span>DerivationPath,
@@ -692,7 +775,13 @@
         </span><span class="prelude-val">Ok</span>((additive_offset, pubkey))
     }
 
-    <span class="doccomment">/// Derive the child public key for a given derivation path
+    <span class="doccomment">/// Derives a child public key with the given chain path.
+    ///
+    /// # Arguments
+    /// * `chain_path` - The derivation path to use
+    ///
+    /// # Returns
+    /// The derived public key, or an error if derivation fails.
     </span><span class="kw">pub fn </span>derive_child_pubkey(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         chain_path: <span class="kw-2">&amp;</span>DerivationPath,
@@ -702,13 +791,14 @@
         <span class="prelude-val">Ok</span>(child_pubkey)
     }
 
-    <span class="doccomment">/// Derive the extended public key for a given derivation path and prefix
+    <span class="doccomment">/// Derives an extended public key with the given prefix and chain path.
+    ///
     /// # Arguments
-    /// * `prefix` - Prefix for the extended public key (`Prefix` has commonly used prefixes)
-    /// * `chain_path` - Derivation path
+    /// * `prefix` - The prefix to use for the extended public key
+    /// * `chain_path` - The derivation path to use
     ///
     /// # Returns
-    /// * `XPubKey` - Extended public key
+    /// The derived extended public key, or an error if derivation fails.
     </span><span class="kw">pub fn </span>derive_xpub(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         prefix: Prefix,

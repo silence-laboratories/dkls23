@@ -74,73 +74,119 @@
 <a href="#73" id="73">73</a>
 <a href="#74" id="74">74</a>
 <a href="#75" id="75">75</a>
-<a href="#76" id="76">76</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
+<a href="#76" id="76">76</a>
+<a href="#77" id="77">77</a>
+<a href="#78" id="78">78</a>
+<a href="#79" id="79">79</a>
+<a href="#80" id="80">80</a>
+<a href="#81" id="81">81</a>
+<a href="#82" id="82">82</a>
+<a href="#83" id="83">83</a>
+<a href="#84" id="84">84</a>
+<a href="#85" id="85">85</a>
+<a href="#86" id="86">86</a>
+<a href="#87" id="87">87</a>
+<a href="#88" id="88">88</a>
+<a href="#89" id="89">89</a>
+<a href="#90" id="90">90</a>
+<a href="#91" id="91">91</a>
+<a href="#92" id="92">92</a>
+<a href="#93" id="93">93</a>
+<a href="#94" id="94">94</a>
+<a href="#95" id="95">95</a>
+<a href="#96" id="96">96</a>
+<a href="#97" id="97">97</a>
+<a href="#98" id="98">98</a>
+<a href="#99" id="99">99</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
+
+</span><span class="doccomment">//! Types and error definitions for the Distributed Signature Generation (DSG) Protocol
+//!
+//! This module defines the error types and other fundamental types used throughout
+//! the DSG protocol implementation. These types help ensure proper error handling
+//! and type safety across the protocol implementation.
 
 </span><span class="kw">use </span><span class="kw">crate</span>::proto::tags::Error;
 <span class="kw">use </span>sl_mpc_mate::coord::MessageSendError;
 
-<span class="doccomment">/// Distributed key generation errors
+<span class="doccomment">/// Error types that can occur during the Distributed Signature Generation protocol
+///
+/// This enum represents all possible error conditions that can arise during
+/// the execution of the DSG protocol. Each variant includes a descriptive
+/// error message and implements the `std::error::Error` trait.
 </span><span class="attr">#[derive(thiserror::Error, Debug)]
 #[allow(missing_docs)]
 </span><span class="kw">pub enum </span>SignError {
-    <span class="doccomment">/// Invalid commitment
+    <span class="doccomment">/// Indicates that a cryptographic commitment is invalid
     </span><span class="attr">#[error(<span class="string">"Invalid commitment"</span>)]
     </span>InvalidCommitment,
 
-    <span class="doccomment">/// Invalid digest
+    <span class="doccomment">/// Indicates that a message digest is invalid
     </span><span class="attr">#[error(<span class="string">"Invalid digest"</span>)]
     </span>InvalidDigest,
 
-    <span class="doccomment">/// Invalid final_session_id
+    <span class="doccomment">/// Indicates that the final session ID is invalid
     </span><span class="attr">#[error(<span class="string">"Invalid final_session_id"</span>)]
     </span>InvalidFinalSessionID,
 
-    <span class="attr">#[error(<span class="string">"Failed check: {0}"</span>)]
-    </span><span class="doccomment">/// Failed check
+    <span class="doccomment">/// Indicates that a protocol check has failed
+    </span><span class="attr">#[error(<span class="string">"Failed check: {0}"</span>)]
     </span>FailedCheck(<span class="kw-2">&amp;</span><span class="lifetime">'static </span>str),
 
-    <span class="doccomment">/// k256 error
+    <span class="doccomment">/// Indicates an error from the k256 elliptic curve library
     </span><span class="attr">#[error(<span class="string">"k256 error"</span>)]
     </span>K256Error,
 
-    <span class="doccomment">/// Invalid PreSignature
+    <span class="doccomment">/// Indicates that a pre-signature is invalid
     </span><span class="attr">#[error(<span class="string">"invalid pre signature"</span>)]
     </span>InvalidPreSign,
 
-    <span class="doccomment">/// Invalid message format
+    <span class="doccomment">/// Indicates that a message has an invalid format
     </span><span class="attr">#[error(<span class="string">"invalid message format"</span>)]
     </span>InvalidMessage,
 
-    <span class="attr">#[error(<span class="string">"Missing message"</span>)]
+    <span class="doccomment">/// Indicates that a required message is missing
+    </span><span class="attr">#[error(<span class="string">"Missing message"</span>)]
     </span>MissingMessage,
 
-    <span class="doccomment">/// We can't a send message
+    <span class="doccomment">/// Indicates that a message could not be sent
     </span><span class="attr">#[error(<span class="string">"Send message"</span>)]
     </span>SendMessage,
 
-    <span class="doccomment">/// Some party decided to not participate in the protocol.
+    <span class="doccomment">/// Indicates that a party has decided to abort the protocol
     </span><span class="attr">#[error(<span class="string">"Abort protocol by party {0}"</span>)]
     </span>AbortProtocol(usize),
 
-    <span class="doccomment">/// Abort the protocol and ban the party
+    <span class="doccomment">/// Indicates that a party should be banned and the protocol aborted
     </span><span class="attr">#[error(<span class="string">"Abort the protocol and ban the party {0}"</span>)]
     </span>AbortProtocolAndBanParty(u8),
 }
 
-<span class="kw">impl </span>From&lt;MessageSendError&gt; <span class="kw">for </span>SignError {
+<span class="doccomment">/// Conversion from `MessageSendError` to `SignError`
+///
+/// This implementation allows `MessageSendError` to be automatically converted
+/// to `SignError::SendMessage` when using the `?` operator.
+</span><span class="kw">impl </span>From&lt;MessageSendError&gt; <span class="kw">for </span>SignError {
     <span class="kw">fn </span>from(_err: MessageSendError) -&gt; <span class="self">Self </span>{
         SignError::SendMessage
     }
 }
 
-<span class="kw">impl </span>From&lt;k256::ecdsa::Error&gt; <span class="kw">for </span>SignError {
+<span class="doccomment">/// Conversion from `k256::ecdsa::Error` to `SignError`
+///
+/// This implementation allows k256 elliptic curve errors to be automatically
+/// converted to `SignError::K256Error` when using the `?` operator.
+</span><span class="kw">impl </span>From&lt;k256::ecdsa::Error&gt; <span class="kw">for </span>SignError {
     <span class="kw">fn </span>from(_err: k256::ecdsa::Error) -&gt; <span class="self">Self </span>{
         <span class="self">Self</span>::K256Error
     }
 }
 
-<span class="kw">impl </span>From&lt;Error&gt; <span class="kw">for </span>SignError {
+<span class="doccomment">/// Conversion from `Error` to `SignError`
+///
+/// This implementation allows protocol tag errors to be automatically converted
+/// to appropriate `SignError` variants when using the `?` operator.
+</span><span class="kw">impl </span>From&lt;Error&gt; <span class="kw">for </span>SignError {
     <span class="kw">fn </span>from(err: Error) -&gt; <span class="self">Self </span>{
         <span class="kw">match </span>err {
             Error::Abort(p) =&gt; SignError::AbortProtocol(p <span class="kw">as _</span>),

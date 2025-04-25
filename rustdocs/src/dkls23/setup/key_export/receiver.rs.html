@@ -98,29 +98,95 @@
 <a href="#97" id="97">97</a>
 <a href="#98" id="98">98</a>
 <a href="#99" id="99">99</a>
-<a href="#100" id="100">100</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
+<a href="#100" id="100">100</a>
+<a href="#101" id="101">101</a>
+<a href="#102" id="102">102</a>
+<a href="#103" id="103">103</a>
+<a href="#104" id="104">104</a>
+<a href="#105" id="105">105</a>
+<a href="#106" id="106">106</a>
+<a href="#107" id="107">107</a>
+<a href="#108" id="108">108</a>
+<a href="#109" id="109">109</a>
+<a href="#110" id="110">110</a>
+<a href="#111" id="111">111</a>
+<a href="#112" id="112">112</a>
+<a href="#113" id="113">113</a>
+<a href="#114" id="114">114</a>
+<a href="#115" id="115">115</a>
+<a href="#116" id="116">116</a>
+<a href="#117" id="117">117</a>
+<a href="#118" id="118">118</a>
+<a href="#119" id="119">119</a>
+<a href="#120" id="120">120</a>
+<a href="#121" id="121">121</a>
+<a href="#122" id="122">122</a>
+<a href="#123" id="123">123</a>
+<a href="#124" id="124">124</a>
+<a href="#125" id="125">125</a>
+<a href="#126" id="126">126</a>
+<a href="#127" id="127">127</a>
+<a href="#128" id="128">128</a>
+<a href="#129" id="129">129</a>
+<a href="#130" id="130">130</a>
+<a href="#131" id="131">131</a>
+<a href="#132" id="132">132</a>
+<a href="#133" id="133">133</a>
+<a href="#134" id="134">134</a>
+<a href="#135" id="135">135</a>
+<a href="#136" id="136">136</a>
+<a href="#137" id="137">137</a>
+<a href="#138" id="138">138</a>
+<a href="#139" id="139">139</a>
+<a href="#140" id="140">140</a>
+<a href="#141" id="141">141</a>
+<a href="#142" id="142">142</a>
+<a href="#143" id="143">143</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
 
 </span><span class="kw">use super</span>::<span class="kw-2">*</span>;
 
-<span class="doccomment">/// Setup message for a key receiver in a key export protocol.
-</span><span class="kw">pub struct </span>KeyExportReceiver&lt;
-    SK = NoSigningKey,
-    VK = NoVerifyingKey,
-    MS = NoSignature,
-&gt; {
-    party_id: usize,
-    sk: SK,
-    vk: Vec&lt;VK&gt;,
-    inst: InstanceId,
-    ttl: Duration,
-    share: Arc&lt;Keyshare&gt;,
-    enc_key: ReusableSecret,
-    marker: PhantomData&lt;MS&gt;,
+<span class="doccomment">/// A message used for setting up key export receiving operations in a multi-party computation protocol.
+///
+/// This struct encapsulates all necessary information for receiving an exported key,
+/// including participant information, cryptographic keys, and protocol parameters.
+///
+/// # Type Parameters
+/// * `SK` - The type of signing key used for message signatures
+/// * `VK` - The type of verifying key used to verify message signatures
+/// * `MS` - The type of message signature
+</span><span class="kw">pub struct </span>KeyExportReceiver&lt;SK = NoSigningKey, VK = NoVerifyingKey, MS = NoSignature&gt; {
+    <span class="doccomment">/// ID of the current party
+    </span>party_id: usize,
+    <span class="doccomment">/// Signing key for the current party
+    </span>sk: SK,
+    <span class="doccomment">/// Verifying keys for all participants
+    </span>vk: Vec&lt;VK&gt;,
+    <span class="doccomment">/// Instance identifier for the protocol
+    </span>inst: InstanceId,
+    <span class="doccomment">/// Time-to-live duration for messages
+    </span>ttl: Duration,
+    <span class="doccomment">/// Reference to the keyshare to be received
+    </span>share: Arc&lt;Keyshare&gt;,
+    <span class="doccomment">/// Private key used for decryption
+    </span>enc_key: ReusableSecret,
+    <span class="doccomment">/// Phantom data to hold the message signature type
+    </span>marker: PhantomData&lt;MS&gt;,
 }
 
 <span class="kw">impl</span>&lt;SK, VK, MS&gt; KeyExportReceiver&lt;SK, VK, MS&gt; {
-    <span class="doccomment">/// Create new setup message
+    <span class="doccomment">/// Creates a new setup message for key export receiving operations.
+    ///
+    /// # Arguments
+    /// * `inst` - Instance identifier for the protocol
+    /// * `sk` - Signing key for the current party
+    /// * `party_id` - ID of the current party
+    /// * `vk` - Vector of verifying keys for all participants
+    /// * `share` - Reference to the keyshare to be received
+    /// * `enc_key` - Private key used for decryption
+    ///
+    /// # Returns
+    /// A new `KeyExportReceiver` instance with default TTL
     </span><span class="kw">pub fn </span>new(
         inst: InstanceId,
         sk: SK,
@@ -141,7 +207,13 @@
         }
     }
 
-    <span class="doccomment">/// Update TTL
+    <span class="doccomment">/// Sets a custom time-to-live duration for messages.
+    ///
+    /// # Arguments
+    /// * `ttl` - The new time-to-live duration
+    ///
+    /// # Returns
+    /// The modified `KeyExportReceiver` instance
     </span><span class="kw">pub fn </span>with_ttl(<span class="kw-2">mut </span><span class="self">self</span>, ttl: Duration) -&gt; <span class="self">Self </span>{
         <span class="self">self</span>.ttl = ttl;
         <span class="self">self
@@ -158,27 +230,39 @@
     <span class="kw">type </span>MessageSigner = SK;
     <span class="kw">type </span>MessageVerifier = VK;
 
-    <span class="kw">fn </span>total_participants(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; usize {
+    <span class="doccomment">/// Returns the total number of participants in the protocol.
+    </span><span class="kw">fn </span>total_participants(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; usize {
         <span class="self">self</span>.vk.len()
     }
 
-    <span class="kw">fn </span>participant_index(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; usize {
+    <span class="doccomment">/// Returns the index of the current participant.
+    </span><span class="kw">fn </span>participant_index(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; usize {
         <span class="self">self</span>.party_id
     }
 
-    <span class="kw">fn </span>instance_id(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>InstanceId {
+    <span class="doccomment">/// Returns the instance identifier for the protocol.
+    </span><span class="kw">fn </span>instance_id(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>InstanceId {
         <span class="kw-2">&amp;</span><span class="self">self</span>.inst
     }
 
-    <span class="kw">fn </span>message_ttl(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Duration {
+    <span class="doccomment">/// Returns the time-to-live duration for messages.
+    </span><span class="kw">fn </span>message_ttl(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Duration {
         <span class="self">self</span>.ttl
     }
 
-    <span class="kw">fn </span>verifier(<span class="kw-2">&amp;</span><span class="self">self</span>, index: usize) -&gt; <span class="kw-2">&amp;</span><span class="self">Self</span>::MessageVerifier {
+    <span class="doccomment">/// Returns the verifying key for a specific participant.
+    ///
+    /// # Arguments
+    /// * `index` - The index of the participant
+    ///
+    /// # Returns
+    /// A reference to the verifying key
+    </span><span class="kw">fn </span>verifier(<span class="kw-2">&amp;</span><span class="self">self</span>, index: usize) -&gt; <span class="kw-2">&amp;</span><span class="self">Self</span>::MessageVerifier {
         <span class="kw-2">&amp;</span><span class="self">self</span>.vk[index]
     }
 
-    <span class="kw">fn </span>signer(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span><span class="self">Self</span>::MessageSigner {
+    <span class="doccomment">/// Returns the signing key for the current participant.
+    </span><span class="kw">fn </span>signer(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span><span class="self">Self</span>::MessageSigner {
         <span class="kw-2">&amp;</span><span class="self">self</span>.sk
     }
 }
@@ -190,11 +274,13 @@
     MS: SignatureEncoding,
     VK: AsRef&lt;[u8]&gt; + Verifier&lt;MS&gt;,
 {
-    <span class="kw">fn </span>keyshare(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>Keyshare {
+    <span class="doccomment">/// Returns a reference to the keyshare to be received.
+    </span><span class="kw">fn </span>keyshare(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>Keyshare {
         <span class="kw-2">&amp;</span><span class="self">self</span>.share
     }
 
-    <span class="kw">fn </span>receiver_private_key(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>ReusableSecret {
+    <span class="doccomment">/// Returns the private key used for decryption.
+    </span><span class="kw">fn </span>receiver_private_key(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>ReusableSecret {
         <span class="kw-2">&amp;</span><span class="self">self</span>.enc_key
     }
 }

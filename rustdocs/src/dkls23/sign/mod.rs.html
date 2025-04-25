@@ -157,8 +157,91 @@
 <a href="#156" id="156">156</a>
 <a href="#157" id="157">157</a>
 <a href="#158" id="158">158</a>
-<a href="#159" id="159">159</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
+<a href="#159" id="159">159</a>
+<a href="#160" id="160">160</a>
+<a href="#161" id="161">161</a>
+<a href="#162" id="162">162</a>
+<a href="#163" id="163">163</a>
+<a href="#164" id="164">164</a>
+<a href="#165" id="165">165</a>
+<a href="#166" id="166">166</a>
+<a href="#167" id="167">167</a>
+<a href="#168" id="168">168</a>
+<a href="#169" id="169">169</a>
+<a href="#170" id="170">170</a>
+<a href="#171" id="171">171</a>
+<a href="#172" id="172">172</a>
+<a href="#173" id="173">173</a>
+<a href="#174" id="174">174</a>
+<a href="#175" id="175">175</a>
+<a href="#176" id="176">176</a>
+<a href="#177" id="177">177</a>
+<a href="#178" id="178">178</a>
+<a href="#179" id="179">179</a>
+<a href="#180" id="180">180</a>
+<a href="#181" id="181">181</a>
+<a href="#182" id="182">182</a>
+<a href="#183" id="183">183</a>
+<a href="#184" id="184">184</a>
+<a href="#185" id="185">185</a>
+<a href="#186" id="186">186</a>
+<a href="#187" id="187">187</a>
+<a href="#188" id="188">188</a>
+<a href="#189" id="189">189</a>
+<a href="#190" id="190">190</a>
+<a href="#191" id="191">191</a>
+<a href="#192" id="192">192</a>
+<a href="#193" id="193">193</a>
+<a href="#194" id="194">194</a>
+<a href="#195" id="195">195</a>
+<a href="#196" id="196">196</a>
+<a href="#197" id="197">197</a>
+<a href="#198" id="198">198</a>
+<a href="#199" id="199">199</a>
+<a href="#200" id="200">200</a>
+<a href="#201" id="201">201</a>
+<a href="#202" id="202">202</a>
+<a href="#203" id="203">203</a>
+<a href="#204" id="204">204</a>
+<a href="#205" id="205">205</a>
+<a href="#206" id="206">206</a>
+<a href="#207" id="207">207</a>
+<a href="#208" id="208">208</a>
+<a href="#209" id="209">209</a>
+<a href="#210" id="210">210</a>
+<a href="#211" id="211">211</a>
+<a href="#212" id="212">212</a>
+<a href="#213" id="213">213</a>
+<a href="#214" id="214">214</a>
+<a href="#215" id="215">215</a>
+<a href="#216" id="216">216</a>
+<a href="#217" id="217">217</a>
+<a href="#218" id="218">218</a>
+<a href="#219" id="219">219</a>
+<a href="#220" id="220">220</a>
+<a href="#221" id="221">221</a>
+<a href="#222" id="222">222</a>
+<a href="#223" id="223">223</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
+
+</span><span class="doccomment">//! Distributed Signature Generation (DSG) Protocol Implementation
+//!
+//! This module implements a distributed signature generation protocol that allows
+//! multiple parties to collaboratively generate digital signatures without any
+//! single party knowing the complete private key.
+//!
+//! # Protocol Overview
+//!
+//! The DSG protocol consists of two main phases:
+//! 1. Pre-signing phase: Generates a pre-signature that can be completed later
+//! 2. Finish phase: Completes the signature using the pre-signature
+//!
+//! # Security Properties
+//!
+//! The protocol provides the following security guarantees:
+//! - Threshold security: Signatures can only be generated with a sufficient number of parties
+//! - Privacy: No information about the private key is leaked
+//! - Verifiability: Signatures can be verified using standard ECDSA verification
 
 </span><span class="kw">mod </span>constants;
 <span class="kw">mod </span>dsg;
@@ -175,25 +258,38 @@
 <span class="kw">use </span><span class="kw">crate</span>::setup::{ProtocolParticipant, ABORT_MESSAGE_TAG};
 <span class="kw">use </span>sl_mpc_mate::message::MsgId;
 
-<span class="doccomment">/// DSG variant
+<span class="doccomment">/// Variants of the Distributed Signature Generation protocol
+///
+/// This enum represents the different modes in which the DSG protocol can be run:
+/// - Full protocol execution
+/// - Pre-signing only
+/// - Finish phase only
 </span><span class="kw">pub enum </span>DsgVariant {
-    <span class="doccomment">/// SignPre + Finish
+    <span class="doccomment">/// Execute both PreSign and Finish phases
     </span>Full,
-    <span class="doccomment">/// PreSign only
+    <span class="doccomment">/// Execute only the PreSign phase
     </span>PreSign,
-    <span class="doccomment">/// Finish only
+    <span class="doccomment">/// Execute only the Finish phase
     </span>Finish,
 }
 
-<span class="doccomment">/// Generate message receiver map.
+<span class="doccomment">/// Generates a map of message receivers for the DSG protocol
 ///
-/// Call the passed closure for each pair (msg_id, receiver)
+/// This function helps set up the message routing for the DSG protocol by
+/// determining which messages should be sent to which participants.
 ///
-</span><span class="kw">pub fn </span>message_receivers&lt;S, F&gt;(
-    setup: <span class="kw-2">&amp;</span>S,
-    variant: DsgVariant,
-    <span class="kw-2">mut </span>msg_receiver: F,
-) <span class="kw">where
+/// # Type Parameters
+///
+/// * `S` - A type implementing the `ProtocolParticipant` trait
+/// * `F` - A closure type for handling message receivers
+///
+/// # Arguments
+///
+/// * `setup` - The protocol setup configuration
+/// * `variant` - The variant of the DSG protocol to run
+/// * `msg_receiver` - A closure that will be called for each (message_id, verifier) pair
+</span><span class="kw">pub fn </span>message_receivers&lt;S, F&gt;(setup: <span class="kw-2">&amp;</span>S, variant: DsgVariant, <span class="kw-2">mut </span>msg_receiver: F)
+<span class="kw">where
     </span>S: ProtocolParticipant,
     F: FnMut(MsgId, <span class="kw-2">&amp;</span>S::MessageVerifier),
 {
@@ -231,14 +327,35 @@
         keygen::Keyshare,
         setup::ProtocolParticipant,
         setup::{
-            finish::SetupMessage <span class="kw">as </span>FinishSetupMsg, sign::SetupMessage,
-            NoSigningKey, NoVerifyingKey,
+            finish::SetupMessage <span class="kw">as </span>FinishSetupMsg, sign::SetupMessage, NoSigningKey,
+            NoVerifyingKey,
         },
         sign::PreSign,
         Seed,
     };
 
-    <span class="doccomment">/// Test helper
+    <span class="doccomment">/// Sets up the DSG protocol for testing
+    ///
+    /// This function creates the necessary setup messages and seeds for testing
+    /// the DSG protocol with a given set of key shares.
+    ///
+    /// # Arguments
+    ///
+    /// * `instance` - Optional instance identifier
+    /// * `shares` - Vector of key shares for the participants
+    /// * `chain_path` - The derivation path for the key
+    ///
+    /// # Returns
+    ///
+    /// A vector of tuples containing:
+    /// * The setup message for each participant
+    /// * The random seed for each participant
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if:
+    /// * The number of shares is less than the threshold
+    /// * The first share does not have rank 0
     </span><span class="kw">pub fn </span>setup_dsg(
         instance: <span class="prelude-ty">Option</span>&lt;[u8; <span class="number">32</span>]&gt;,
         shares: <span class="kw-2">&amp;</span>[Arc&lt;Keyshare&gt;],
@@ -290,7 +407,18 @@
             .collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;()
     }
 
-    <span class="doccomment">/// The same as
+    <span class="doccomment">/// Sets up the finish phase of the DSG protocol
+    ///
+    /// This function creates the necessary setup messages for completing
+    /// the signature generation using pre-signatures.
+    ///
+    /// # Arguments
+    ///
+    /// * `pre_signs` - Vector of pre-signatures from the participants
+    ///
+    /// # Returns
+    ///
+    /// A vector of setup messages for the finish phase
     </span><span class="kw">pub fn </span>setup_finish_sign(pre_signs: Vec&lt;PreSign&gt;) -&gt; Vec&lt;FinishSetupMsg&gt; {
         <span class="kw">let </span><span class="kw-2">mut </span>rng = rand::thread_rng();
 

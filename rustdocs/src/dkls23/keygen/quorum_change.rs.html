@@ -1185,38 +1185,13 @@
 <a href="#1184" id="1184">1184</a>
 <a href="#1185" id="1185">1185</a>
 <a href="#1186" id="1186">1186</a>
-<a href="#1187" id="1187">1187</a>
-<a href="#1188" id="1188">1188</a>
-<a href="#1189" id="1189">1189</a>
-<a href="#1190" id="1190">1190</a>
-<a href="#1191" id="1191">1191</a>
-<a href="#1192" id="1192">1192</a>
-<a href="#1193" id="1193">1193</a>
-<a href="#1194" id="1194">1194</a>
-<a href="#1195" id="1195">1195</a>
-<a href="#1196" id="1196">1196</a>
-<a href="#1197" id="1197">1197</a>
-<a href="#1198" id="1198">1198</a>
-<a href="#1199" id="1199">1199</a>
-<a href="#1200" id="1200">1200</a>
-<a href="#1201" id="1201">1201</a>
-<a href="#1202" id="1202">1202</a>
-<a href="#1203" id="1203">1203</a>
-<a href="#1204" id="1204">1204</a>
-<a href="#1205" id="1205">1205</a>
-<a href="#1206" id="1206">1206</a>
-<a href="#1207" id="1207">1207</a>
-<a href="#1208" id="1208">1208</a>
-<a href="#1209" id="1209">1209</a>
-<a href="#1210" id="1210">1210</a>
-<a href="#1211" id="1211">1211</a>
-<a href="#1212" id="1212">1212</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
+<a href="#1187" id="1187">1187</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
 
-</span><span class="doccomment">//! Quorum change protocol
-//! Based on docs/quorum_change_protocol.txt and
-//! Protocol 7.1. Relaxed DLog Keygen https://eprint.iacr.org/2023/765.pdf
-
+</span><span class="doccomment">//! Module for implementing the Quorum Change Protocol.
+//! The protocol supports:
+//! - Adding new participants
+//! - Removing existing participants
 </span><span class="kw">use </span>k256::{
     elliptic_curve::{group::GroupEncoding, subtle::ConstantTimeEq, Group},
     NonZeroScalar, ProjectivePoint, Scalar,
@@ -1227,10 +1202,7 @@
 
 <span class="kw">use </span>sl_mpc_mate::{
     coord::<span class="kw-2">*</span>,
-    math::{
-        feldman_verify, polynomial_coeff_multipliers, GroupPolynomial,
-        Polynomial,
-    },
+    math::{feldman_verify, polynomial_coeff_multipliers, GroupPolynomial, Polynomial},
     message::MsgId,
     SessionId,
 };
@@ -1245,10 +1217,7 @@
         constants::<span class="kw-2">*</span>,
         get_all_but_one_session_id, get_base_ot_session_id,
         messages::<span class="kw-2">*</span>,
-        utils::{
-            check_secret_recovery, get_birkhoff_coefficients,
-            get_lagrange_coeff,
-        },
+        utils::{check_secret_recovery, get_birkhoff_coefficients, get_lagrange_coeff},
         KeygenError, Keyshare,
     },
     pairs::Pairs,
@@ -1268,12 +1237,38 @@
     f()
 }
 
-<span class="doccomment">/// Execute Quorum change protocol.
-</span><span class="kw">pub async fn </span>run&lt;T, R&gt;(
-    setup: T,
-    seed: Seed,
-    relay: R,
-) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="prelude-ty">Option</span>&lt;Keyshare&gt;, KeygenError&gt;
+<span class="doccomment">/// Executes the Quorum Change Protocol.
+///
+/// This function orchestrates the quorum change process, allowing participants to:
+/// - Add new participants to the quorum
+/// - Remove existing participants
+/// - Change the threshold value
+/// - Modify participant ranks
+///
+/// # Type Parameters
+///
+/// * `T` - A type implementing the `QuorumChangeSetupMessage` trait
+/// * `R` - A type implementing the `Relay` trait for message communication
+///
+/// # Arguments
+///
+/// * `setup` - The protocol setup configuration containing participant information
+/// * `seed` - The random seed for cryptographic operations
+/// * `relay` - The message relay for communication between parties
+///
+/// # Returns
+///
+/// * `Ok(Some(Keyshare))` - The new key share if the protocol succeeds
+/// * `Ok(None)` - If the participant is not part of the new quorum
+/// * `Err(KeygenError)` - If the protocol fails
+///
+/// # Errors
+///
+/// This function may return the following errors:
+/// * `KeygenError::AbortProtocol` - If the protocol is aborted by a participant
+/// * `KeygenError::SendMessage` - If there's an error sending messages
+/// * Other `KeygenError` variants for various protocol failures
+</span><span class="kw">pub async fn </span>run&lt;T, R&gt;(setup: T, seed: Seed, relay: R) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="prelude-ty">Option</span>&lt;Keyshare&gt;, KeygenError&gt;
 <span class="kw">where
     </span>T: QuorumChangeSetupMessage&lt;Keyshare, ProjectivePoint&gt;,
     R: Relay,
@@ -1283,9 +1278,7 @@
 
     <span class="kw">let </span>result = <span class="kw">match </span>run_inner(setup, seed, <span class="kw-2">&amp;mut </span>relay).<span class="kw">await </span>{
         <span class="prelude-val">Ok</span>(share) =&gt; <span class="prelude-val">Ok</span>(share),
-        <span class="prelude-val">Err</span>(KeygenError::AbortProtocol(p)) =&gt; {
-            <span class="prelude-val">Err</span>(KeygenError::AbortProtocol(p))
-        }
+        <span class="prelude-val">Err</span>(KeygenError::AbortProtocol(p)) =&gt; <span class="prelude-val">Err</span>(KeygenError::AbortProtocol(p)),
         <span class="prelude-val">Err</span>(KeygenError::SendMessage) =&gt; <span class="prelude-val">Err</span>(KeygenError::SendMessage),
         <span class="prelude-val">Err</span>(err) =&gt; {
             <span class="comment">// ignore error of sending abort message
@@ -1299,14 +1292,27 @@
     result
 }
 
-<span class="doccomment">/// Implementation of Quorum change protocol.
+<span class="doccomment">/// Internal implementation of the Quorum Change Protocol.
 ///
-/// `setup` contains all parameters, including verfication keys of all
-/// parties and our own signing key.
+/// This function contains the core logic for the quorum change protocol,
+/// handling the cryptographic operations and message exchanges between participants.
 ///
-/// `seed` is used to initialize instance of ChaCha20Rng random number
-/// generator. This generator used to generate *ALL* random values for DKG.
+/// # Type Parameters
 ///
+/// * `T` - A type implementing the `QuorumChangeSetupMessage` trait
+/// * `R` - A type implementing the `Relay` trait for message communication
+///
+/// # Arguments
+///
+/// * `setup` - The protocol setup configuration
+/// * `seed` - The random seed for cryptographic operations
+/// * `relay` - The message relay for communication between parties
+///
+/// # Returns
+///
+/// * `Ok(Some(Keyshare))` - The new key share if the protocol succeeds
+/// * `Ok(None)` - If the participant is not part of the new quorum
+/// * `Err(KeygenError)` - If the protocol fails
 </span><span class="attr">#[allow(non_snake_case)]
 </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">async fn </span>run_inner&lt;T, R&gt;(
     setup: T,
@@ -1341,24 +1347,14 @@
     relay.ask_messages(<span class="kw-2">&amp;</span>setup, ABORT_MESSAGE_TAG, <span class="bool-val">false</span>).<span class="kw">await</span><span class="question-mark">?</span>;
 
     <span class="kw">let </span>_r0 = relay
-        .ask_messages_from_slice(
-            <span class="kw-2">&amp;</span>setup,
-            QC_MSG_R0,
-            setup.old_party_indices(),
-            <span class="bool-val">false</span>,
-        )
+        .ask_messages_from_slice(<span class="kw-2">&amp;</span>setup, QC_MSG_R0, setup.old_party_indices(), <span class="bool-val">false</span>)
         .<span class="kw">await</span><span class="question-mark">?</span>;
 
     relay.ask_messages(<span class="kw-2">&amp;</span>setup, QC_MSG_R1, <span class="bool-val">false</span>).<span class="kw">await</span><span class="question-mark">?</span>;
 
     <span class="kw">let </span>_p2p_1 = <span class="kw">if </span>my_party_is_new {
         relay
-            .ask_messages_from_slice(
-                <span class="kw-2">&amp;</span>setup,
-                QC_MSG_P2P_1,
-                setup.old_party_indices(),
-                <span class="bool-val">true</span>,
-            )
+            .ask_messages_from_slice(<span class="kw-2">&amp;</span>setup, QC_MSG_P2P_1, setup.old_party_indices(), <span class="bool-val">true</span>)
             .<span class="kw">await</span><span class="question-mark">?
     </span>} <span class="kw">else </span>{
         <span class="number">0
@@ -1366,24 +1362,14 @@
 
     <span class="kw">let </span>_p2p_2 = <span class="kw">if </span>my_party_is_new {
         relay
-            .ask_messages_from_slice(
-                <span class="kw-2">&amp;</span>setup,
-                QC_MSG_P2P_2,
-                setup.old_party_indices(),
-                <span class="bool-val">true</span>,
-            )
+            .ask_messages_from_slice(<span class="kw-2">&amp;</span>setup, QC_MSG_P2P_2, setup.old_party_indices(), <span class="bool-val">true</span>)
             .<span class="kw">await</span><span class="question-mark">?
     </span>} <span class="kw">else </span>{
         <span class="number">0
     </span>};
 
     <span class="kw">let </span>_r2 = relay
-        .ask_messages_from_slice(
-            <span class="kw-2">&amp;</span>setup,
-            QC_MSG_R2,
-            setup.old_party_indices(),
-            <span class="bool-val">false</span>,
-        )
+        .ask_messages_from_slice(<span class="kw-2">&amp;</span>setup, QC_MSG_R2, setup.old_party_indices(), <span class="bool-val">false</span>)
         .<span class="kw">await</span><span class="question-mark">?</span>;
 
     <span class="kw">let </span>sid_i = SessionId::new(rng.gen());
@@ -1430,10 +1416,7 @@
             <span class="kw">let </span>old_x_i_list = keyshare.x_i_list();
             <span class="kw">let </span>x_i = old_x_i_list[my_old_party_id];
 
-            <span class="macro">assert!</span>(
-                setup.old_party_indices().len()
-                    &gt;= keyshare.threshold <span class="kw">as </span>usize
-            );
+            <span class="macro">assert!</span>(setup.old_party_indices().len() &gt;= keyshare.threshold <span class="kw">as </span>usize);
 
             <span class="kw">let </span>old_party_id_list = old_party_ids.remove_ids();
 
@@ -1442,14 +1425,10 @@
             <span class="kw">let </span>lambda = <span class="kw">if </span>all_ranks_zero {
                 get_lagrange_coeff(<span class="kw-2">&amp;</span>x_i, <span class="kw-2">&amp;</span>old_x_i_list, <span class="kw-2">&amp;</span>old_party_id_list)
             } <span class="kw">else </span>{
-                get_birkhoff_coefficients(
-                    <span class="kw-2">&amp;</span>old_rank_list,
-                    <span class="kw-2">&amp;</span>old_x_i_list,
-                    <span class="kw-2">&amp;</span>old_party_id_list,
-                )
-                .get(<span class="kw-2">&amp;</span>my_old_party_id)
-                .copied()
-                .unwrap_or_default()
+                get_birkhoff_coefficients(<span class="kw-2">&amp;</span>old_rank_list, <span class="kw-2">&amp;</span>old_x_i_list, <span class="kw-2">&amp;</span>old_party_id_list)
+                    .get(<span class="kw-2">&amp;</span>my_old_party_id)
+                    .copied()
+                    .unwrap_or_default()
             };
 
             lambda * s_i
@@ -1499,9 +1478,7 @@
         <span class="kw">let </span>my_new_party_id = my_new_party_id.unwrap();
         <span class="kw">let </span>my_new_rank = setup.new_participant_rank(my_new_party_id);
         <span class="kw">let </span>x_i = new_x_i_list[my_new_party_id <span class="kw">as </span>usize];
-        <span class="kw">let </span>p_i_i = block_in_place(|| {
-            polynomial.derivative_at(my_new_rank <span class="kw">as </span>usize, <span class="kw-2">&amp;</span>x_i)
-        });
+        <span class="kw">let </span>p_i_i = block_in_place(|| polynomial.derivative_at(my_new_rank <span class="kw">as </span>usize, <span class="kw-2">&amp;</span>x_i));
         p_i_list.push(my_old_party_id, p_i_i);
     }
 
@@ -1520,9 +1497,7 @@
 
             <span class="kw">let </span>party_j_rank = setup.new_participant_rank(receiver_id);
             <span class="kw">let </span>x_j = new_x_i_list[receiver_id <span class="kw">as </span>usize];
-            <span class="kw">let </span>p_i_j = block_in_place(|| {
-                polynomial.derivative_at(party_j_rank <span class="kw">as </span>usize, <span class="kw-2">&amp;</span>x_j)
-            });
+            <span class="kw">let </span>p_i_j = block_in_place(|| polynomial.derivative_at(party_j_rank <span class="kw">as </span>usize, <span class="kw-2">&amp;</span>x_j));
             p_i_j_list.push(receiver_id, p_i_j);
 
             <span class="kw">let </span>commitment_2_i = hash_commitment_2(
@@ -1568,8 +1543,7 @@
             <span class="number">0</span>,
             KeygenError::AbortProtocol,
             |p2p_msg1: <span class="kw-2">&amp;</span>QCP2PMsg1, from_party_index, <span class="kw">_</span>, <span class="kw">_</span>| {
-                <span class="kw">let </span>from_party_id =
-                    <span class="kw-2">*</span>old_party_ids.find_pair(from_party_index);
+                <span class="kw">let </span>from_party_id = <span class="kw-2">*</span>old_party_ids.find_pair(from_party_index);
 
                 commitment2_list.push(from_party_id, p2p_msg1.commitment_2_i);
 
@@ -1617,10 +1591,9 @@
         }
 
         <span class="comment">// Broadcast 2 from old parties to all
-        </span><span class="kw">let </span>(big_p_j_poly_list, r1_j_list, <span class="kw">_</span>, <span class="kw">_</span>) =
-            Round::new(_r2, QC_MSG_R2, relay)
-                .broadcast_4(<span class="kw-2">&amp;</span>setup, (big_p_i_poly.clone(), r1_i, (), ()))
-                .<span class="kw">await</span><span class="question-mark">?</span>;
+        </span><span class="kw">let </span>(big_p_j_poly_list, r1_j_list, <span class="kw">_</span>, <span class="kw">_</span>) = Round::new(_r2, QC_MSG_R2, relay)
+            .broadcast_4(<span class="kw-2">&amp;</span>setup, (big_p_i_poly.clone(), r1_i, (), ()))
+            .<span class="kw">await</span><span class="question-mark">?</span>;
 
         <span class="comment">// checks for old party
         </span><span class="kw">for </span><span class="kw-2">&amp;</span>old_party_index <span class="kw">in </span>setup.old_party_indices() {
@@ -1637,8 +1610,7 @@
                 <span class="kw">return </span><span class="prelude-val">Err</span>(KeygenError::InvalidPolynomialPoint);
             }
 
-            <span class="kw">let </span>commit_hash1 =
-                hash_commitment_1(sid_j, old_party_index, big_p_i_poly, r1_j);
+            <span class="kw">let </span>commit_hash1 = hash_commitment_1(sid_j, old_party_index, big_p_i_poly, r1_j);
             <span class="kw">if </span>commit_hash1.ct_ne(commitment1).into() {
                 <span class="kw">return </span><span class="prelude-val">Err</span>(KeygenError::InvalidCommitmentHash);
             }
@@ -1665,9 +1637,7 @@
 
     <span class="kw">let </span><span class="kw-2">mut </span>root_chain_code_list = setup
         .old_keyshare()
-        .map(|share| {
-            Pairs::new_with_item(share.party_id, share.root_chain_code)
-        })
+        .map(|share| Pairs::new_with_item(share.party_id, share.root_chain_code))
         .unwrap_or_default();
 
     <span class="comment">// new_party processes all old_t decommits2 from old parties
@@ -1679,11 +1649,9 @@
             <span class="number">0</span>,
             KeygenError::AbortProtocol,
             |p2p_msg2: <span class="kw-2">&amp;</span>QCP2PMsg2, from_party_index, <span class="kw">_</span>, <span class="kw">_</span>| {
-                <span class="kw">let </span>from_party_id =
-                    <span class="kw-2">*</span>old_party_ids.find_pair(from_party_index);
+                <span class="kw">let </span>from_party_id = <span class="kw-2">*</span>old_party_ids.find_pair(from_party_index);
 
-                <span class="kw">let </span>p_j_i = decode_scalar(<span class="kw-2">&amp;</span>p2p_msg2.p_i)
-                    .ok_or(KeygenError::InvalidMessage)<span class="question-mark">?</span>;
+                <span class="kw">let </span>p_j_i = decode_scalar(<span class="kw-2">&amp;</span>p2p_msg2.p_i).ok_or(KeygenError::InvalidMessage)<span class="question-mark">?</span>;
 
                 <span class="kw">let </span>commitment2 = commitment2_list.find_pair(from_party_id);
 
@@ -1701,8 +1669,7 @@
 
                 p_i_list.push(from_party_id, p_j_i);
 
-                root_chain_code_list
-                    .push(from_party_id, p2p_msg2.root_chain_code);
+                root_chain_code_list.push(from_party_id, p2p_msg2.root_chain_code);
 
                 <span class="prelude-val">Ok</span>(<span class="prelude-val">None</span>)
             },
@@ -1724,13 +1691,9 @@
     } <span class="kw">else </span>{
         <span class="comment">// only for new parties, not for old parties
 
-        </span><span class="kw">let </span>(big_p_j_poly_list, r1_j_list, <span class="kw">_</span>, <span class="kw">_</span>) =
-            Round::new(_r2, QC_MSG_R2, relay)
-                .recv_broadcast_4::&lt;<span class="kw">_</span>, <span class="kw">_</span>, <span class="kw">_</span>, (), ()&gt;(
-                    <span class="kw-2">&amp;</span>setup,
-                    <span class="kw-2">&amp;</span>[big_p_i_poly.external_size(), <span class="number">32</span>, <span class="number">0</span>, <span class="number">0</span>],
-                )
-                .<span class="kw">await</span><span class="question-mark">?</span>;
+        </span><span class="kw">let </span>(big_p_j_poly_list, r1_j_list, <span class="kw">_</span>, <span class="kw">_</span>) = Round::new(_r2, QC_MSG_R2, relay)
+            .recv_broadcast_4::&lt;<span class="kw">_</span>, <span class="kw">_</span>, <span class="kw">_</span>, (), ()&gt;(<span class="kw-2">&amp;</span>setup, <span class="kw-2">&amp;</span>[big_p_i_poly.external_size(), <span class="number">32</span>, <span class="number">0</span>, <span class="number">0</span>])
+            .<span class="kw">await</span><span class="question-mark">?</span>;
 
         <span class="comment">// checks for new party
         </span><span class="kw">for </span><span class="kw-2">&amp;</span>old_party_index <span class="kw">in </span>setup.old_party_indices() {
@@ -1748,8 +1711,7 @@
                 <span class="kw">return </span><span class="prelude-val">Err</span>(KeygenError::InvalidPolynomialPoint);
             }
 
-            <span class="kw">let </span>commit_hash1 =
-                hash_commitment_1(sid_j, old_party_index, big_p_i_vec, r1_j);
+            <span class="kw">let </span>commit_hash1 = hash_commitment_1(sid_j, old_party_index, big_p_i_vec, r1_j);
             <span class="kw">if </span>commit_hash1.ct_ne(commitment1).into() {
                 <span class="kw">return </span><span class="prelude-val">Err</span>(KeygenError::InvalidCommitmentHash);
             }
@@ -1785,8 +1747,7 @@
 
     <span class="comment">// check that P_j(x_i) = p_j_i * G
     </span><span class="kw">for </span>(big_p_j, p_j_i) <span class="kw">in </span>big_p_j_poly_list.iter().zip(<span class="kw-2">&amp;</span>p_i_list) {
-        <span class="kw">let </span>coeffs =
-            block_in_place(|| big_p_j.derivative_coeffs(my_rank <span class="kw">as </span>usize));
+        <span class="kw">let </span>coeffs = block_in_place(|| big_p_j.derivative_coeffs(my_rank <span class="kw">as </span>usize));
         <span class="kw">let </span>valid = feldman_verify(
             coeffs,
             <span class="kw-2">&amp;</span>new_x_i_list[my_party_id <span class="kw">as </span>usize],
@@ -1803,8 +1764,7 @@
     <span class="comment">// check if p_i is correct, P(x_i) = p_i * G
     </span><span class="kw">let </span>big_p_i = ProjectivePoint::GENERATOR * p_i;
     <span class="kw">let </span>x_i = new_x_i_list[my_party_id <span class="kw">as </span>usize];
-    <span class="kw">let </span>coeff_multipliers =
-        polynomial_coeff_multipliers(<span class="kw-2">&amp;</span>x_i, my_rank <span class="kw">as </span>usize, NEW_T);
+    <span class="kw">let </span>coeff_multipliers = polynomial_coeff_multipliers(<span class="kw-2">&amp;</span>x_i, my_rank <span class="kw">as </span>usize, NEW_T);
 
     <span class="kw">let </span>expected_point: ProjectivePoint = big_p_poly
         .points()
@@ -1828,8 +1788,7 @@
         .map(|(party_id, x_i)| {
             <span class="kw">let </span>party_rank = setup.new_participant_rank(party_id <span class="kw">as </span>u8);
 
-            <span class="kw">let </span>coeff_multipliers =
-                polynomial_coeff_multipliers(x_i, party_rank <span class="kw">as </span>usize, NEW_T);
+            <span class="kw">let </span>coeff_multipliers = polynomial_coeff_multipliers(x_i, party_rank <span class="kw">as </span>usize, NEW_T);
 
             big_p_poly
                 .points()
@@ -1847,12 +1806,7 @@
 
     <span class="kw">if </span>!rank_list.iter().all(|<span class="kw-2">&amp;</span>r| r == <span class="number">0</span>) {
         <span class="comment">// check that rank_list is correct and participants can sign
-        </span>check_secret_recovery(
-            <span class="kw-2">&amp;</span>new_x_i_list,
-            <span class="kw-2">&amp;</span>rank_list,
-            <span class="kw-2">&amp;</span>big_s_list,
-            <span class="kw-2">&amp;</span>public_key,
-        )<span class="question-mark">?</span>;
+        </span>check_secret_recovery(<span class="kw-2">&amp;</span>new_x_i_list, <span class="kw-2">&amp;</span>rank_list, <span class="kw-2">&amp;</span>big_s_list, <span class="kw-2">&amp;</span>public_key)<span class="question-mark">?</span>;
     }
 
     <span class="kw">let </span><span class="kw-2">mut </span>new_keyshare = Keyshare::new(
@@ -1866,8 +1820,7 @@
     new_keyshare.info_mut().root_chain_code = root_chain_code;
     new_keyshare.info_mut().public_key = encode_point(<span class="kw-2">&amp;</span>public_key);
     new_keyshare.info_mut().s_i = encode_scalar(<span class="kw-2">&amp;</span>p_i);
-    new_keyshare.info_mut().key_id =
-        setup.derive_key_id(<span class="kw-2">&amp;</span>public_key.to_bytes());
+    new_keyshare.info_mut().key_id = setup.derive_key_id(<span class="kw-2">&amp;</span>public_key.to_bytes());
 
     <span class="kw">for </span>p <span class="kw">in </span><span class="number">0</span>..NEW_N {
         <span class="kw">let </span>each = new_keyshare.each_mut(p <span class="kw">as </span>u8);
@@ -1881,21 +1834,11 @@
     // new parties create OT seeds //
     /////////////////////////////////
     </span><span class="kw">let </span>_ot1 = relay
-        .ask_messages_from_slice(
-            <span class="kw-2">&amp;</span>setup,
-            QC_MSG_OT1,
-            setup.new_party_indices(),
-            <span class="bool-val">true</span>,
-        )
+        .ask_messages_from_slice(<span class="kw-2">&amp;</span>setup, QC_MSG_OT1, setup.new_party_indices(), <span class="bool-val">true</span>)
         .<span class="kw">await</span><span class="question-mark">?</span>;
 
     <span class="kw">let </span>_ot2 = relay
-        .ask_messages_from_slice(
-            <span class="kw-2">&amp;</span>setup,
-            QC_MSG_OT2,
-            setup.new_party_indices(),
-            <span class="bool-val">true</span>,
-        )
+        .ask_messages_from_slice(<span class="kw-2">&amp;</span>setup, QC_MSG_OT2, setup.new_party_indices(), <span class="bool-val">true</span>)
         .<span class="kw">await</span><span class="question-mark">?</span>;
 
     <span class="kw">let </span><span class="kw-2">mut </span>base_ot_receivers: Pairs&lt;EndemicOTReceiver&gt; = Pairs::new();
@@ -1906,11 +1849,7 @@
 
         <span class="kw">let </span>receiver_id = setup.new_party_id(receiver_index).unwrap();
 
-        <span class="kw">let </span>sid = get_base_ot_session_id(
-            my_party_id,
-            receiver_id,
-            <span class="kw-2">&amp;</span>new_keyshare.final_session_id,
-        );
+        <span class="kw">let </span>sid = get_base_ot_session_id(my_party_id, receiver_id, <span class="kw-2">&amp;</span>new_keyshare.final_session_id);
 
         <span class="kw">let </span><span class="kw-2">mut </span>enc_ot_msg1 = EncryptedMessage::&lt;EndemicOTMsg1&gt;::new(
             <span class="kw-2">&amp;</span>setup.msg_id(<span class="prelude-val">Some</span>(receiver_index), QC_MSG_OT1),
@@ -1989,8 +1928,7 @@
 
                 <span class="kw">if </span>receiver_id &gt; my_party_id {
                     rng.fill_bytes(<span class="kw-2">&amp;mut </span>msg3.seed_i_j);
-                    new_keyshare.each_mut(receiver_id - <span class="number">1</span>).zeta_seed =
-                        msg3.seed_i_j;
+                    new_keyshare.each_mut(receiver_id - <span class="number">1</span>).zeta_seed = msg3.seed_i_j;
                 };
 
                 <span class="prelude-val">Ok</span>(<span class="prelude-val">Some</span>(
@@ -2012,9 +1950,8 @@
                 <span class="kw">let </span>party_id = setup.new_party_id(party_index).unwrap();
 
                 <span class="kw">let </span>receiver = base_ot_receivers.pop_pair(party_id);
-                <span class="kw">let </span>receiver_output =
-                    block_in_place(|| receiver.process(<span class="kw-2">&amp;</span>msg3.base_ot_msg2))
-                        .map_err(|<span class="kw">_</span>| KeygenError::InvalidMessage)<span class="question-mark">?</span>;
+                <span class="kw">let </span>receiver_output = block_in_place(|| receiver.process(<span class="kw-2">&amp;</span>msg3.base_ot_msg2))
+                    .map_err(|<span class="kw">_</span>| KeygenError::InvalidMessage)<span class="question-mark">?</span>;
                 <span class="kw">let </span>all_but_one_session_id = get_all_but_one_session_id(
                     party_id <span class="kw">as </span>usize,
                     my_party_id <span class="kw">as </span>usize,
@@ -2043,7 +1980,22 @@
     <span class="prelude-val">Ok</span>(<span class="prelude-val">Some</span>(new_keyshare))
 }
 
-<span class="kw">fn </span>hash_commitment_1(
+<span class="doccomment">/// Computes the hash commitment for the first round of the protocol.
+///
+/// This function generates a commitment to the polynomial coefficients
+/// and random value used in the first round of the quorum change protocol.
+///
+/// # Arguments
+///
+/// * `session_id` - The session identifier
+/// * `party_index` - The index of the party generating the commitment
+/// * `big_f_i_vec` - The polynomial commitment vector
+/// * `r1_i` - The random value for the commitment
+///
+/// # Returns
+///
+/// A 32-byte hash commitment
+</span><span class="kw">fn </span>hash_commitment_1(
     session_id: <span class="kw-2">&amp;</span>[u8],
     party_index: usize,
     big_f_i_vec: <span class="kw-2">&amp;</span>GroupPolynomial&lt;ProjectivePoint&gt;,
@@ -2062,7 +2014,23 @@
     hasher.finalize().into()
 }
 
-<span class="kw">fn </span>hash_commitment_2(
+<span class="doccomment">/// Computes the hash commitment for the second round of the protocol.
+///
+/// This function generates a commitment to the share values and random
+/// value used in the second round of the quorum change protocol.
+///
+/// # Arguments
+///
+/// * `session_id` - The session identifier
+/// * `from_party_i_index` - The index of the sending party
+/// * `to_party_j_index` - The index of the receiving party
+/// * `p_i_j` - The share value being committed
+/// * `r2_i` - The random value for the commitment
+///
+/// # Returns
+///
+/// A 32-byte hash commitment
+</span><span class="kw">fn </span>hash_commitment_2(
     session_id: <span class="kw-2">&amp;</span>[u8],
     from_party_i_index: usize,
     to_party_j_index: usize,
@@ -2081,10 +2049,20 @@
     hasher.finalize().into()
 }
 
-<span class="doccomment">/// Generate message receiver map.
+<span class="doccomment">/// Processes message receivers for the quorum change protocol.
 ///
-/// Call the passed closure for each pair (msg_id, receiver)
+/// This function handles the distribution of messages to the appropriate
+/// receivers based on the protocol setup and message type.
 ///
+/// # Type Parameters
+///
+/// * `S` - A type implementing the `QuorumChangeSetupMessage` trait
+/// * `F` - A closure type for processing message receivers
+///
+/// # Arguments
+///
+/// * `setup` - The protocol setup configuration
+/// * `msg_receiver` - A closure that processes each message receiver
 </span><span class="kw">pub fn </span>message_receivers&lt;S, F&gt;(setup: <span class="kw-2">&amp;</span>S, <span class="kw-2">mut </span>msg_receiver: F)
 <span class="kw">where
     </span>S: QuorumChangeSetupMessage&lt;Keyshare, ProjectivePoint&gt;,
@@ -2110,17 +2088,11 @@
         msg_receiver(setup.msg_id(<span class="prelude-val">None</span>, QC_MSG_R1), receiver);
 
         <span class="kw">if </span>my_party_is_old &amp;&amp; new.contains(<span class="kw-2">&amp;</span>receiver_idx) {
-            msg_receiver(
-                setup.msg_id(<span class="prelude-val">Some</span>(receiver_idx), QC_MSG_P2P_1),
-                receiver,
-            );
+            msg_receiver(setup.msg_id(<span class="prelude-val">Some</span>(receiver_idx), QC_MSG_P2P_1), receiver);
         }
 
         <span class="kw">if </span>my_party_is_old &amp;&amp; new.contains(<span class="kw-2">&amp;</span>receiver_idx) {
-            msg_receiver(
-                setup.msg_id(<span class="prelude-val">Some</span>(receiver_idx), QC_MSG_P2P_2),
-                receiver,
-            );
+            msg_receiver(setup.msg_id(<span class="prelude-val">Some</span>(receiver_idx), QC_MSG_P2P_2), receiver);
         }
 
         <span class="kw">if </span>my_party_is_old {
@@ -2128,17 +2100,11 @@
         }
 
         <span class="kw">if </span>my_party_is_new &amp;&amp; new.contains(<span class="kw-2">&amp;</span>receiver_idx) {
-            msg_receiver(
-                setup.msg_id(<span class="prelude-val">Some</span>(receiver_idx), QC_MSG_OT1),
-                receiver,
-            );
+            msg_receiver(setup.msg_id(<span class="prelude-val">Some</span>(receiver_idx), QC_MSG_OT1), receiver);
         }
 
         <span class="kw">if </span>my_party_is_new &amp;&amp; new.contains(<span class="kw-2">&amp;</span>receiver_idx) {
-            msg_receiver(
-                setup.msg_id(<span class="prelude-val">Some</span>(receiver_idx), QC_MSG_OT2),
-                receiver,
-            );
+            msg_receiver(setup.msg_id(<span class="prelude-val">Some</span>(receiver_idx), QC_MSG_OT2), receiver);
         }
     })
 }
@@ -2160,8 +2126,7 @@
 
     <span class="kw">use crate</span>::{
         keygen::utils::{
-            gen_keyshares, setup_quorum_change,
-            setup_quorum_change_extend_parties,
+            gen_keyshares, setup_quorum_change, setup_quorum_change_extend_parties,
             setup_quorum_change_threshold,
         },
         setup::quorum_change::SetupMessage <span class="kw">as </span>QuorumChangeSetupMessage,
@@ -2178,8 +2143,7 @@
         </span>S: MessageRelayService&lt;MessageRelay = R&gt;,
         R: Relay + Send + <span class="lifetime">'static</span>,
     {
-        <span class="kw">let </span>parties =
-            setup_quorum_change(old_keyshares, new_threshold, <span class="kw-2">&amp;</span>new_ranks);
+        <span class="kw">let </span>parties = setup_quorum_change(old_keyshares, new_threshold, <span class="kw-2">&amp;</span>new_ranks);
 
         sim_parties(parties, coord).<span class="kw">await
     </span>}
@@ -2214,11 +2178,7 @@
         </span>S: MessageRelayService&lt;MessageRelay = R&gt;,
         R: Relay + Send + <span class="lifetime">'static</span>,
     {
-        <span class="kw">let </span>parties = setup_quorum_change_threshold(
-            old_keyshares,
-            new_threshold,
-            <span class="kw-2">&amp;</span>new_ranks,
-        );
+        <span class="kw">let </span>parties = setup_quorum_change_threshold(old_keyshares, new_threshold, <span class="kw-2">&amp;</span>new_ranks);
         sim_parties(parties, coord).<span class="kw">await
     </span>}
 
@@ -2264,8 +2224,7 @@
         <span class="kw">let </span>shares = gen_keyshares(old_threshold, old_n, <span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span>ranks)).<span class="kw">await</span>;
         <span class="kw">let </span>expected_public_key = shares[<span class="number">0</span>].public_key;
 
-        <span class="kw">let </span>shares =
-            [shares[<span class="number">1</span>].clone(), shares[<span class="number">0</span>].clone(), shares[<span class="number">2</span>].clone()];
+        <span class="kw">let </span>shares = [shares[<span class="number">1</span>].clone(), shares[<span class="number">0</span>].clone(), shares[<span class="number">2</span>].clone()];
 
         <span class="kw">let </span>new_threshold = <span class="number">3</span>;
         <span class="kw">let </span>new_n = <span class="number">4</span>;
@@ -2278,8 +2237,7 @@
         )
         .<span class="kw">await</span>;
 
-        <span class="kw">let </span><span class="kw-2">mut </span>new_shares: Vec&lt;Arc&lt;Keyshare&gt;&gt; =
-            result.iter().flatten().cloned().collect();
+        <span class="kw">let </span><span class="kw-2">mut </span>new_shares: Vec&lt;Arc&lt;Keyshare&gt;&gt; = result.iter().flatten().cloned().collect();
         <span class="macro">assert_eq!</span>(new_shares.len(), new_n <span class="kw">as </span>usize);
         <span class="macro">assert_eq!</span>(expected_public_key, new_shares[<span class="number">0</span>].public_key);
 
@@ -2312,8 +2270,7 @@
         <span class="kw">let </span>shares = gen_keyshares(old_threshold, old_n, <span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span>ranks)).<span class="kw">await</span>;
         <span class="kw">let </span>expected_public_key = shares[<span class="number">0</span>].public_key;
 
-        <span class="kw">let </span>shares =
-            [shares[<span class="number">1</span>].clone(), shares[<span class="number">0</span>].clone(), shares[<span class="number">2</span>].clone()];
+        <span class="kw">let </span>shares = [shares[<span class="number">1</span>].clone(), shares[<span class="number">0</span>].clone(), shares[<span class="number">2</span>].clone()];
 
         <span class="kw">let </span>new_threshold = <span class="number">2</span>;
         <span class="kw">let </span>new_parties_len = <span class="number">2</span>;
@@ -2328,8 +2285,7 @@
         )
         .<span class="kw">await</span>;
 
-        <span class="kw">let </span><span class="kw-2">mut </span>new_shares: Vec&lt;Arc&lt;Keyshare&gt;&gt; =
-            result.iter().flatten().cloned().collect();
+        <span class="kw">let </span><span class="kw-2">mut </span>new_shares: Vec&lt;Arc&lt;Keyshare&gt;&gt; = result.iter().flatten().cloned().collect();
         <span class="macro">assert_eq!</span>(new_shares.len(), new_n <span class="kw">as </span>usize);
         <span class="macro">assert_eq!</span>(expected_public_key, new_shares[<span class="number">0</span>].public_key);
 
@@ -2359,8 +2315,7 @@
         <span class="kw">let </span>old_threshold = <span class="number">2</span>;
         <span class="kw">let </span>old_n = <span class="number">4</span>;
         <span class="kw">let </span>ranks = [<span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>];
-        <span class="kw">let </span><span class="kw-2">mut </span>shares =
-            gen_keyshares(old_threshold, old_n, <span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span>ranks)).<span class="kw">await</span>;
+        <span class="kw">let </span><span class="kw-2">mut </span>shares = gen_keyshares(old_threshold, old_n, <span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span>ranks)).<span class="kw">await</span>;
         <span class="kw">let </span>expected_public_key = shares[<span class="number">0</span>].public_key;
 
         shares.shuffle(<span class="kw-2">&amp;mut </span>thread_rng());
@@ -2368,16 +2323,11 @@
         <span class="kw">let </span>new_threshold = <span class="number">3</span>;
         <span class="kw">let </span>new_n = old_n;
         <span class="kw">let </span>new_ranks = <span class="macro">vec!</span>[<span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>];
-        <span class="kw">let </span>result = sim_only_change_threshold(
-            <span class="kw-2">&amp;</span>shares,
-            new_threshold,
-            new_ranks,
-            SimpleMessageRelay::new(),
-        )
-        .<span class="kw">await</span>;
+        <span class="kw">let </span>result =
+            sim_only_change_threshold(<span class="kw-2">&amp;</span>shares, new_threshold, new_ranks, SimpleMessageRelay::new())
+                .<span class="kw">await</span>;
 
-        <span class="kw">let </span><span class="kw-2">mut </span>new_shares: Vec&lt;Arc&lt;Keyshare&gt;&gt; =
-            result.iter().flatten().cloned().collect();
+        <span class="kw">let </span><span class="kw-2">mut </span>new_shares: Vec&lt;Arc&lt;Keyshare&gt;&gt; = result.iter().flatten().cloned().collect();
         <span class="macro">assert_eq!</span>(new_shares.len(), new_n <span class="kw">as </span>usize);
         <span class="macro">assert_eq!</span>(expected_public_key, new_shares[<span class="number">0</span>].public_key);
 

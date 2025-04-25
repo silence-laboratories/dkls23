@@ -54,11 +54,49 @@
 <a href="#53" id="53">53</a>
 <a href="#54" id="54">54</a>
 <a href="#55" id="55">55</a>
-<a href="#56" id="56">56</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
+<a href="#56" id="56">56</a>
+<a href="#57" id="57">57</a>
+<a href="#58" id="58">58</a>
+<a href="#59" id="59">59</a>
+<a href="#60" id="60">60</a>
+<a href="#61" id="61">61</a>
+<a href="#62" id="62">62</a>
+<a href="#63" id="63">63</a>
+<a href="#64" id="64">64</a>
+<a href="#65" id="65">65</a>
+<a href="#66" id="66">66</a>
+<a href="#67" id="67">67</a>
+<a href="#68" id="68">68</a>
+<a href="#69" id="69">69</a>
+<a href="#70" id="70">70</a>
+<a href="#71" id="71">71</a>
+<a href="#72" id="72">72</a>
+<a href="#73" id="73">73</a>
+<a href="#74" id="74">74</a>
+<a href="#75" id="75">75</a>
+<a href="#76" id="76">76</a>
+<a href="#77" id="77">77</a>
+<a href="#78" id="78">78</a>
+<a href="#79" id="79">79</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
 
-</span><span class="kw">mod </span>dkg;
-<span class="kw">mod </span>types;
+</span><span class="doccomment">//! This module implements a distributed key generation protocol that allows multiple parties
+//! to collaboratively generate a shared secret key without any single party learning the
+//! complete secret. The protocol includes several sub-protocols for key refresh, quorum
+//! changes, and migration from other protocols.
+//!
+//! # Submodules
+//! * `dkg` - Core distributed key generation protocol
+//! * `types` - Common types used across the protocol
+//! * `utils` - Utility functions and helpers
+//! * `key_refresh` - Protocol for refreshing existing keys
+//! * `keyshare` - Key share management and related definitions
+//! * `constants` - Protocol constants and configuration
+//! * `migration` - Migration utilities to DKLS23 protocol
+//! * `quorum_change` - Protocol for changing the quorum of participants
+
+</span><span class="kw">pub mod </span>dkg;
+<span class="kw">pub mod </span>types;
 
 <span class="doccomment">/// Misc reusable code
 </span><span class="kw">pub mod </span>utils;
@@ -66,23 +104,17 @@
 <span class="kw">pub use </span>dkg::<span class="kw-2">*</span>;
 <span class="kw">pub use </span>types::<span class="kw-2">*</span>;
 
-<span class="doccomment">/// Key refresh protocol
-</span><span class="kw">pub mod </span>key_refresh;
+<span class="kw">pub mod </span>key_refresh;
 
-<span class="doccomment">/// Keygen protocol messages
-</span><span class="kw">mod </span>messages;
+<span class="kw">mod </span>messages;
 
-<span class="doccomment">/// Keyshare and related definitions
-</span><span class="kw">pub mod </span>keyshare;
+<span class="kw">pub mod </span>keyshare;
 
-<span class="doccomment">/// Various contants
-</span><span class="kw">pub mod </span>constants;
+<span class="kw">pub mod </span>constants;
 
-<span class="doccomment">/// Migrate shares from GG20
-</span><span class="kw">pub mod </span>migration;
+<span class="kw">pub mod </span>migration;
 
-<span class="doccomment">/// Quorum change protocol
-</span><span class="kw">pub mod </span>quorum_change;
+<span class="kw">pub mod </span>quorum_change;
 
 <span class="kw">pub use </span>keyshare::Keyshare;
 
@@ -90,10 +122,24 @@
 
 <span class="kw">use </span><span class="kw">crate</span>::setup::{ProtocolParticipant, ABORT_MESSAGE_TAG};
 
-<span class="doccomment">/// Generate message receiver map.
+<span class="doccomment">/// Generates a map of message receivers for the DKG protocol.
 ///
-/// Call the passed closure for each pair (msg_id, receiver)
+/// This function iterates through all other parties in the protocol and calls the provided
+/// closure for each message ID and corresponding verifier key. It handles all message types
+/// used in the DKG protocol, including abort messages and messages for each round.
 ///
+/// # Arguments
+/// * `setup` - The protocol participant setup containing party information
+/// * `msg_receiver` - A closure that will be called for each (message_id, verifier) pair
+///
+/// # Message Types
+/// The function handles the following message types:
+/// * `ABORT_MESSAGE_TAG` - Protocol abort messages
+/// * `DKG_MSG_R1` - Round 1 messages
+/// * `DKG_MSG_R2` - Round 2 messages
+/// * `DKG_MSG_OT1` - Oblivious transfer messages
+/// * `DKG_MSG_R3` - Round 3 messages
+/// * `DKG_MSG_R4` - Round 4 messages
 </span><span class="kw">pub fn </span>message_receivers&lt;S, F&gt;(setup: <span class="kw-2">&amp;</span>S, <span class="kw-2">mut </span>msg_receiver: F)
 <span class="kw">where
     </span>S: ProtocolParticipant,

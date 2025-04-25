@@ -63,67 +63,123 @@
 <a href="#62" id="62">62</a>
 <a href="#63" id="63">63</a>
 <a href="#64" id="64">64</a>
-<a href="#65" id="65">65</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
+<a href="#65" id="65">65</a>
+<a href="#66" id="66">66</a>
+<a href="#67" id="67">67</a>
+<a href="#68" id="68">68</a>
+<a href="#69" id="69">69</a>
+<a href="#70" id="70">70</a>
+<a href="#71" id="71">71</a>
+<a href="#72" id="72">72</a>
+<a href="#73" id="73">73</a>
+<a href="#74" id="74">74</a>
+<a href="#75" id="75">75</a>
+<a href="#76" id="76">76</a>
+<a href="#77" id="77">77</a>
+<a href="#78" id="78">78</a>
+<a href="#79" id="79">79</a>
+<a href="#80" id="80">80</a>
+<a href="#81" id="81">81</a>
+<a href="#82" id="82">82</a>
+<a href="#83" id="83">83</a>
+<a href="#84" id="84">84</a>
+<a href="#85" id="85">85</a>
+<a href="#86" id="86">86</a>
+<a href="#87" id="87">87</a>
+<a href="#88" id="88">88</a>
+<a href="#89" id="89">89</a>
+<a href="#90" id="90">90</a>
+<a href="#91" id="91">91</a>
+<a href="#92" id="92">92</a>
+<a href="#93" id="93">93</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
+
+</span><span class="doccomment">//! This module defines the message types used in the DKG and quorum change protocols.
+//! These messages are exchanged between participants during different rounds of the protocols.
+//! All message types are designed to be efficiently serialized and deserialized using
+//! the `bytemuck` crate.
 
 </span><span class="kw">use </span>sl_oblivious::{endemic_ot::EndemicOTMsg2, soft_spoken::PPRFOutput};
 
 <span class="kw">use </span><span class="kw">crate</span>::proto::<span class="kw-2">*</span>;
 
-<span class="doccomment">/// Type for the key generation protocol's message 3. P2P
+<span class="doccomment">/// Message type for the third round of the key generation protocol.
+///
+/// This message is sent peer-to-peer between participants and contains:
+/// - The participant's share of the secret key
+/// - The second message of the base oblivious transfer protocol
+/// - The output of the pseudorandom function
+/// - Session identification information
+/// - Random values used for commitments
+/// - Seeds for key derivation
 </span><span class="attr">#[derive(Clone, Copy, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
 #[repr(C)]
-#[allow(missing_docs)]
 </span><span class="kw">pub struct </span>KeygenMsg3 {
-    <span class="kw">pub </span>d_i: ScalarBytes,
+    <span class="doccomment">/// The participant's share of the secret key
+    </span><span class="kw">pub </span>d_i: ScalarBytes,
 
-    <span class="kw">pub </span>base_ot_msg2: EndemicOTMsg2,
+    <span class="doccomment">/// The second message of the base oblivious transfer protocol
+    </span><span class="kw">pub </span>base_ot_msg2: EndemicOTMsg2,
 
-    <span class="kw">pub </span>pprf_output: PPRFOutput,
+    <span class="doccomment">/// The output of the pseudorandom function
+    </span><span class="kw">pub </span>pprf_output: PPRFOutput,
 
-    <span class="kw">pub </span>chain_code_sid: [u8; <span class="number">32</span>],
+    <span class="doccomment">/// The chain code session ID
+    </span><span class="kw">pub </span>chain_code_sid: [u8; <span class="number">32</span>],
 
-    <span class="doccomment">/// Random 32 bytes
+    <span class="doccomment">/// A random 32-byte value used for commitments
     </span><span class="kw">pub </span>r_i_2: [u8; <span class="number">32</span>],
 
-    <span class="doccomment">/// seed_i_j values
+    <span class="doccomment">/// Seeds used for key derivation between participants
     </span><span class="kw">pub </span>seed_i_j: [u8; <span class="number">32</span>],
 }
 
 <span class="kw">const _</span>: () = <span class="macro">assert!</span>(core::mem::align_of::&lt;KeygenMsg3&gt;() == <span class="number">1</span>);
 
-<span class="doccomment">/// Type for the Quorum change protocol's message P2P 1
+<span class="doccomment">/// Message type for the first peer-to-peer message in the quorum change protocol.
+///
+/// This message contains the second commitment value used to verify the participant's
+/// contribution to the quorum change.
 </span><span class="attr">#[derive(Clone, Copy, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
 #[repr(C)]
-#[allow(missing_docs)]
 </span><span class="kw">pub struct </span>QCP2PMsg1 {
-    <span class="kw">pub </span>commitment_2_i: [u8; <span class="number">32</span>],
+    <span class="doccomment">/// The second commitment value
+    </span><span class="kw">pub </span>commitment_2_i: [u8; <span class="number">32</span>],
 }
 
 <span class="kw">const _</span>: () = <span class="macro">assert!</span>(core::mem::align_of::&lt;QCP2PMsg1&gt;() == <span class="number">1</span>);
 
-<span class="doccomment">/// Type for the Quorum change protocol's message P2P 2
+<span class="doccomment">/// Message type for the second peer-to-peer message in the quorum change protocol.
+///
+/// This message contains the participant's share of the secret key, a random value,
+/// and the root chain code used for key derivation.
 </span><span class="attr">#[derive(Clone, Copy, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
 #[repr(C)]
-#[allow(missing_docs)]
 </span><span class="kw">pub struct </span>QCP2PMsg2 {
-    <span class="kw">pub </span>p_i: ScalarBytes,
-    <span class="kw">pub </span>r_2_i: [u8; <span class="number">32</span>],
-    <span class="kw">pub </span>root_chain_code: [u8; <span class="number">32</span>],
+    <span class="doccomment">/// The participant's share of the secret key
+    </span><span class="kw">pub </span>p_i: ScalarBytes,
+    <span class="doccomment">/// A random 32-byte value used for commitments
+    </span><span class="kw">pub </span>r_2_i: [u8; <span class="number">32</span>],
+    <span class="doccomment">/// The root chain code used for key derivation
+    </span><span class="kw">pub </span>root_chain_code: [u8; <span class="number">32</span>],
 }
 
 <span class="kw">const _</span>: () = <span class="macro">assert!</span>(core::mem::align_of::&lt;QCP2PMsg2&gt;() == <span class="number">1</span>);
 
-<span class="doccomment">/// Type for the Quorum change protocol's P2P OT message 2
+<span class="doccomment">/// Message type for the second oblivious transfer message in the quorum change protocol.
+///
+/// This message contains the second message of the base oblivious transfer protocol,
+/// the output of the pseudorandom function, and seeds for key derivation.
 </span><span class="attr">#[derive(Clone, Copy, bytemuck::AnyBitPattern, bytemuck::NoUninit)]
 #[repr(C)]
-#[allow(missing_docs)]
 </span><span class="kw">pub struct </span>QCOTMsg2 {
-    <span class="kw">pub </span>base_ot_msg2: EndemicOTMsg2,
+    <span class="doccomment">/// The second message of the base oblivious transfer protocol
+    </span><span class="kw">pub </span>base_ot_msg2: EndemicOTMsg2,
 
-    <span class="kw">pub </span>pprf_output: PPRFOutput,
+    <span class="doccomment">/// The output of the pseudorandom function
+    </span><span class="kw">pub </span>pprf_output: PPRFOutput,
 
-    <span class="doccomment">/// seed_i_j values
+    <span class="doccomment">/// Seeds used for key derivation between participants
     </span><span class="kw">pub </span>seed_i_j: [u8; <span class="number">32</span>],
 }
 

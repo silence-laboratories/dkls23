@@ -934,11 +934,100 @@
 <a href="#933" id="933">933</a>
 <a href="#934" id="934">934</a>
 <a href="#935" id="935">935</a>
-<a href="#936" id="936">936</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
+<a href="#936" id="936">936</a>
+<a href="#937" id="937">937</a>
+<a href="#938" id="938">938</a>
+<a href="#939" id="939">939</a>
+<a href="#940" id="940">940</a>
+<a href="#941" id="941">941</a>
+<a href="#942" id="942">942</a>
+<a href="#943" id="943">943</a>
+<a href="#944" id="944">944</a>
+<a href="#945" id="945">945</a>
+<a href="#946" id="946">946</a>
+<a href="#947" id="947">947</a>
+<a href="#948" id="948">948</a>
+<a href="#949" id="949">949</a>
+<a href="#950" id="950">950</a>
+<a href="#951" id="951">951</a>
+<a href="#952" id="952">952</a>
+<a href="#953" id="953">953</a>
+<a href="#954" id="954">954</a>
+<a href="#955" id="955">955</a>
+<a href="#956" id="956">956</a>
+<a href="#957" id="957">957</a>
+<a href="#958" id="958">958</a>
+<a href="#959" id="959">959</a>
+<a href="#960" id="960">960</a>
+<a href="#961" id="961">961</a>
+<a href="#962" id="962">962</a>
+<a href="#963" id="963">963</a>
+<a href="#964" id="964">964</a>
+<a href="#965" id="965">965</a>
+<a href="#966" id="966">966</a>
+<a href="#967" id="967">967</a>
+<a href="#968" id="968">968</a>
+<a href="#969" id="969">969</a>
+<a href="#970" id="970">970</a>
+<a href="#971" id="971">971</a>
+<a href="#972" id="972">972</a>
+<a href="#973" id="973">973</a>
+<a href="#974" id="974">974</a>
+<a href="#975" id="975">975</a>
+<a href="#976" id="976">976</a>
+<a href="#977" id="977">977</a>
+<a href="#978" id="978">978</a>
+<a href="#979" id="979">979</a>
+<a href="#980" id="980">980</a>
+<a href="#981" id="981">981</a>
+<a href="#982" id="982">982</a>
+<a href="#983" id="983">983</a>
+<a href="#984" id="984">984</a>
+<a href="#985" id="985">985</a>
+<a href="#986" id="986">986</a>
+<a href="#987" id="987">987</a>
+<a href="#988" id="988">988</a>
+<a href="#989" id="989">989</a>
+<a href="#990" id="990">990</a>
+<a href="#991" id="991">991</a>
+<a href="#992" id="992">992</a>
+<a href="#993" id="993">993</a>
+<a href="#994" id="994">994</a>
+<a href="#995" id="995">995</a>
+<a href="#996" id="996">996</a>
+<a href="#997" id="997">997</a>
+<a href="#998" id="998">998</a>
+<a href="#999" id="999">999</a>
+<a href="#1000" id="1000">1000</a>
+<a href="#1001" id="1001">1001</a>
+<a href="#1002" id="1002">1002</a>
+<a href="#1003" id="1003">1003</a>
+<a href="#1004" id="1004">1004</a>
+<a href="#1005" id="1005">1005</a>
+<a href="#1006" id="1006">1006</a>
+<a href="#1007" id="1007">1007</a>
+<a href="#1008" id="1008">1008</a>
+<a href="#1009" id="1009">1009</a>
+<a href="#1010" id="1010">1010</a>
+<a href="#1011" id="1011">1011</a>
+<a href="#1012" id="1012">1012</a>
+<a href="#1013" id="1013">1013</a>
+<a href="#1014" id="1014">1014</a>
+<a href="#1015" id="1015">1015</a>
+<a href="#1016" id="1016">1016</a>
+<a href="#1017" id="1017">1017</a>
+<a href="#1018" id="1018">1018</a>
+<a href="#1019" id="1019">1019</a>
+<a href="#1020" id="1020">1020</a>
+<a href="#1021" id="1021">1021</a>
+<a href="#1022" id="1022">1022</a>
+<a href="#1023" id="1023">1023</a>
+<a href="#1024" id="1024">1024</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
 
-</span><span class="doccomment">//! Distributed key generation protocol.
-//! Based on Protocol 6.1 https://eprint.iacr.org/2022/374.pdf
+</span><span class="doccomment">//! This module implements the distributed key generation protocol based on Protocol 6.1 from
+//! the paper "Efficient Multi-Party Computation with Dispute Resolution" &lt;https://eprint.iacr.org/2022/374.pdf&gt; and OT parameters
+//! from here "Threshold ECDSA in Three Rounds" &lt;https://eprint.iacr.org/2023/765.pdf&gt;
 
 </span><span class="kw">use </span>k256::{
     elliptic_curve::{
@@ -955,10 +1044,7 @@
 
 <span class="kw">use </span>sl_mpc_mate::{
     coord::<span class="kw-2">*</span>,
-    math::{
-        feldman_verify, polynomial_coeff_multipliers, GroupPolynomial,
-        Polynomial,
-    },
+    math::{feldman_verify, polynomial_coeff_multipliers, GroupPolynomial, Polynomial},
     message::<span class="kw-2">*</span>,
     SessionId,
 };
@@ -971,10 +1057,7 @@
 };
 
 <span class="kw">use crate</span>::{
-    keygen::{
-        constants::<span class="kw-2">*</span>, messages::<span class="kw-2">*</span>, utils::check_secret_recovery, KeygenError,
-        Keyshare,
-    },
+    keygen::{constants::<span class="kw-2">*</span>, messages::<span class="kw-2">*</span>, utils::check_secret_recovery, KeygenError, Keyshare},
     proto::{tags::<span class="kw-2">*</span>, <span class="kw-2">*</span>},
     setup::{KeygenSetupMessage, ProtocolParticipant, ABORT_MESSAGE_TAG},
 };
@@ -990,35 +1073,61 @@
     f()
 }
 
-<span class="doccomment">/// Seed for our RNG
+<span class="doccomment">/// Seed type for the ChaCha20 random number generator
 </span><span class="kw">pub type </span>Seed = &lt;ChaCha20Rng <span class="kw">as </span>SeedableRng&gt;::Seed;
 
 <span class="kw">use </span><span class="kw">crate</span>::pairs::Pairs;
 
-<span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">struct </span>KeyRefreshData {
+<span class="doccomment">/// Data structure for key refresh operations
+///
+/// This struct contains the necessary information for performing key refresh operations,
+/// including additive shares, lost key share information, and expected public key values.
+</span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">struct </span>KeyRefreshData {
     <span class="doccomment">/// Additive share of participant_i (after interpolation)
     /// \sum_{i=0}^{n-1} s_i_0 = private_key
     /// s_i_0 can be equal to Zero in case when participant lost their key_share
     /// and wants to recover it during key_refresh
     </span><span class="kw">pub</span>(<span class="kw">crate</span>) s_i_0: Scalar,
 
-    <span class="doccomment">/// list of participants ids who lost their key_shares
-    /// should be in range [0, n-1]
+    <span class="doccomment">/// List of participant IDs who lost their key shares
+    /// Should be in range [0, n-1]
     </span><span class="kw">pub</span>(<span class="kw">crate</span>) lost_keyshare_party_ids: Vec&lt;u8&gt;,
 
-    <span class="doccomment">/// expected public key for key_refresh
+    <span class="doccomment">/// Expected public key for key refresh
     </span><span class="kw">pub</span>(<span class="kw">crate</span>) expected_public_key: ProjectivePoint,
 
-    <span class="doccomment">/// root_chain_code
+    <span class="doccomment">/// Root chain code for key derivation
     </span><span class="kw">pub</span>(<span class="kw">crate</span>) root_chain_code: [u8; <span class="number">32</span>],
 }
 
-<span class="doccomment">/// Execute DKG protocol.
-</span><span class="kw">pub async fn </span>run&lt;T, R&gt;(
-    setup: T,
-    seed: Seed,
-    relay: R,
-) -&gt; <span class="prelude-ty">Result</span>&lt;Keyshare, KeygenError&gt;
+<span class="doccomment">/// Executes the Distributed Key Generation protocol
+///
+/// This is the main entry point for the DKG protocol. It orchestrates the entire process
+/// of generating a distributed key among the participants.
+///
+/// # Type Parameters
+///
+/// * `T` - A type implementing the `KeygenSetupMessage` trait
+/// * `R` - A type implementing the `Relay` trait for message communication
+///
+/// # Arguments
+///
+/// * `setup` - The protocol setup configuration
+/// * `seed` - The random seed for cryptographic operations
+/// * `relay` - The message relay for communication between parties
+///
+/// # Returns
+///
+/// * `Ok(Keyshare)` - The generated key share if the protocol succeeds
+/// * `Err(KeygenError)` - If the protocol fails
+///
+/// # Errors
+///
+/// This function may return the following errors:
+/// * `KeygenError::AbortProtocol` - If the protocol is aborted by a participant
+/// * `KeygenError::SendMessage` - If there's an error sending messages
+/// * Other `KeygenError` variants for various protocol failures
+</span><span class="kw">pub async fn </span>run&lt;T, R&gt;(setup: T, seed: Seed, relay: R) -&gt; <span class="prelude-ty">Result</span>&lt;Keyshare, KeygenError&gt;
 <span class="kw">where
     </span>T: KeygenSetupMessage,
     R: Relay,
@@ -1028,9 +1137,7 @@
 
     <span class="kw">let </span>result = <span class="kw">match </span>run_inner(setup, seed, <span class="kw-2">&amp;mut </span>relay, <span class="prelude-val">None</span>).<span class="kw">await </span>{
         <span class="prelude-val">Ok</span>(share) =&gt; <span class="prelude-val">Ok</span>(share),
-        <span class="prelude-val">Err</span>(KeygenError::AbortProtocol(p)) =&gt; {
-            <span class="prelude-val">Err</span>(KeygenError::AbortProtocol(p))
-        }
+        <span class="prelude-val">Err</span>(KeygenError::AbortProtocol(p)) =&gt; <span class="prelude-val">Err</span>(KeygenError::AbortProtocol(p)),
         <span class="prelude-val">Err</span>(KeygenError::SendMessage) =&gt; <span class="prelude-val">Err</span>(KeygenError::SendMessage),
         <span class="prelude-val">Err</span>(err) =&gt; {
             <span class="comment">// ignore error of sending abort message
@@ -1044,17 +1151,34 @@
     result
 }
 
-<span class="doccomment">/// Implementation of DKG protocol.
+<span class="doccomment">/// Internal implementation of the DKG protocol
 ///
-/// `setup` contains all parameters, including verfication keys of all
-/// parties and our own signing key.
+/// This function implements the core logic of the DKG protocol, including:
+/// - Polynomial generation and commitment
+/// - Share distribution and verification
+/// - Oblivious transfer setup
+/// - Final key share computation
 ///
-/// `seed` is used to initialize instance of ChaCha20Rng random number
-/// generator. This generator used to generate *ALL* random values for DKG.
+/// # Type Parameters
 ///
-/// And optional `key_refresh_data` is allow to reused the function for key
-/// rotation protocol.
+/// * `T` - A type implementing the `KeygenSetupMessage` trait
+/// * `R` - A type implementing the `Relay` trait
 ///
+/// # Arguments
+///
+/// * `setup` - The protocol setup configuration
+/// * `seed` - The random seed for cryptographic operations
+/// * `relay` - The message relay for communication
+/// * `key_refresh_data` - Optional data for key refresh operations
+///
+/// # Returns
+///
+/// * `Ok(Keyshare)` - The generated key share if the protocol succeeds
+/// * `Err(KeygenError)` - If the protocol fails
+///
+/// # Errors
+///
+/// This function may return various `KeygenError` variants depending on the failure mode.
 </span><span class="attr">#[allow(non_snake_case)]
 </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">async fn </span>run_inner&lt;T, R&gt;(
     setup: T,
@@ -1079,15 +1203,14 @@
     <span class="kw">if let </span><span class="prelude-val">Some</span>(v) = key_refresh_data {
         <span class="kw">let </span>cond1 = v.expected_public_key == ProjectivePoint::IDENTITY;
         <span class="kw">let </span>cond2 = v.lost_keyshare_party_ids.len() &gt; (N - T);
-        <span class="kw">let </span>cond3 = (v.s_i_0 == Scalar::ZERO)
-            &amp;&amp; (!v.lost_keyshare_party_ids.contains(<span class="kw-2">&amp;</span>my_party_id));
+        <span class="kw">let </span>cond3 =
+            (v.s_i_0 == Scalar::ZERO) &amp;&amp; (!v.lost_keyshare_party_ids.contains(<span class="kw-2">&amp;</span>my_party_id));
         <span class="kw">if </span>cond1 || cond2 || cond3 {
             <span class="kw">return </span><span class="prelude-val">Err</span>(KeygenError::InvalidKeyRefresh);
         }
     }
 
-    <span class="kw">let </span><span class="kw-2">mut </span>keyshare =
-        Keyshare::new(N <span class="kw">as </span>u8, T <span class="kw">as </span>u8, my_party_id, setup.keyshare_extra());
+    <span class="kw">let </span><span class="kw-2">mut </span>keyshare = Keyshare::new(N <span class="kw">as </span>u8, T <span class="kw">as </span>u8, my_party_id, setup.keyshare_extra());
 
     <span class="kw">let </span>session_id = SessionId::new(rng.gen());
     <span class="kw">let </span>r_i = rng.gen();
@@ -1181,11 +1304,8 @@
     <span class="kw">let </span><span class="kw-2">mut </span>base_ot_receivers: Pairs&lt;EndemicOTReceiver&gt; = Pairs::new();
 
     <span class="kw">for </span>receiver_id <span class="kw">in </span>setup.all_other_parties() {
-        <span class="kw">let </span>sid = get_base_ot_session_id(
-            my_party_id,
-            receiver_id <span class="kw">as </span>u8,
-            <span class="kw-2">&amp;</span>keyshare.final_session_id,
-        );
+        <span class="kw">let </span>sid =
+            get_base_ot_session_id(my_party_id, receiver_id <span class="kw">as </span>u8, <span class="kw-2">&amp;</span>keyshare.final_session_id);
 
         <span class="kw">let </span><span class="kw-2">mut </span>enc_msg1 = EncryptedMessage::&lt;EndemicOTMsg1&gt;::new(
             <span class="kw-2">&amp;</span>setup.msg_id(<span class="prelude-val">Some</span>(receiver_id), DKG_MSG_OT1),
@@ -1225,23 +1345,18 @@
     };
     <span class="kw">let </span>r_i_2 = rng.gen();
 
-    <span class="kw">let </span>(big_f_i_vecs, r_i_list, commitment_list_2, dlog_proofs_i_list) =
-        broadcast_4(
-            <span class="kw-2">&amp;</span>setup,
-            relay,
-            DKG_MSG_R2,
-            (
-                big_f_i_vec,
-                r_i,
-                hash_commitment_2(
-                    <span class="kw-2">&amp;</span>keyshare.final_session_id,
-                    <span class="kw-2">&amp;</span>chain_code_sid,
-                    <span class="kw-2">&amp;</span>r_i_2,
-                ),
-                dlog_proofs,
-            ),
-        )
-        .<span class="kw">await</span><span class="question-mark">?</span>;
+    <span class="kw">let </span>(big_f_i_vecs, r_i_list, commitment_list_2, dlog_proofs_i_list) = broadcast_4(
+        <span class="kw-2">&amp;</span>setup,
+        relay,
+        DKG_MSG_R2,
+        (
+            big_f_i_vec,
+            r_i,
+            hash_commitment_2(<span class="kw-2">&amp;</span>keyshare.final_session_id, <span class="kw-2">&amp;</span>chain_code_sid, <span class="kw-2">&amp;</span>r_i_2),
+            dlog_proofs,
+        ),
+    )
+    .<span class="kw">await</span><span class="question-mark">?</span>;
 
     <span class="kw">for </span>party_id <span class="kw">in </span><span class="number">0</span>..N {
         <span class="kw">let </span>r_i = <span class="kw-2">&amp;</span>r_i_list[party_id];
@@ -1363,14 +1478,11 @@
 
                 <span class="kw">if </span>receiver_id &gt; my_party_id {
                     rng.fill_bytes(<span class="kw-2">&amp;mut </span>msg3.seed_i_j);
-                    keyshare.each_mut(receiver_id - <span class="number">1</span>).zeta_seed =
-                        msg3.seed_i_j;
+                    keyshare.each_mut(receiver_id - <span class="number">1</span>).zeta_seed = msg3.seed_i_j;
                 };
 
                 <span class="kw">let </span>x_i = <span class="kw-2">&amp;</span>x_i_list[receiver_id <span class="kw">as </span>usize];
-                <span class="kw">let </span>d_i = block_in_place(|| {
-                    polynomial.derivative_at(rank <span class="kw">as </span>usize, x_i)
-                });
+                <span class="kw">let </span>d_i = block_in_place(|| polynomial.derivative_at(rank <span class="kw">as </span>usize, x_i));
 
                 msg3.d_i = encode_scalar(<span class="kw-2">&amp;</span>d_i);
                 msg3.chain_code_sid = chain_code_sid;
@@ -1387,8 +1499,7 @@
         )
         .<span class="kw">await</span><span class="question-mark">?</span>;
 
-    <span class="kw">let </span><span class="kw-2">mut </span>chain_code_sids =
-        Pairs::new_with_item(my_party_id, chain_code_sid);
+    <span class="kw">let </span><span class="kw-2">mut </span>chain_code_sids = Pairs::new_with_item(my_party_id, chain_code_sid);
 
     <span class="kw">if let </span><span class="prelude-val">Some</span>(v) = key_refresh_data {
         <span class="kw">if </span>v.lost_keyshare_party_ids.contains(<span class="kw-2">&amp;</span>my_party_id) {
@@ -1404,22 +1515,20 @@
             KeygenError::AbortProtocol,
             |msg3: <span class="kw-2">&amp;</span>KeygenMsg3, party_index, trailer, <span class="kw">_</span>| {
                 <span class="kw">let </span>party_id = party_index <span class="kw">as </span>u8;
-                <span class="kw">let </span>msg3_big_f_vec =
-                    &lt;GroupPolynomial&lt;ProjectivePoint&gt; <span class="kw">as </span>Wrap&gt;::read(trailer)
-                        .ok_or(KeygenError::InvalidMessage)<span class="question-mark">?</span>;
+                <span class="kw">let </span>msg3_big_f_vec = &lt;GroupPolynomial&lt;ProjectivePoint&gt; <span class="kw">as </span>Wrap&gt;::read(trailer)
+                    .ok_or(KeygenError::InvalidMessage)<span class="question-mark">?</span>;
 
                 <span class="comment">// also checks that msg3.big_f_vec.coeffs.len() == T
                 </span><span class="kw">if </span>msg3_big_f_vec != big_f_vec {
                     <span class="kw">return </span><span class="prelude-val">Err</span>(KeygenError::BigFVecMismatch);
                 }
 
-                d_i_list[party_id <span class="kw">as </span>usize] = decode_scalar(<span class="kw-2">&amp;</span>msg3.d_i)
-                    .ok_or(KeygenError::InvalidMessage)<span class="question-mark">?</span>;
+                d_i_list[party_id <span class="kw">as </span>usize] =
+                    decode_scalar(<span class="kw-2">&amp;</span>msg3.d_i).ok_or(KeygenError::InvalidMessage)<span class="question-mark">?</span>;
 
                 <span class="kw">let </span>receiver = base_ot_receivers.pop_pair(party_id);
-                <span class="kw">let </span>receiver_output =
-                    block_in_place(|| receiver.process(<span class="kw-2">&amp;</span>msg3.base_ot_msg2))
-                        .map_err(|<span class="kw">_</span>| KeygenError::InvalidMessage)<span class="question-mark">?</span>;
+                <span class="kw">let </span>receiver_output = block_in_place(|| receiver.process(<span class="kw-2">&amp;</span>msg3.base_ot_msg2))
+                    .map_err(|<span class="kw">_</span>| KeygenError::InvalidMessage)<span class="question-mark">?</span>;
                 <span class="kw">let </span>all_but_one_session_id = get_all_but_one_session_id(
                     party_id <span class="kw">as </span>usize,
                     my_party_id <span class="kw">as </span>usize,
@@ -1490,9 +1599,7 @@
     }
 
     <span class="kw">for </span>(big_f_i_vec, f_i_val) <span class="kw">in </span>big_f_i_vecs.into_iter().zip(<span class="kw-2">&amp;</span>d_i_list) {
-        <span class="kw">let </span>coeffs = block_in_place(|| {
-            big_f_i_vec.derivative_coeffs(my_rank <span class="kw">as </span>usize)
-        });
+        <span class="kw">let </span>coeffs = block_in_place(|| big_f_i_vec.derivative_coeffs(my_rank <span class="kw">as </span>usize));
         <span class="kw">let </span>valid = feldman_verify(
             coeffs,
             <span class="kw-2">&amp;</span>x_i_list[my_party_id <span class="kw">as </span>usize],
@@ -1512,12 +1619,9 @@
     </span><span class="kw">let </span>final_session_id_with_root_chain_code = {
         <span class="kw">let </span><span class="kw-2">mut </span>buf = [<span class="number">0u8</span>; <span class="number">32</span>];
         <span class="kw">let </span><span class="kw-2">mut </span>transcript = Transcript::new(<span class="kw-2">&amp;</span>DKG_LABEL);
-        transcript
-            .append_message(<span class="string">b"final_session_id"</span>, <span class="kw-2">&amp;</span>keyshare.final_session_id);
-        transcript
-            .append_message(<span class="string">b"root_chain_code"</span>, <span class="kw-2">&amp;</span>keyshare.root_chain_code);
-        transcript
-            .challenge_bytes(<span class="kw-2">&amp;</span>DLOG_SESSION_ID_WITH_CHAIN_CODE, <span class="kw-2">&amp;mut </span>buf);
+        transcript.append_message(<span class="string">b"final_session_id"</span>, <span class="kw-2">&amp;</span>keyshare.final_session_id);
+        transcript.append_message(<span class="string">b"root_chain_code"</span>, <span class="kw-2">&amp;</span>keyshare.root_chain_code);
+        transcript.challenge_bytes(<span class="kw-2">&amp;</span>DLOG_SESSION_ID_WITH_CHAIN_CODE, <span class="kw-2">&amp;mut </span>buf);
         SessionId::new(buf)
     };
 
@@ -1529,21 +1633,11 @@
             <span class="kw-2">&amp;</span>DKG_LABEL,
         );
 
-        DLogProof::prove(
-            <span class="kw-2">&amp;</span>s_i,
-            <span class="kw-2">&amp;</span>ProjectivePoint::GENERATOR,
-            <span class="kw-2">&amp;mut </span>transcript,
-            <span class="kw-2">&amp;mut </span>rng,
-        )
+        DLogProof::prove(<span class="kw-2">&amp;</span>s_i, <span class="kw-2">&amp;</span>ProjectivePoint::GENERATOR, <span class="kw-2">&amp;mut </span>transcript, <span class="kw-2">&amp;mut </span>rng)
     };
 
-    <span class="kw">let </span>(public_key_list, big_s_list, proof_list, <span class="kw">_</span>) = broadcast_4(
-        <span class="kw-2">&amp;</span>setup,
-        relay,
-        DKG_MSG_R4,
-        (public_key, big_s_i, proof, ()),
-    )
-    .<span class="kw">await</span><span class="question-mark">?</span>;
+    <span class="kw">let </span>(public_key_list, big_s_list, proof_list, <span class="kw">_</span>) =
+        broadcast_4(<span class="kw-2">&amp;</span>setup, relay, DKG_MSG_R4, (public_key, big_s_i, proof, ())).<span class="kw">await</span><span class="question-mark">?</span>;
 
     <span class="kw">if </span>public_key_list.into_iter().any(|pk| pk != public_key) {
         <span class="kw">return </span><span class="prelude-val">Err</span>(KeygenError::PublicKeyMismatch);
@@ -1579,8 +1673,7 @@
     <span class="kw">for </span>(party_id, x_i) <span class="kw">in </span>x_i_list.iter().enumerate() {
         <span class="kw">let </span>party_rank = setup.participant_rank(party_id);
 
-        <span class="kw">let </span>coeff_multipliers =
-            polynomial_coeff_multipliers(x_i, party_rank <span class="kw">as </span>usize, N);
+        <span class="kw">let </span>coeff_multipliers = polynomial_coeff_multipliers(x_i, party_rank <span class="kw">as </span>usize, N);
 
         <span class="kw">let </span>expected_point: ProjectivePoint = big_f_vec
             .points()
@@ -1616,7 +1709,24 @@
     <span class="prelude-val">Ok</span>(keyshare)
 }
 
-<span class="kw">fn </span>hash_commitment(
+<span class="doccomment">/// Computes a commitment hash for the DKG protocol
+///
+/// This function creates a cryptographic commitment for a participant's polynomial
+/// and other protocol parameters.
+///
+/// # Arguments
+///
+/// * `session_id` - The session identifier
+/// * `party_id` - The ID of the participant
+/// * `rank` - The rank of the participant
+/// * `x_i` - The x-coordinate for the participant's share
+/// * `big_f_i_vec` - The vector of polynomial commitments
+/// * `r_i` - Random value for the commitment
+///
+/// # Returns
+///
+/// A 32-byte hash representing the commitment
+</span><span class="kw">fn </span>hash_commitment(
     session_id: <span class="kw-2">&amp;</span>SessionId,
     party_id: usize,
     rank: usize,
@@ -1639,11 +1749,20 @@
     hasher.finalize().into()
 }
 
-<span class="kw">fn </span>hash_commitment_2(
-    session_id: <span class="kw-2">&amp;</span>[u8],
-    chain_code_sid: <span class="kw-2">&amp;</span>[u8; <span class="number">32</span>],
-    r_i: <span class="kw-2">&amp;</span>[u8; <span class="number">32</span>],
-) -&gt; [u8; <span class="number">32</span>] {
+<span class="doccomment">/// Computes a secondary commitment hash
+///
+/// This function creates a commitment hash for chain code and session information.
+///
+/// # Arguments
+///
+/// * `session_id` - The session identifier
+/// * `chain_code_sid` - The chain code session identifier
+/// * `r_i` - Random value for the commitment
+///
+/// # Returns
+///
+/// A 32-byte hash representing the commitment
+</span><span class="kw">fn </span>hash_commitment_2(session_id: <span class="kw-2">&amp;</span>[u8], chain_code_sid: <span class="kw-2">&amp;</span>[u8; <span class="number">32</span>], r_i: <span class="kw-2">&amp;</span>[u8; <span class="number">32</span>]) -&gt; [u8; <span class="number">32</span>] {
     <span class="kw">let </span><span class="kw-2">mut </span>hasher = Sha256::new();
     hasher.update(DKG_LABEL);
     hasher.update(session_id);
@@ -1654,7 +1773,21 @@
     hasher.finalize().into()
 }
 
-<span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>get_base_ot_session_id(
+<span class="doccomment">/// Generates a session ID for base oblivious transfer
+///
+/// This function creates a unique session ID for the base oblivious transfer
+/// protocol between two participants.
+///
+/// # Arguments
+///
+/// * `sender_id` - The ID of the sender
+/// * `receiver_id` - The ID of the receiver
+/// * `session_id` - The base session identifier
+///
+/// # Returns
+///
+/// A new session ID for the oblivious transfer protocol
+</span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>get_base_ot_session_id(
     sender_id: u8,
     receiver_id: u8,
     session_id: <span class="kw-2">&amp;</span>[u8],
@@ -1673,7 +1806,21 @@
     )
 }
 
-<span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>get_all_but_one_session_id(
+<span class="doccomment">/// Generates a session ID for all-but-one protocol
+///
+/// This function creates a unique session ID for the all-but-one protocol
+/// between two participants.
+///
+/// # Arguments
+///
+/// * `sender_id` - The ID of the sender
+/// * `receiver_id` - The ID of the receiver
+/// * `session_id` - The base session identifier
+///
+/// # Returns
+///
+/// A new session ID for the all-but-one protocol
+</span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>get_all_but_one_session_id(
     sender_id: usize,
     receiver_id: usize,
     session_id: <span class="kw-2">&amp;</span>[u8],
@@ -1692,26 +1839,34 @@
     )
 }
 
-<span class="kw">fn </span>verify_dlog_proofs(
+<span class="doccomment">/// Verifies discrete logarithm proofs
+///
+/// This function verifies the discrete logarithm proofs provided by participants
+/// to ensure the correctness of their polynomial commitments.
+///
+/// # Arguments
+///
+/// * `final_session_id` - The final session identifier
+/// * `party_id` - The ID of the participant
+/// * `proofs` - The vector of discrete logarithm proofs
+/// * `points` - The vector of points to verify against
+///
+/// # Returns
+///
+/// * `Ok(())` - If all proofs are valid
+/// * `Err(KeygenError)` - If any proof is invalid
+</span><span class="kw">fn </span>verify_dlog_proofs(
     final_session_id: <span class="kw-2">&amp;</span>[u8],
     party_id: usize,
     proofs: <span class="kw-2">&amp;</span>[DLogProof],
     points: <span class="kw-2">&amp;</span>[ProjectivePoint],
 ) -&gt; <span class="prelude-ty">Result</span>&lt;(), KeygenError&gt; {
-    <span class="kw">let </span><span class="kw-2">mut </span>dlog_transcript = Transcript::new_dlog_proof(
-        final_session_id,
-        party_id,
-        <span class="kw-2">&amp;</span>DLOG_PROOF1_LABEL,
-        <span class="kw-2">&amp;</span>DKG_LABEL,
-    );
+    <span class="kw">let </span><span class="kw-2">mut </span>dlog_transcript =
+        Transcript::new_dlog_proof(final_session_id, party_id, <span class="kw-2">&amp;</span>DLOG_PROOF1_LABEL, <span class="kw-2">&amp;</span>DKG_LABEL);
 
     <span class="kw">let </span><span class="kw-2">mut </span>ok = Choice::from(<span class="number">1</span>);
     <span class="kw">for </span>(proof, point) <span class="kw">in </span>proofs.iter().zip(points) {
-        ok &amp;= proof.verify(
-            point,
-            <span class="kw-2">&amp;</span>ProjectivePoint::GENERATOR,
-            <span class="kw-2">&amp;mut </span>dlog_transcript,
-        );
+        ok &amp;= proof.verify(point, <span class="kw-2">&amp;</span>ProjectivePoint::GENERATOR, <span class="kw-2">&amp;mut </span>dlog_transcript);
     }
 
     <span class="kw">if </span>ok.unwrap_u8() == <span class="number">0 </span>{
@@ -1721,7 +1876,32 @@
     <span class="prelude-val">Ok</span>(())
 }
 
-<span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">async fn </span>broadcast_4&lt;P, R, T1, T2, T3, T4&gt;(
+<span class="doccomment">/// Broadcasts four messages to all participants
+///
+/// This function handles the broadcasting of four different message types
+/// to all participants in the protocol.
+///
+/// # Type Parameters
+///
+/// * `P` - A type implementing the `ProtocolParticipant` trait
+/// * `R` - A type implementing the `Relay` trait
+/// * `T1` - Type of the first message
+/// * `T2` - Type of the second message
+/// * `T3` - Type of the third message
+/// * `T4` - Type of the fourth message
+///
+/// # Arguments
+///
+/// * `setup` - The protocol setup configuration
+/// * `relay` - The message relay for communication
+/// * `tag` - The message tag for filtering
+/// * `msg` - Tuple containing the four messages to broadcast
+///
+/// # Returns
+///
+/// * `Ok((Vec&lt;T1&gt;, Vec&lt;T2&gt;, Vec&lt;T3&gt;, Vec&lt;T4&gt;))` - Vectors of received messages
+/// * `Err(KeygenError)` - If the broadcast fails
+</span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">async fn </span>broadcast_4&lt;P, R, T1, T2, T3, T4&gt;(
     setup: <span class="kw-2">&amp;</span>P,
     relay: <span class="kw-2">&amp;mut </span>FilteredMsgRelay&lt;R&gt;,
     tag: MessageTag,
@@ -1735,10 +1915,9 @@
     T3: Wrap,
     T4: Wrap,
 {
-    <span class="kw">let </span>(v0, v1, v2, v3) =
-        Round::new(setup.total_participants() - <span class="number">1</span>, tag, relay)
-            .broadcast_4(setup, msg)
-            .<span class="kw">await</span><span class="question-mark">?</span>;
+    <span class="kw">let </span>(v0, v1, v2, v3) = Round::new(setup.total_participants() - <span class="number">1</span>, tag, relay)
+        .broadcast_4(setup, msg)
+        .<span class="kw">await</span><span class="question-mark">?</span>;
 
     <span class="prelude-val">Ok</span>((v0.into(), v1.into(), v2.into(), v3.into()))
 }
@@ -1765,10 +1944,7 @@
         sim_parties(parties, coord).<span class="kw">await
     </span>}
 
-    <span class="kw">async fn </span>sim_parties&lt;S, R&gt;(
-        parties: Vec&lt;(SetupMessage, [u8; <span class="number">32</span>])&gt;,
-        coord: S,
-    ) -&gt; Vec&lt;Keyshare&gt;
+    <span class="kw">async fn </span>sim_parties&lt;S, R&gt;(parties: Vec&lt;(SetupMessage, [u8; <span class="number">32</span>])&gt;, coord: S) -&gt; Vec&lt;Keyshare&gt;
     <span class="kw">where
         </span>S: MessageRelayService&lt;MessageRelay = R&gt;,
         R: Send + Relay + <span class="lifetime">'static</span>,

@@ -130,8 +130,78 @@
 <a href="#129" id="129">129</a>
 <a href="#130" id="130">130</a>
 <a href="#131" id="131">131</a>
-<a href="#132" id="132">132</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
+<a href="#132" id="132">132</a>
+<a href="#133" id="133">133</a>
+<a href="#134" id="134">134</a>
+<a href="#135" id="135">135</a>
+<a href="#136" id="136">136</a>
+<a href="#137" id="137">137</a>
+<a href="#138" id="138">138</a>
+<a href="#139" id="139">139</a>
+<a href="#140" id="140">140</a>
+<a href="#141" id="141">141</a>
+<a href="#142" id="142">142</a>
+<a href="#143" id="143">143</a>
+<a href="#144" id="144">144</a>
+<a href="#145" id="145">145</a>
+<a href="#146" id="146">146</a>
+<a href="#147" id="147">147</a>
+<a href="#148" id="148">148</a>
+<a href="#149" id="149">149</a>
+<a href="#150" id="150">150</a>
+<a href="#151" id="151">151</a>
+<a href="#152" id="152">152</a>
+<a href="#153" id="153">153</a>
+<a href="#154" id="154">154</a>
+<a href="#155" id="155">155</a>
+<a href="#156" id="156">156</a>
+<a href="#157" id="157">157</a>
+<a href="#158" id="158">158</a>
+<a href="#159" id="159">159</a>
+<a href="#160" id="160">160</a>
+<a href="#161" id="161">161</a>
+<a href="#162" id="162">162</a>
+<a href="#163" id="163">163</a>
+<a href="#164" id="164">164</a>
+<a href="#165" id="165">165</a>
+<a href="#166" id="166">166</a>
+<a href="#167" id="167">167</a>
+<a href="#168" id="168">168</a>
+<a href="#169" id="169">169</a>
+<a href="#170" id="170">170</a>
+<a href="#171" id="171">171</a>
+<a href="#172" id="172">172</a>
+<a href="#173" id="173">173</a>
+<a href="#174" id="174">174</a>
+<a href="#175" id="175">175</a>
+<a href="#176" id="176">176</a>
+<a href="#177" id="177">177</a>
+<a href="#178" id="178">178</a>
+<a href="#179" id="179">179</a>
+<a href="#180" id="180">180</a>
+<a href="#181" id="181">181</a>
+<a href="#182" id="182">182</a>
+<a href="#183" id="183">183</a>
+<a href="#184" id="184">184</a>
+<a href="#185" id="185">185</a>
+<a href="#186" id="186">186</a>
+<a href="#187" id="187">187</a>
+<a href="#188" id="188">188</a>
+<a href="#189" id="189">189</a>
+<a href="#190" id="190">190</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
+
+</span><span class="doccomment">//! Message types for the Distributed Signature Generation (DSG) Protocol
+//!
+//! This module defines the message structures used in the DSG protocol for
+//! communication between participants. These messages are designed to be
+//! memory-safe and efficiently serializable.
+//!
+//! # Safety
+//!
+//! The message structures use `bytemuck` traits to ensure safe memory
+//! operations and alignment requirements. All structures are marked with
+//! `#[repr(C)]` to guarantee a stable memory layout.
 
 </span><span class="kw">use </span>k256::{ProjectivePoint, Scalar};
 
@@ -142,71 +212,103 @@
 
 <span class="kw">use </span><span class="kw">crate</span>::proto::{PointBytes, ScalarBytes};
 
-<span class="doccomment">/// Type for the sign gen message 1.
+<span class="doccomment">/// Message type for the first round of the signature generation protocol
+///
+/// This message contains the initial commitment and public key information
+/// that each participant broadcasts to all other participants.
+///
+/// # Memory Layout
+///
+/// The structure is marked with `#[repr(C)]` to ensure a stable memory layout
+/// and uses `AnyBitPattern` and `NoUninit` for safe memory operations.
 </span><span class="attr">#[derive(Clone, Copy, AnyBitPattern, NoUninit)]
 #[repr(C)]
 </span><span class="kw">pub struct </span>SignMsg1 {
-    <span class="doccomment">/// Session id
+    <span class="doccomment">/// Session identifier for the protocol run
     </span><span class="kw">pub </span>session_id: [u8; <span class="number">32</span>],
 
-    <span class="doccomment">/// Commitment hash
+    <span class="doccomment">/// Hash of the commitment value
     </span><span class="kw">pub </span>commitment_r_i: [u8; <span class="number">32</span>],
 
-    <span class="doccomment">/// Participant encryption public key
+    <span class="doccomment">/// Participant's encryption public key
     </span><span class="kw">pub </span>enc_pk: [u8; <span class="number">32</span>],
 
-    <span class="doccomment">/// Party Id (form Keyshare)
+    <span class="doccomment">/// Party ID from the key share
     </span><span class="kw">pub </span>party_id: u8,
 }
 
-<span class="doccomment">/// Type for the sign gen message 2. P2P
+<span class="doccomment">/// Message type for the second round of the signature generation protocol (P2P)
+///
+/// This message is sent peer-to-peer between participants and contains
+/// the final session ID and encrypted data for the MtA protocol.
+///
+/// # Memory Layout
+///
+/// The structure is marked with `#[repr(C)]` to ensure a stable memory layout
+/// and uses `AnyBitPattern` and `NoUninit` for safe memory operations.
 </span><span class="attr">#[derive(Clone, Copy, AnyBitPattern, NoUninit)]
 #[repr(C)]
 </span><span class="kw">pub struct </span>SignMsg2 {
-    <span class="doccomment">/// final_session_id
+    <span class="doccomment">/// Final session identifier
     </span><span class="kw">pub </span>final_session_id: [u8; <span class="number">32</span>],
 
-    <span class="doccomment">/// encrypted data
+    <span class="doccomment">/// Encrypted data for the MtA protocol
     </span><span class="kw">pub </span>mta_msg1: Round1Output,
 }
 
-<span class="doccomment">/// Type for the sign gen message 3. P2P
+<span class="doccomment">/// Message type for the third round of the signature generation protocol (P2P)
+///
+/// This message is sent peer-to-peer between participants and contains
+/// various encrypted data points and commitments needed for the signature.
+///
+/// # Memory Layout
+///
+/// The structure is marked with `#[repr(C)]` to ensure a stable memory layout
+/// and uses `AnyBitPattern` and `NoUninit` for safe memory operations.
 </span><span class="attr">#[derive(Clone, Copy, AnyBitPattern, NoUninit)]
 #[repr(C)]
 </span><span class="kw">pub struct </span>SignMsg3 {
-    <span class="doccomment">/// final_session_id
+    <span class="doccomment">/// Final session identifier
     </span><span class="kw">pub </span>final_session_id: [u8; <span class="number">32</span>],
 
-    <span class="doccomment">/// encrypted data
+    <span class="doccomment">/// Encrypted data for the RVOLE protocol
     </span><span class="kw">pub </span>mta_msg2: RVOLEOutput,
 
-    <span class="doccomment">/// Encrypted data
+    <span class="doccomment">/// Encrypted digest value
     </span><span class="kw">pub </span>digest_i: [u8; <span class="number">32</span>],
 
-    <span class="doccomment">/// Encrypted data
+    <span class="doccomment">/// Encrypted public key component
     </span><span class="kw">pub </span>pk_i: PointBytes,
 
-    <span class="doccomment">/// Encrypted data
+    <span class="doccomment">/// Encrypted R point component
     </span><span class="kw">pub </span>big_r_i: PointBytes,
 
-    <span class="doccomment">/// encrypted data
+    <span class="doccomment">/// Encrypted blind factor
     </span><span class="kw">pub </span>blind_factor: [u8; <span class="number">32</span>],
 
-    <span class="doccomment">/// Encrypted data
+    <span class="doccomment">/// Encrypted gamma_v point
     </span><span class="kw">pub </span>gamma_v: PointBytes,
 
-    <span class="doccomment">/// Encrypted data
+    <span class="doccomment">/// Encrypted gamma_u point
     </span><span class="kw">pub </span>gamma_u: PointBytes,
 
-    <span class="doccomment">/// Encrypted psi scalar
+    <span class="doccomment">/// Encrypted psi scalar value
     </span><span class="kw">pub </span>psi: ScalarBytes,
 }
 
-<span class="doccomment">/// Type for the sign gen message 4.
+<span class="doccomment">/// Message type for the fourth round of the signature generation protocol
+///
+/// This message contains the final signature components that each participant
+/// broadcasts to all other participants.
+///
+/// # Memory Layout
+///
+/// The structure is marked with `#[repr(C)]` to ensure a stable memory layout
+/// and uses `AnyBitPattern` and `NoUninit` for safe memory operations.
 </span><span class="attr">#[derive(Clone, Copy, AnyBitPattern, NoUninit)]
 #[repr(C)]
 </span><span class="kw">pub struct </span>SignMsg4 {
-    <span class="doccomment">/// Session id
+    <span class="doccomment">/// Session identifier
     </span><span class="kw">pub </span>session_id: [u8; <span class="number">32</span>],
 
     <span class="doccomment">/// s_0 Scalar
@@ -216,41 +318,55 @@
     </span><span class="kw">pub </span>s_1: ScalarBytes,
 }
 
-<span class="doccomment">/// Result after pre-signature of party_i
+<span class="doccomment">/// Result of the pre-signature phase for a party
+///
+/// This structure contains all the necessary information from the pre-signature
+/// phase that will be needed to complete the signature in the finish phase.
+///
+/// # Memory Layout
+///
+/// The structure is marked with `#[repr(C)]` to ensure a stable memory layout
+/// and uses `AnyBitPattern` and `NoUninit` for safe memory operations.
+/// It also implements `Zeroize` to ensure sensitive data is securely erased.
 </span><span class="attr">#[derive(Clone, Copy, AnyBitPattern, NoUninit, Zeroize)]
 #[repr(C)]
 </span><span class="kw">pub struct </span>PreSign {
-    <span class="doccomment">/// final_session_id
+    <span class="doccomment">/// Final session identifier
     </span><span class="kw">pub </span>final_session_id: [u8; <span class="number">32</span>],
 
-    <span class="doccomment">/// s_0 Scalar
+    <span class="doccomment">/// First signature component (s_0)
     </span><span class="kw">pub</span>(<span class="kw">crate</span>) s_0: ScalarBytes,
 
-    <span class="doccomment">/// s_1 Scalar
+    <span class="doccomment">/// Second signature component (s_1)
     </span><span class="kw">pub</span>(<span class="kw">crate</span>) s_1: ScalarBytes,
 
-    <span class="doccomment">/// phi_i Scalar
+    <span class="doccomment">/// Phi_i scalar value
     </span><span class="kw">pub</span>(<span class="kw">crate</span>) phi_i: ScalarBytes,
 
-    <span class="doccomment">/// R point
+    <span class="doccomment">/// R point value
     </span><span class="kw">pub</span>(<span class="kw">crate</span>) r: PointBytes,
 
-    <span class="doccomment">/// public_key
+    <span class="doccomment">/// Public key value
     </span><span class="kw">pub</span>(<span class="kw">crate</span>) public_key: PointBytes,
 
-    <span class="kw">pub</span>(<span class="kw">crate</span>) party_id: u8,
+    <span class="doccomment">/// Party ID
+    </span><span class="kw">pub</span>(<span class="kw">crate</span>) party_id: u8,
 }
 
-<span class="doccomment">/// Partial signature of party_i
+<span class="doccomment">/// Partial signature from a single party
+///
+/// This structure contains a party's contribution to the final signature.
+/// It implements `Zeroize` and `ZeroizeOnDrop` to ensure sensitive data
+/// is securely erased when the structure is dropped.
 </span><span class="attr">#[derive(Zeroize, ZeroizeOnDrop)]
 </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">struct </span>PartialSignature {
-    <span class="doccomment">/// final_session_id
+    <span class="doccomment">/// Final session identifier
     </span><span class="kw">pub </span>final_session_id: [u8; <span class="number">32</span>],
 
-    <span class="doccomment">/// public_key
+    <span class="doccomment">/// Public key value
     </span><span class="kw">pub </span>public_key: ProjectivePoint,
 
-    <span class="doccomment">/// 32 bytes message_hash
+    <span class="doccomment">/// Hash of the message being signed
     </span><span class="kw">pub </span>message_hash: [u8; <span class="number">32</span>],
 
     <span class="doccomment">/// s_0 Scalar
@@ -259,7 +375,7 @@
     <span class="doccomment">/// s_1 Scalar
     </span><span class="kw">pub </span>s_1: Scalar,
 
-    <span class="doccomment">/// R point
+    <span class="doccomment">/// R point value
     </span><span class="kw">pub </span>r: ProjectivePoint,
 }
 </code></pre></div></section></main></body></html>

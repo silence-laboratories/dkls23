@@ -486,8 +486,130 @@
 <a href="#485" id="485">485</a>
 <a href="#486" id="486">486</a>
 <a href="#487" id="487">487</a>
-<a href="#488" id="488">488</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
+<a href="#488" id="488">488</a>
+<a href="#489" id="489">489</a>
+<a href="#490" id="490">490</a>
+<a href="#491" id="491">491</a>
+<a href="#492" id="492">492</a>
+<a href="#493" id="493">493</a>
+<a href="#494" id="494">494</a>
+<a href="#495" id="495">495</a>
+<a href="#496" id="496">496</a>
+<a href="#497" id="497">497</a>
+<a href="#498" id="498">498</a>
+<a href="#499" id="499">499</a>
+<a href="#500" id="500">500</a>
+<a href="#501" id="501">501</a>
+<a href="#502" id="502">502</a>
+<a href="#503" id="503">503</a>
+<a href="#504" id="504">504</a>
+<a href="#505" id="505">505</a>
+<a href="#506" id="506">506</a>
+<a href="#507" id="507">507</a>
+<a href="#508" id="508">508</a>
+<a href="#509" id="509">509</a>
+<a href="#510" id="510">510</a>
+<a href="#511" id="511">511</a>
+<a href="#512" id="512">512</a>
+<a href="#513" id="513">513</a>
+<a href="#514" id="514">514</a>
+<a href="#515" id="515">515</a>
+<a href="#516" id="516">516</a>
+<a href="#517" id="517">517</a>
+<a href="#518" id="518">518</a>
+<a href="#519" id="519">519</a>
+<a href="#520" id="520">520</a>
+<a href="#521" id="521">521</a>
+<a href="#522" id="522">522</a>
+<a href="#523" id="523">523</a>
+<a href="#524" id="524">524</a>
+<a href="#525" id="525">525</a>
+<a href="#526" id="526">526</a>
+<a href="#527" id="527">527</a>
+<a href="#528" id="528">528</a>
+<a href="#529" id="529">529</a>
+<a href="#530" id="530">530</a>
+<a href="#531" id="531">531</a>
+<a href="#532" id="532">532</a>
+<a href="#533" id="533">533</a>
+<a href="#534" id="534">534</a>
+<a href="#535" id="535">535</a>
+<a href="#536" id="536">536</a>
+<a href="#537" id="537">537</a>
+<a href="#538" id="538">538</a>
+<a href="#539" id="539">539</a>
+<a href="#540" id="540">540</a>
+<a href="#541" id="541">541</a>
+<a href="#542" id="542">542</a>
+<a href="#543" id="543">543</a>
+<a href="#544" id="544">544</a>
+<a href="#545" id="545">545</a>
+<a href="#546" id="546">546</a>
+<a href="#547" id="547">547</a>
+<a href="#548" id="548">548</a>
+<a href="#549" id="549">549</a>
+<a href="#550" id="550">550</a>
+<a href="#551" id="551">551</a>
+<a href="#552" id="552">552</a>
+<a href="#553" id="553">553</a>
+<a href="#554" id="554">554</a>
+<a href="#555" id="555">555</a>
+<a href="#556" id="556">556</a>
+<a href="#557" id="557">557</a>
+<a href="#558" id="558">558</a>
+<a href="#559" id="559">559</a>
+<a href="#560" id="560">560</a>
+<a href="#561" id="561">561</a>
+<a href="#562" id="562">562</a>
+<a href="#563" id="563">563</a>
+<a href="#564" id="564">564</a>
+<a href="#565" id="565">565</a>
+<a href="#566" id="566">566</a>
+<a href="#567" id="567">567</a>
+<a href="#568" id="568">568</a>
+<a href="#569" id="569">569</a>
+<a href="#570" id="570">570</a>
+<a href="#571" id="571">571</a>
+<a href="#572" id="572">572</a>
+<a href="#573" id="573">573</a>
+<a href="#574" id="574">574</a>
+<a href="#575" id="575">575</a>
+<a href="#576" id="576">576</a>
+<a href="#577" id="577">577</a>
+<a href="#578" id="578">578</a>
+<a href="#579" id="579">579</a>
+<a href="#580" id="580">580</a>
+<a href="#581" id="581">581</a>
+<a href="#582" id="582">582</a>
+<a href="#583" id="583">583</a>
+<a href="#584" id="584">584</a>
+<a href="#585" id="585">585</a>
+<a href="#586" id="586">586</a>
+<a href="#587" id="587">587</a>
+<a href="#588" id="588">588</a>
+<a href="#589" id="589">589</a>
+<a href="#590" id="590">590</a>
+<a href="#591" id="591">591</a>
+<a href="#592" id="592">592</a>
+<a href="#593" id="593">593</a>
+<a href="#594" id="594">594</a>
+<a href="#595" id="595">595</a>
+<a href="#596" id="596">596</a>
+<a href="#597" id="597">597</a>
+<a href="#598" id="598">598</a>
+<a href="#599" id="599">599</a>
+<a href="#600" id="600">600</a>
+<a href="#601" id="601">601</a>
+<a href="#602" id="602">602</a>
+<a href="#603" id="603">603</a>
+<a href="#604" id="604">604</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
+
+</span><span class="doccomment">//! Module for handling message tags and message relay functionality.
+//!
+//! This module provides functionality for filtering and managing message relays,
+//! including support for message tags, message filtering, and round-based message handling.
+//! It includes structures for managing expected messages and handling message rounds.
 
 </span><span class="kw">use </span>std::{
     collections::HashMap,
@@ -502,25 +624,33 @@
 <span class="kw">use crate</span>::{
     pairs::Pairs,
     proto::{
-        check_abort, EncryptedMessage, EncryptionScheme, MessageTag, MsgId,
-        Relay, SignedMessage, Wrap,
+        check_abort, EncryptedMessage, EncryptionScheme, MessageTag, MsgId, Relay, SignedMessage,
+        Wrap,
     },
     setup::{ProtocolParticipant, ABORT_MESSAGE_TAG},
 };
 
-<span class="doccomment">/// Relay Errors
+<span class="doccomment">/// Errors that can occur during message relay operations.
+</span><span class="attr">#[derive(Debug)]
 </span><span class="kw">pub enum </span>Error {
-    <span class="doccomment">/// Abort
+    <span class="doccomment">/// Protocol was aborted by a participant
     </span>Abort(usize),
-    <span class="doccomment">/// Recv
+    <span class="doccomment">/// Error receiving a message
     </span>Recv,
-    <span class="doccomment">/// Send
+    <span class="doccomment">/// Error sending a message
     </span>Send,
-    <span class="doccomment">/// InvalidMessage
+    <span class="doccomment">/// Received message was invalid
     </span>InvalidMessage,
 }
 
-<span class="doccomment">/// custom message relay
+<span class="doccomment">/// A message relay that filters messages based on expected tags and party IDs.
+///
+/// This struct wraps an underlying relay and provides additional functionality
+/// for filtering messages based on expected tags and party IDs. It maintains
+/// a buffer of received messages and tracks expected messages.
+///
+/// # Type Parameters
+/// * `R` - The type of the underlying relay implementation
 </span><span class="kw">pub struct </span>FilteredMsgRelay&lt;R&gt; {
     relay: R,
     in_buf: Vec&lt;(Vec&lt;u8&gt;, usize, MessageTag)&gt;,
@@ -528,7 +658,13 @@
 }
 
 <span class="kw">impl</span>&lt;R: Relay&gt; FilteredMsgRelay&lt;R&gt; {
-    <span class="doccomment">/// Construct a FilteredMsgRelay by wrapping up a Relay object
+    <span class="doccomment">/// Creates a new `FilteredMsgRelay` by wrapping an existing relay.
+    ///
+    /// # Arguments
+    /// * `relay` - The underlying relay to wrap
+    ///
+    /// # Returns
+    /// A new `FilteredMsgRelay` instance
     </span><span class="kw">pub fn </span>new(relay: R) -&gt; <span class="self">Self </span>{
         <span class="self">Self </span>{
             relay,
@@ -537,13 +673,24 @@
         }
     }
 
-    <span class="doccomment">/// Return underlying relay object
+    <span class="doccomment">/// Returns the underlying relay object.
+    ///
+    /// # Returns
+    /// The wrapped relay object
     </span><span class="kw">pub fn </span>into_inner(<span class="self">self</span>) -&gt; R {
         <span class="self">self</span>.relay
     }
 
-    <span class="doccomment">/// Mark message with ID as expected and associate pair (party-id,
-    /// tag) with it.
+    <span class="doccomment">/// Marks a message with the given ID as expected and associates it with a party ID and tag.
+    ///
+    /// # Arguments
+    /// * `id` - The message ID to expect
+    /// * `tag` - The expected message tag
+    /// * `party_id` - The ID of the party sending the message
+    /// * `ttl` - Time-to-live for the message request
+    ///
+    /// # Returns
+    /// `Ok(())` if successful, or an error if the message request fails
     </span><span class="kw">pub async fn </span>expect_message(
         <span class="kw-2">&amp;mut </span><span class="self">self</span>,
         id: MsgId,
@@ -557,17 +704,28 @@
         <span class="prelude-val">Ok</span>(())
     }
 
-    <span class="kw">fn </span>put_back(<span class="kw-2">&amp;mut </span><span class="self">self</span>, msg: <span class="kw-2">&amp;</span>[u8], tag: MessageTag, party_id: usize) {
+    <span class="doccomment">/// Returns a message back to the expected messages queue.
+    ///
+    /// # Arguments
+    /// * `msg` - The message to put back
+    /// * `tag` - The message tag
+    /// * `party_id` - The ID of the party that sent the message
+    </span><span class="kw">fn </span>put_back(<span class="kw-2">&amp;mut </span><span class="self">self</span>, msg: <span class="kw-2">&amp;</span>[u8], tag: MessageTag, party_id: usize) {
         <span class="self">self</span>.expected
             .insert(msg.try_into().unwrap(), (party_id, tag));
     }
 
-    <span class="doccomment">/// Receive an expected message with given tag, and return a
-    /// party-id associated with it.
-    </span><span class="kw">pub async fn </span>recv(
-        <span class="kw-2">&amp;mut </span><span class="self">self</span>,
-        tag: MessageTag,
-    ) -&gt; <span class="prelude-ty">Result</span>&lt;(Vec&lt;u8&gt;, usize, bool), Error&gt; {
+    <span class="doccomment">/// Receives an expected message with the given tag and returns the associated party ID.
+    ///
+    /// # Arguments
+    /// * `tag` - The expected message tag
+    ///
+    /// # Returns
+    /// A tuple containing:
+    /// - The received message
+    /// - The party ID of the sender
+    /// - A boolean indicating if this is an abort message
+    </span><span class="kw">pub async fn </span>recv(<span class="kw-2">&amp;mut </span><span class="self">self</span>, tag: MessageTag) -&gt; <span class="prelude-ty">Result</span>&lt;(Vec&lt;u8&gt;, usize, bool), Error&gt; {
         <span class="comment">// flush output message messages.
         </span><span class="self">self</span>.relay.flush().<span class="kw">await</span>.map_err(|<span class="kw">_</span>| Error::Recv)<span class="question-mark">?</span>;
 
@@ -602,29 +760,37 @@
         }
     }
 
-    <span class="doccomment">/// Add expected messages and Ask underlying message relay to
-    /// receive them.
+    <span class="doccomment">/// Adds expected messages and asks the underlying relay to receive them.
+    ///
+    /// # Arguments
+    /// * `setup` - The protocol participant setup
+    /// * `tag` - The expected message tag
+    /// * `p2p` - Whether this is a peer-to-peer message
+    ///
+    /// # Returns
+    /// The number of messages with the same tag
     </span><span class="kw">pub async fn </span>ask_messages&lt;P: ProtocolParticipant&gt;(
         <span class="kw-2">&amp;mut </span><span class="self">self</span>,
         setup: <span class="kw-2">&amp;</span>P,
         tag: MessageTag,
         p2p: bool,
     ) -&gt; <span class="prelude-ty">Result</span>&lt;usize, MessageSendError&gt; {
-        <span class="self">self</span>.ask_messages_from_iter(
-            setup,
-            tag,
-            setup.all_other_parties(),
-            p2p,
-        )
-        .<span class="kw">await
+        <span class="self">self</span>.ask_messages_from_iter(setup, tag, setup.all_other_parties(), p2p)
+            .<span class="kw">await
     </span>}
 
-    <span class="doccomment">/// Ask set of messages with a given `tag` from a set of `parties`.
+    <span class="doccomment">/// Asks for messages with a given tag from a set of parties.
     ///
-    /// Filter out own `party_index` from `parties`.
+    /// Filters out the current party's index from the list of parties.
     ///
-    /// Returns number of messages with the same tag.
+    /// # Arguments
+    /// * `setup` - The protocol participant setup
+    /// * `tag` - The expected message tag
+    /// * `from_parties` - Iterator over party indices to receive from
+    /// * `p2p` - Whether this is a peer-to-peer message
     ///
+    /// # Returns
+    /// The number of messages with the same tag
     </span><span class="kw">pub async fn </span>ask_messages_from_iter&lt;P, I&gt;(
         <span class="kw-2">&amp;mut </span><span class="self">self</span>,
         setup: <span class="kw-2">&amp;</span>P,
@@ -657,7 +823,16 @@
         <span class="prelude-val">Ok</span>(count)
     }
 
-    <span class="doccomment">/// The same as `ask_messages_from_iter()` by accepts slice of indices
+    <span class="doccomment">/// Similar to `ask_messages_from_iter` but accepts a slice of indices.
+    ///
+    /// # Arguments
+    /// * `setup` - The protocol participant setup
+    /// * `tag` - The expected message tag
+    /// * `from_parties` - Slice of party indices to receive from
+    /// * `p2p` - Whether this is a peer-to-peer message
+    ///
+    /// # Returns
+    /// The number of messages with the same tag
     </span><span class="kw">pub async fn </span>ask_messages_from_slice&lt;<span class="lifetime">'a</span>, P, I&gt;(
         <span class="kw-2">&amp;mut </span><span class="self">self</span>,
         setup: <span class="kw-2">&amp;</span>P,
@@ -669,16 +844,18 @@
         </span>P: ProtocolParticipant,
         I: IntoIterator&lt;Item = <span class="kw-2">&amp;</span><span class="lifetime">'a </span>usize&gt;,
     {
-        <span class="self">self</span>.ask_messages_from_iter(
-            setup,
-            tag,
-            from_parties.into_iter().copied(),
-            p2p,
-        )
-        .<span class="kw">await
+        <span class="self">self</span>.ask_messages_from_iter(setup, tag, from_parties.into_iter().copied(), p2p)
+            .<span class="kw">await
     </span>}
 
-    <span class="doccomment">/// Create a round
+    <span class="doccomment">/// Creates a new round for receiving messages.
+    ///
+    /// # Arguments
+    /// * `count` - Number of messages to receive in this round
+    /// * `tag` - The expected message tag
+    ///
+    /// # Returns
+    /// A new `Round` instance
     </span><span class="kw">pub fn </span>round(<span class="kw-2">&amp;mut </span><span class="self">self</span>, count: usize, tag: MessageTag) -&gt; Round&lt;<span class="lifetime">'_</span>, R&gt; {
         Round::new(count, tag, <span class="self">self</span>)
     }
@@ -698,7 +875,14 @@
     }
 }
 
-<span class="doccomment">/// Structure to receive a round of messages
+<span class="doccomment">/// A structure for receiving a round of messages.
+///
+/// This struct manages the reception of a fixed number of messages with a specific tag
+/// in a single round of communication.
+///
+/// # Type Parameters
+/// * `'a` - The lifetime of the parent `FilteredMsgRelay`
+/// * `R` - The type of the underlying relay
 </span><span class="kw">pub struct </span>Round&lt;<span class="lifetime">'a</span>, R&gt; {
     tag: MessageTag,
     count: usize,
@@ -706,22 +890,26 @@
 }
 
 <span class="kw">impl</span>&lt;<span class="lifetime">'a</span>, R: Relay&gt; Round&lt;<span class="lifetime">'a</span>, R&gt; {
-    <span class="doccomment">/// Create a new round with a given number of messages to receive.
-    </span><span class="kw">pub fn </span>new(
-        count: usize,
-        tag: MessageTag,
-        relay: <span class="kw-2">&amp;</span><span class="lifetime">'a </span><span class="kw-2">mut </span>FilteredMsgRelay&lt;R&gt;,
-    ) -&gt; <span class="self">Self </span>{
+    <span class="doccomment">/// Creates a new round with a given number of messages to receive.
+    ///
+    /// # Arguments
+    /// * `count` - Number of messages to receive in this round
+    /// * `tag` - The expected message tag
+    /// * `relay` - The parent message relay
+    ///
+    /// # Returns
+    /// A new `Round` instance
+    </span><span class="kw">pub fn </span>new(count: usize, tag: MessageTag, relay: <span class="kw-2">&amp;</span><span class="lifetime">'a </span><span class="kw-2">mut </span>FilteredMsgRelay&lt;R&gt;) -&gt; <span class="self">Self </span>{
         <span class="self">Self </span>{ count, tag, relay }
     }
 
-    <span class="doccomment">/// Receive next message in the round.
-    /// On success returns Ok(Some(message, party_index, is_abort_flag)).
-    /// At the end of the round it returns Ok(None).
+    <span class="doccomment">/// Receives the next message in the round.
     ///
-    </span><span class="kw">pub async fn </span>recv(
-        <span class="kw-2">&amp;mut </span><span class="self">self</span>,
-    ) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="prelude-ty">Option</span>&lt;(Vec&lt;u8&gt;, usize, bool)&gt;, Error&gt; {
+    /// # Returns
+    /// - `Ok(Some(message, party_index, is_abort_flag))` on successful reception
+    /// - `Ok(None)` when the round is complete
+    /// - `Err(Error)` if an error occurs
+    </span><span class="kw">pub async fn </span>recv(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="prelude-ty">Option</span>&lt;(Vec&lt;u8&gt;, usize, bool)&gt;, Error&gt; {
         <span class="prelude-val">Ok</span>(<span class="kw">if </span><span class="self">self</span>.count &gt; <span class="number">0 </span>{
             <span class="kw">let </span>msg = <span class="self">self</span>.relay.recv(<span class="self">self</span>.tag).<span class="kw">await</span>;
             <span class="attr">#[cfg(feature = <span class="string">"tracing"</span>)]
@@ -740,10 +928,14 @@
         </span>})
     }
 
-    <span class="doccomment">/// It is possible to receive a invalid message with a correct ID.
-    /// In this case, it have to put the message id back into
-    /// relay.expected table and increment a counter of waiting
-    /// messages in the round.
+    <span class="doccomment">/// Returns a message back to the expected messages queue.
+    ///
+    /// This is used when a message is received but found to be invalid.
+    ///
+    /// # Arguments
+    /// * `msg` - The message to put back
+    /// * `tag` - The message tag
+    /// * `party_id` - The ID of the party that sent the message
     </span><span class="kw">pub fn </span>put_back(<span class="kw-2">&amp;mut </span><span class="self">self</span>, msg: <span class="kw-2">&amp;</span>[u8], tag: MessageTag, party_id: usize) {
         <span class="self">self</span>.relay.put_back(msg, tag, party_id);
         <span class="self">self</span>.count += <span class="number">1</span>;
@@ -751,8 +943,21 @@
         <span class="comment">// TODO Should we ASK it again?
     </span>}
 
-    <span class="doccomment">/// Receiver all messages in the round, verify, decode and pass to
-    /// given handler.
+    <span class="doccomment">/// Receives all messages in the round, verifies them, decodes them, and passes them to a handler.
+    ///
+    /// # Type Parameters
+    /// * `T` - The type of the message payload
+    /// * `F` - The handler function type
+    /// * `S` - The protocol participant type
+    /// * `E` - The error type
+    ///
+    /// # Arguments
+    /// * `setup` - The protocol participant setup
+    /// * `abort_err` - Function to create an error from an abort message
+    /// * `handler` - Function to handle each received message
+    ///
+    /// # Returns
+    /// `Ok(())` if all messages are successfully processed, or an error if any message fails
     </span><span class="kw">pub async fn </span>of_signed_messages&lt;T, F, S, E&gt;(
         <span class="kw-2">mut </span><span class="self">self</span>,
         setup: <span class="kw-2">&amp;</span>S,
@@ -787,8 +992,23 @@
         <span class="prelude-val">Ok</span>(())
     }
 
-    <span class="doccomment">/// Receiver all messages in the round, decrypt, decode and pass
-    /// to given handler.
+    <span class="doccomment">/// Receives all encrypted messages in the round, decrypts them, and passes them to a handler.
+    ///
+    /// # Type Parameters
+    /// * `T` - The type of the message payload
+    /// * `F` - The handler function type
+    /// * `P` - The protocol participant type
+    /// * `E` - The error type
+    ///
+    /// # Arguments
+    /// * `setup` - The protocol participant setup
+    /// * `scheme` - The encryption scheme to use
+    /// * `trailer` - Size of the trailer data
+    /// * `err` - Function to create an error from an abort message
+    /// * `handler` - Function to handle each received message
+    ///
+    /// # Returns
+    /// `Ok(())` if all messages are successfully processed, or an error if any message fails
     </span><span class="kw">pub async fn </span>of_encrypted_messages&lt;T, F, P, E&gt;(
         <span class="kw-2">mut </span><span class="self">self</span>,
         setup: <span class="kw-2">&amp;</span>P,
@@ -800,12 +1020,7 @@
     <span class="kw">where
         </span>T: AnyBitPattern + NoUninit,
         P: ProtocolParticipant,
-        F: FnMut(
-            <span class="kw-2">&amp;</span>T,
-            usize,
-            <span class="kw-2">&amp;</span>[u8],
-            <span class="kw-2">&amp;mut </span><span class="kw">dyn </span>EncryptionScheme,
-        ) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="prelude-ty">Option</span>&lt;Vec&lt;u8&gt;&gt;, E&gt;,
+        F: FnMut(<span class="kw-2">&amp;</span>T, usize, <span class="kw-2">&amp;</span>[u8], <span class="kw-2">&amp;mut </span><span class="kw">dyn </span>EncryptionScheme) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="prelude-ty">Option</span>&lt;Vec&lt;u8&gt;&gt;, E&gt;,
         E: From&lt;Error&gt;,
     {
         <span class="kw">while let </span><span class="prelude-val">Some</span>((msg, party_index, is_abort)) = <span class="self">self</span>.recv().<span class="kw">await</span><span class="question-mark">? </span>{
@@ -817,21 +1032,16 @@
 
             <span class="kw">let </span><span class="kw-2">mut </span>msg = Zeroizing::new(msg);
 
-            <span class="kw">let </span>(msg, trailer) = <span class="kw">match </span>EncryptedMessage::&lt;T&gt;::decrypt(
-                <span class="kw-2">&amp;mut </span>msg,
-                trailer,
-                scheme,
-                party_index,
-            ) {
-                <span class="prelude-val">Some</span>(refs) =&gt; refs,
-                <span class="kw">_ </span>=&gt; {
-                    <span class="self">self</span>.put_back(<span class="kw-2">&amp;</span>msg, <span class="self">self</span>.tag, party_index);
-                    <span class="kw">continue</span>;
-                }
-            };
+            <span class="kw">let </span>(msg, trailer) =
+                <span class="kw">match </span>EncryptedMessage::&lt;T&gt;::decrypt(<span class="kw-2">&amp;mut </span>msg, trailer, scheme, party_index) {
+                    <span class="prelude-val">Some</span>(refs) =&gt; refs,
+                    <span class="kw">_ </span>=&gt; {
+                        <span class="self">self</span>.put_back(<span class="kw-2">&amp;</span>msg, <span class="self">self</span>.tag, party_index);
+                        <span class="kw">continue</span>;
+                    }
+                };
 
-            <span class="kw">if let </span><span class="prelude-val">Some</span>(replay) = handler(msg, party_index, trailer, scheme)<span class="question-mark">?
-            </span>{
+            <span class="kw">if let </span><span class="prelude-val">Some</span>(replay) = handler(msg, party_index, trailer, scheme)<span class="question-mark">? </span>{
                 <span class="self">self</span>.relay.send(replay).<span class="kw">await</span>.map_err(|<span class="kw">_</span>| Error::Send)<span class="question-mark">?</span>;
             }
         }
@@ -839,7 +1049,21 @@
         <span class="prelude-val">Ok</span>(())
     }
 
-    <span class="doccomment">/// Broadcast 4 values and collect 4 values from others in the round
+    <span class="doccomment">/// Broadcasts four different types of messages to all participants.
+    ///
+    /// # Type Parameters
+    /// * `P` - The protocol participant type
+    /// * `T1` - The type of the first message
+    /// * `T2` - The type of the second message
+    /// * `T3` - The type of the third message
+    /// * `T4` - The type of the fourth message
+    ///
+    /// # Arguments
+    /// * `setup` - The protocol participant setup
+    /// * `msg` - Tuple of four messages to broadcast
+    ///
+    /// # Returns
+    /// A tuple of four `Pairs` containing the broadcast messages and their senders
     </span><span class="kw">pub async fn </span>broadcast_4&lt;P, T1, T2, T3, T4&gt;(
         <span class="self">self</span>,
         setup: <span class="kw-2">&amp;</span>P,
@@ -896,8 +1120,7 @@
 
         <span class="self">self</span>.relay.send(buffer).<span class="kw">await</span>.map_err(|<span class="kw">_</span>| Error::Send)<span class="question-mark">?</span>;
 
-        <span class="kw">let </span>(<span class="kw-2">mut </span>p0, <span class="kw-2">mut </span>p1, <span class="kw-2">mut </span>p2, <span class="kw-2">mut </span>p3) =
-            <span class="self">self</span>.recv_broadcast_4(setup, <span class="kw-2">&amp;</span>sizes).<span class="kw">await</span><span class="question-mark">?</span>;
+        <span class="kw">let </span>(<span class="kw-2">mut </span>p0, <span class="kw-2">mut </span>p1, <span class="kw-2">mut </span>p2, <span class="kw-2">mut </span>p3) = <span class="self">self</span>.recv_broadcast_4(setup, <span class="kw-2">&amp;</span>sizes).<span class="kw">await</span><span class="question-mark">?</span>;
 
         p0.push(my_party_id, msg.<span class="number">0</span>);
         p1.push(my_party_id, msg.<span class="number">1</span>);
@@ -907,8 +1130,21 @@
         <span class="prelude-val">Ok</span>((p0, p1, p2, p3))
     }
 
-    <span class="doccomment">/// Receive broadcasted 4 values from all parties in the round and
-    /// collect them into 4 Pairs vectors.
+    <span class="doccomment">/// Receives four different types of broadcast messages from all participants.
+    ///
+    /// # Type Parameters
+    /// * `P` - The protocol participant type
+    /// * `T1` - The type of the first message
+    /// * `T2` - The type of the second message
+    /// * `T3` - The type of the third message
+    /// * `T4` - The type of the fourth message
+    ///
+    /// # Arguments
+    /// * `setup` - The protocol participant setup
+    /// * `sizes` - Array of sizes for each message type
+    ///
+    /// # Returns
+    /// A tuple of four `Pairs` containing the received messages and their senders
     </span><span class="kw">pub async fn </span>recv_broadcast_4&lt;P, T1, T2, T3, T4&gt;(
         <span class="kw-2">mut </span><span class="self">self</span>,
         setup: <span class="kw-2">&amp;</span>P,
@@ -956,14 +1192,10 @@
                 }
             };
 
-            <span class="kw">let </span>(buf, v1) =
-                T1::decode(buf, sizes[<span class="number">0</span>]).ok_or(Error::InvalidMessage)<span class="question-mark">?</span>;
-            <span class="kw">let </span>(buf, v2) =
-                T2::decode(buf, sizes[<span class="number">1</span>]).ok_or(Error::InvalidMessage)<span class="question-mark">?</span>;
-            <span class="kw">let </span>(buf, v3) =
-                T3::decode(buf, sizes[<span class="number">2</span>]).ok_or(Error::InvalidMessage)<span class="question-mark">?</span>;
-            <span class="kw">let </span>(_bu, v4) =
-                T4::decode(buf, sizes[<span class="number">3</span>]).ok_or(Error::InvalidMessage)<span class="question-mark">?</span>;
+            <span class="kw">let </span>(buf, v1) = T1::decode(buf, sizes[<span class="number">0</span>]).ok_or(Error::InvalidMessage)<span class="question-mark">?</span>;
+            <span class="kw">let </span>(buf, v2) = T2::decode(buf, sizes[<span class="number">1</span>]).ok_or(Error::InvalidMessage)<span class="question-mark">?</span>;
+            <span class="kw">let </span>(buf, v3) = T3::decode(buf, sizes[<span class="number">2</span>]).ok_or(Error::InvalidMessage)<span class="question-mark">?</span>;
+            <span class="kw">let </span>(_bu, v4) = T4::decode(buf, sizes[<span class="number">3</span>]).ok_or(Error::InvalidMessage)<span class="question-mark">?</span>;
 
             p0.push(party_id, v1);
             p1.push(party_id, v2);

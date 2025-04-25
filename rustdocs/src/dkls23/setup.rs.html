@@ -331,20 +331,11 @@
 <a href="#330" id="330">330</a>
 <a href="#331" id="331">331</a>
 <a href="#332" id="332">332</a>
-<a href="#333" id="333">333</a>
-<a href="#334" id="334">334</a>
-<a href="#335" id="335">335</a>
-<a href="#336" id="336">336</a>
-<a href="#337" id="337">337</a>
-<a href="#338" id="338">338</a>
-<a href="#339" id="339">339</a>
-<a href="#340" id="340">340</a>
-<a href="#341" id="341">341</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
+<a href="#333" id="333">333</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
 
-</span><span class="doccomment">//!
-//! Protocol setup message
-//!
+</span><span class="doccomment">//! Each mpc protocol: Keygen, Sign, Quorum change, Key Export in order to bootstrap the nodes need
+//! to setup necessary information  such as protocol id, participant information, cryptographic keys, and tailored per MPC protocol parameters.
 
 </span><span class="kw">use </span>std::time::Duration;
 
@@ -455,12 +446,7 @@
     <span class="doccomment">/// Generate ID of a message from given sender to a given
     /// receiver.  Receiver is designed by its index and is None for a
     /// broadcase message.
-    </span><span class="kw">fn </span>msg_id_from(
-        <span class="kw-2">&amp;</span><span class="self">self</span>,
-        sender: usize,
-        receiver: <span class="prelude-ty">Option</span>&lt;usize&gt;,
-        tag: MessageTag,
-    ) -&gt; MsgId {
+    </span><span class="kw">fn </span>msg_id_from(<span class="kw-2">&amp;</span><span class="self">self</span>, sender: usize, receiver: <span class="prelude-ty">Option</span>&lt;usize&gt;, tag: MessageTag) -&gt; MsgId {
         <span class="kw">let </span>receiver = receiver
             .map(|p| <span class="self">self</span>.verifier(p))
             .map(AsRef::&lt;[u8]&gt;::as_ref);
@@ -513,7 +499,7 @@
     <span class="doccomment">/// Threshold parameter.
     </span><span class="kw">fn </span>threshold(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; u8;
 
-    <span class="doccomment">/// Return a rank of a participat with given index.
+    <span class="doccomment">/// Return a rank of a participant with given index.
     /// May panic is index is out of range.
     </span><span class="kw">fn </span>participant_rank(<span class="kw-2">&amp;</span><span class="self">self</span>, _party_index: usize) -&gt; u8 {
         <span class="number">0
@@ -522,7 +508,7 @@
     <span class="doccomment">/// Derive key_id from a public_key.
     </span><span class="kw">fn </span>derive_key_id(<span class="kw-2">&amp;</span><span class="self">self</span>, public_key: <span class="kw-2">&amp;</span>[u8]) -&gt; [u8; <span class="number">32</span>];
 
-    <span class="doccomment">/// Additional data to incorpatate into resulting Keyshare.
+    <span class="doccomment">/// Additional data to amend into the Keyshare.
     </span><span class="kw">fn </span>keyshare_extra(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>[u8] {
         <span class="kw-2">&amp;</span>[]
     }
@@ -634,9 +620,7 @@
     </span><span class="kw">fn </span>derive_key_id(<span class="kw-2">&amp;</span><span class="self">self</span>, public_key: <span class="kw-2">&amp;</span>[u8]) -&gt; [u8; <span class="number">32</span>];
 }
 
-<span class="kw">impl</span>&lt;KS, PK, M: QuorumChangeSetupMessage&lt;KS, PK&gt;&gt;
-    QuorumChangeSetupMessage&lt;KS, PK&gt; <span class="kw">for </span><span class="kw-2">&amp;</span>M
-{
+<span class="kw">impl</span>&lt;KS, PK, M: QuorumChangeSetupMessage&lt;KS, PK&gt;&gt; QuorumChangeSetupMessage&lt;KS, PK&gt; <span class="kw">for </span><span class="kw-2">&amp;</span>M {
     <span class="kw">fn </span>old_keyshare(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span>&lt;<span class="kw-2">&amp;</span>KS&gt; {
         (<span class="kw-2">**</span><span class="self">self</span>).old_keyshare()
     }

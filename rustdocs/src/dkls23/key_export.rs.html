@@ -360,39 +360,7 @@
 <a href="#359" id="359">359</a>
 <a href="#360" id="360">360</a>
 <a href="#361" id="361">361</a>
-<a href="#362" id="362">362</a>
-<a href="#363" id="363">363</a>
-<a href="#364" id="364">364</a>
-<a href="#365" id="365">365</a>
-<a href="#366" id="366">366</a>
-<a href="#367" id="367">367</a>
-<a href="#368" id="368">368</a>
-<a href="#369" id="369">369</a>
-<a href="#370" id="370">370</a>
-<a href="#371" id="371">371</a>
-<a href="#372" id="372">372</a>
-<a href="#373" id="373">373</a>
-<a href="#374" id="374">374</a>
-<a href="#375" id="375">375</a>
-<a href="#376" id="376">376</a>
-<a href="#377" id="377">377</a>
-<a href="#378" id="378">378</a>
-<a href="#379" id="379">379</a>
-<a href="#380" id="380">380</a>
-<a href="#381" id="381">381</a>
-<a href="#382" id="382">382</a>
-<a href="#383" id="383">383</a>
-<a href="#384" id="384">384</a>
-<a href="#385" id="385">385</a>
-<a href="#386" id="386">386</a>
-<a href="#387" id="387">387</a>
-<a href="#388" id="388">388</a>
-<a href="#389" id="389">389</a>
-<a href="#390" id="390">390</a>
-<a href="#391" id="391">391</a>
-<a href="#392" id="392">392</a>
-<a href="#393" id="393">393</a>
-<a href="#394" id="394">394</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
+<a href="#362" id="362">362</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
 
 </span><span class="kw">use </span>k256::{NonZeroScalar, ProjectivePoint, Scalar};
@@ -406,7 +374,7 @@
     message::{MessageTag, MsgId, MESSAGE_HEADER_SIZE},
 };
 
-<span class="doccomment">/// Tag of an encypted keyshare message
+<span class="doccomment">/// Tag of an enrypted keyshare message
 </span><span class="kw">pub const </span>KEYSHARE_EXPORT_TAG: MessageTag = MessageTag::tag(<span class="number">1</span>);
 
 <span class="doccomment">/// Receiver of an encrypted keyshare.
@@ -415,13 +383,10 @@
 <span class="kw">use crate</span>::{
     keygen::Keyshare,
     pairs::Pairs,
-    proto::{
-        check_abort, decode_scalar, tags::<span class="kw-2">*</span>, EncryptedMessage,
-        EncryptionScheme, ScalarBytes,
-    },
+    proto::{check_abort, decode_scalar, tags::<span class="kw-2">*</span>, EncryptedMessage, EncryptionScheme, ScalarBytes},
     setup::{
-        KeyExportReceiverSetupMessage, KeyExporterSetupMessage,
-        ProtocolParticipant, ABORT_MESSAGE_TAG,
+        KeyExportReceiverSetupMessage, KeyExporterSetupMessage, ProtocolParticipant,
+        ABORT_MESSAGE_TAG,
     },
     sign::get_lagrange_coeff_list,
 };
@@ -430,9 +395,7 @@
 #[allow(missing_docs)]
 </span><span class="doccomment">/// Distributed key generation errors
 </span><span class="kw">pub enum </span>KeyExportError {
-    <span class="attr">#[error(
-        <span class="string">"Error while deserializing message or invalid message data length"
-    </span>)]
+    <span class="attr">#[error(<span class="string">"Error while deserializing message or invalid message data length"</span>)]
     </span>InvalidMessage,
 
     <span class="attr">#[error(<span class="string">"Public key mismatch after combining keyshares"</span>)]
@@ -555,9 +518,7 @@
 
     scheme.receiver_public_key(<span class="number">0</span>, enc_pub_key).ok()<span class="question-mark">?</span>;
 
-    <span class="kw">let </span>(s_i, pid, <span class="kw">_</span>) = EncryptedMessage::&lt;[u8; <span class="number">32</span>]&gt;::decrypt_with_ad(
-        <span class="kw-2">&amp;mut </span>msg, <span class="number">32</span>, <span class="number">1</span>, <span class="kw-2">&amp;</span>scheme, <span class="number">0</span>,
-    )<span class="question-mark">?</span>;
+    <span class="kw">let </span>(s_i, pid, <span class="kw">_</span>) = EncryptedMessage::&lt;[u8; <span class="number">32</span>]&gt;::decrypt_with_ad(<span class="kw-2">&amp;mut </span>msg, <span class="number">32</span>, <span class="number">1</span>, <span class="kw-2">&amp;</span>scheme, <span class="number">0</span>)<span class="question-mark">?</span>;
 
     <span class="kw">let </span>party_id = pid[<span class="number">0</span>];
 
@@ -567,10 +528,7 @@
 }
 
 <span class="doccomment">/// Receive exported key shares, combine them and calculate private key.
-</span><span class="kw">pub async fn </span>receive_keyshares&lt;S, R&gt;(
-    setup: S,
-    relay: R,
-) -&gt; <span class="prelude-ty">Result</span>&lt;Scalar, KeyExportError&gt;
+</span><span class="kw">pub async fn </span>receive_keyshares&lt;S, R&gt;(setup: S, relay: R) -&gt; <span class="prelude-ty">Result</span>&lt;Scalar, KeyExportError&gt;
 <span class="kw">where
     </span>S: KeyExportReceiverSetupMessage&lt;ReusableSecret&gt;,
     R: Relay,
@@ -597,8 +555,7 @@
             rank_list[share.party_id <span class="kw">as </span>usize] <span class="kw">as </span>usize,
         ),
     );
-    <span class="kw">let </span><span class="kw-2">mut </span>s_i_list =
-        Pairs::new_with_item(share.party_id <span class="kw">as </span>usize, share.s_i());
+    <span class="kw">let </span><span class="kw-2">mut </span>s_i_list = Pairs::new_with_item(share.party_id <span class="kw">as </span>usize, share.s_i());
 
     <span class="kw">let </span><span class="kw-2">mut </span>round = Round::new(
         setup.total_participants() - <span class="number">1</span>,
@@ -608,21 +565,15 @@
 
     <span class="kw">while let </span><span class="prelude-val">Some</span>((msg, party_idx, is_abort)) = round.recv().<span class="kw">await</span><span class="question-mark">? </span>{
         <span class="kw">if </span>is_abort {
-            check_abort(
-                <span class="kw-2">&amp;</span>setup,
-                <span class="kw-2">&amp;</span>msg,
-                party_idx,
-                KeyExportError::AbortProtocol,
-            )<span class="question-mark">?</span>;
+            check_abort(<span class="kw-2">&amp;</span>setup, <span class="kw-2">&amp;</span>msg, party_idx, KeyExportError::AbortProtocol)<span class="question-mark">?</span>;
             round.put_back(<span class="kw-2">&amp;</span>msg, ABORT_MESSAGE_TAG, party_idx);
             <span class="kw">continue</span>;
         }
 
         <span class="kw">let </span>msg = Zeroizing::new(msg);
 
-        <span class="kw">let </span>(s_i, party_id) =
-            decrypt_share(msg, setup.receiver_private_key())
-                .ok_or(KeyExportError::InvalidMessage)<span class="question-mark">?</span>;
+        <span class="kw">let </span>(s_i, party_id) = decrypt_share(msg, setup.receiver_private_key())
+            .ok_or(KeyExportError::InvalidMessage)<span class="question-mark">?</span>;
 
         <span class="kw">let </span>x_j = x_i_list
             .get(party_id <span class="kw">as </span>usize)
@@ -634,9 +585,8 @@
         s_i_list.push(party_id <span class="kw">as </span>usize, s_i);
     }
 
-    <span class="kw">let </span>private_key =
-        combine_shares(<span class="kw-2">&amp;</span>x_i_list_2.remove_ids(), <span class="kw-2">&amp;</span>s_i_list.remove_ids(), <span class="kw-2">&amp;</span>pk)
-            .ok_or(KeyExportError::PublicKeyMismatch)<span class="question-mark">?</span>;
+    <span class="kw">let </span>private_key = combine_shares(<span class="kw-2">&amp;</span>x_i_list_2.remove_ids(), <span class="kw-2">&amp;</span>s_i_list.remove_ids(), <span class="kw-2">&amp;</span>pk)
+        .ok_or(KeyExportError::PublicKeyMismatch)<span class="question-mark">?</span>;
 
     <span class="prelude-val">Ok</span>(private_key)
 }
@@ -670,16 +620,12 @@
         key_import::ecdsa_secret_shares,
         keygen::utils::gen_keyshares,
         setup::{
-            key_export::{
-                exporter::KeyExporter, receiver::KeyExportReceiver,
-            },
+            key_export::{exporter::KeyExporter, receiver::KeyExportReceiver},
             NoSigningKey, NoVerifyingKey,
         },
     };
 
-    <span class="kw">use super</span>::{
-        combine_shares, export_keyshare, receive_keyshares, PublicKey,
-    };
+    <span class="kw">use super</span>::{combine_shares, export_keyshare, receive_keyshares, PublicKey};
 
     <span class="attr">#[test]
     </span><span class="kw">fn </span>test_combine() {
@@ -693,17 +639,10 @@
 
         <span class="kw">let </span>root_chain_code = [<span class="number">1u8</span>; <span class="number">32</span>];
 
-        <span class="kw">let </span>shares = ecdsa_secret_shares(
-            T,
-            <span class="macro">vec!</span>[<span class="number">0</span>; N],
-            <span class="kw-2">&amp;</span>private_key,
-            root_chain_code,
-            <span class="prelude-val">None</span>,
-            <span class="kw-2">&amp;mut </span>rng,
-        );
+        <span class="kw">let </span>shares =
+            ecdsa_secret_shares(T, <span class="macro">vec!</span>[<span class="number">0</span>; N], <span class="kw-2">&amp;</span>private_key, root_chain_code, <span class="prelude-val">None</span>, <span class="kw-2">&amp;mut </span>rng);
 
-        <span class="kw">let </span>s_i_list =
-            shares.iter().map(|s| s.s_i.unwrap()).collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;();
+        <span class="kw">let </span>s_i_list = shares.iter().map(|s| s.s_i.unwrap()).collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;();
 
         <span class="kw">let </span>x_i_list = shares[<span class="number">0</span>]
             .x_i_list
@@ -715,8 +654,7 @@
 
         <span class="kw">for </span>t <span class="kw">in </span>T <span class="kw">as </span>usize..=N {
             <span class="kw">let </span>recovered_private_key =
-                combine_shares(<span class="kw-2">&amp;</span>x_i_list[..t], <span class="kw-2">&amp;</span>s_i_list[..t], <span class="kw-2">&amp;</span>public_key)
-                    .unwrap();
+                combine_shares(<span class="kw-2">&amp;</span>x_i_list[..t], <span class="kw-2">&amp;</span>s_i_list[..t], <span class="kw-2">&amp;</span>public_key).unwrap();
 
             <span class="macro">assert_eq!</span>(recovered_private_key, <span class="kw-2">*</span>private_key);
         }
@@ -734,8 +672,7 @@
 
         <span class="kw">let </span>inst = rand::random();
 
-        <span class="kw">let </span>vk: Vec&lt;NoVerifyingKey&gt; =
-            (<span class="number">0</span>..N <span class="kw">as </span>usize).map(NoVerifyingKey::new).collect();
+        <span class="kw">let </span>vk: Vec&lt;NoVerifyingKey&gt; = (<span class="number">0</span>..N <span class="kw">as </span>usize).map(NoVerifyingKey::new).collect();
 
         <span class="kw">for _ in </span><span class="number">0</span>..<span class="number">10 </span>{
             <span class="comment">// let's try 10 different permutation of shares.
@@ -778,8 +715,7 @@
                     enc_key,
                 );
 
-                <span class="kw">let </span>sk =
-                    receive_keyshares(recv, relay.connect()).<span class="kw">await</span>.unwrap();
+                <span class="kw">let </span>sk = receive_keyshares(recv, relay.connect()).<span class="kw">await</span>.unwrap();
 
                 <span class="macro">assert_eq!</span>(ProjectivePoint::GENERATOR * sk, pk);
             }

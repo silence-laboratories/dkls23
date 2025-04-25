@@ -24,7 +24,12 @@
 <a href="#23" id="23">23</a>
 <a href="#24" id="24">24</a>
 <a href="#25" id="25">25</a>
-<a href="#26" id="26">26</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
+<a href="#26" id="26">26</a>
+<a href="#27" id="27">27</a>
+<a href="#28" id="28">28</a>
+<a href="#29" id="29">29</a>
+<a href="#30" id="30">30</a>
+<a href="#31" id="31">31</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
 
 </span><span class="kw">use </span>std::{marker::PhantomData, sync::Arc, time::Duration};
@@ -43,11 +48,16 @@
 
 <span class="kw">use </span>sl_mpc_mate::message::InstanceId;
 
-<span class="kw">const </span>DEFAULT_TTL: u64 = <span class="number">100</span>; <span class="comment">// smaller timeout might fail tests
+<span class="doccomment">/// Default Time-To-Live (TTL) value for messages in seconds
+</span><span class="kw">const </span>DEFAULT_TTL: u64 = <span class="number">100</span>; <span class="comment">// smaller timeout might fail tests
 
-</span><span class="doccomment">/// Setup message for key exporter
+</span><span class="doccomment">/// Module containing the setup message for the key exporter.
+/// This module defines the message structure and functionality for the party
+/// that exports a key in a multi-party computation protocol.
 </span><span class="kw">pub mod </span>exporter;
 
-<span class="doccomment">/// Setup message for key export receiver
+<span class="doccomment">/// Module containing the setup message for the key export receiver.
+/// This module defines the message structure and functionality for the party
+/// that receives an exported key in a multi-party computation protocol.
 </span><span class="kw">pub mod </span>receiver;
 </code></pre></div></section></main></body></html>

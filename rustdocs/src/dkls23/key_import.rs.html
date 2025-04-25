@@ -199,26 +199,8 @@
 <a href="#198" id="198">198</a>
 <a href="#199" id="199">199</a>
 <a href="#200" id="200">200</a>
-<a href="#201" id="201">201</a>
-<a href="#202" id="202">202</a>
-<a href="#203" id="203">203</a>
-<a href="#204" id="204">204</a>
-<a href="#205" id="205">205</a>
-<a href="#206" id="206">206</a>
-<a href="#207" id="207">207</a>
-<a href="#208" id="208">208</a>
-<a href="#209" id="209">209</a>
-<a href="#210" id="210">210</a>
-<a href="#211" id="211">211</a>
-<a href="#212" id="212">212</a>
-<a href="#213" id="213">213</a>
-<a href="#214" id="214">214</a>
-<a href="#215" id="215">215</a>
-<a href="#216" id="216">216</a>
-<a href="#217" id="217">217</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
+<a href="#201" id="201">201</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
-
-</span><span class="doccomment">//! Module for importing private key into the protocol
 
 </span><span class="kw">use </span>k256::{NonZeroScalar, ProjectivePoint, Scalar};
 <span class="kw">use </span>rand::{CryptoRng, RngCore};
@@ -226,8 +208,7 @@
 
 <span class="kw">use </span><span class="kw">crate</span>::keygen::key_refresh::KeyshareForRefresh;
 
-<span class="doccomment">/// Create ecdsa keyshares from private key.
-///
+<span class="doccomment">/// Create ecdsa keyshares from a singleton private key.
 </span><span class="kw">pub fn </span>ecdsa_secret_shares&lt;T: RngCore + CryptoRng&gt;(
     threshold: u8,
     rank_list: Vec&lt;u8&gt;,
@@ -242,8 +223,7 @@
     <span class="kw">let </span>public_key = ProjectivePoint::GENERATOR * private_key;
 
     <span class="comment">// u_i_k
-    </span><span class="kw">let </span><span class="kw-2">mut </span>polynomial =
-        Polynomial::&lt;ProjectivePoint&gt;::random(rng, threshold <span class="kw">as </span>usize - <span class="number">1</span>);
+    </span><span class="kw">let </span><span class="kw-2">mut </span>polynomial = Polynomial::&lt;ProjectivePoint&gt;::random(rng, threshold <span class="kw">as </span>usize - <span class="number">1</span>);
 
     polynomial.set_constant(<span class="kw-2">*</span>private_key); <span class="comment">// making a copy of private key
 
@@ -282,9 +262,7 @@
 </span><span class="kw">mod </span>tests {
     <span class="kw">use </span>std::sync::Arc;
 
-    <span class="kw">use </span>k256::{
-        elliptic_curve::sec1::ToEncodedPoint, NonZeroScalar, ProjectivePoint,
-    };
+    <span class="kw">use </span>k256::{elliptic_curve::sec1::ToEncodedPoint, NonZeroScalar, ProjectivePoint};
     <span class="kw">use </span>rand::Rng;
     <span class="kw">use </span>sl_mpc_mate::coord::SimpleMessageRelay;
     <span class="kw">use </span>tokio::task::JoinSet;
@@ -298,15 +276,11 @@
         sign::setup_dsg,
     };
 
-    <span class="kw">async fn </span>refresh(
-        keyshares: Vec&lt;KeyshareForRefresh&gt;,
-    ) -&gt; Vec&lt;Arc&lt;Keyshare&gt;&gt; {
+    <span class="kw">async fn </span>refresh(keyshares: Vec&lt;KeyshareForRefresh&gt;) -&gt; Vec&lt;Arc&lt;Keyshare&gt;&gt; {
         <span class="kw">let </span>coord = SimpleMessageRelay::new();
         <span class="kw">let </span><span class="kw-2">mut </span>parties = JoinSet::new();
 
-        <span class="kw">for </span>(setup, seed, share) <span class="kw">in
-            </span>setup_key_refresh(<span class="number">2</span>, <span class="number">3</span>, <span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span>[<span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>]), keyshares)
-        {
+        <span class="kw">for </span>(setup, seed, share) <span class="kw">in </span>setup_key_refresh(<span class="number">2</span>, <span class="number">3</span>, <span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span>[<span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>]), keyshares) {
             parties.spawn(run(setup, seed, coord.connect(), share));
         }
 
@@ -333,14 +307,8 @@
         <span class="kw">let </span>private_key = NonZeroScalar::random(<span class="kw-2">&amp;mut </span>rng);
         <span class="kw">let </span>original_pubkey = ProjectivePoint::GENERATOR * <span class="kw-2">*</span>private_key;
 
-        <span class="kw">let </span>keyshares = ecdsa_secret_shares(
-            <span class="number">2</span>,
-            <span class="macro">vec!</span>[<span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>],
-            <span class="kw-2">&amp;</span>private_key,
-            rng.gen(),
-            <span class="prelude-val">None</span>,
-            <span class="kw-2">&amp;mut </span>rng,
-        );
+        <span class="kw">let </span>keyshares =
+            ecdsa_secret_shares(<span class="number">2</span>, <span class="macro">vec!</span>[<span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>], <span class="kw-2">&amp;</span>private_key, rng.gen(), <span class="prelude-val">None</span>, <span class="kw-2">&amp;mut </span>rng);
         <span class="kw">let </span>original_chain_code = keyshares[<span class="number">0</span>].root_chain_code;
 
         <span class="kw">let </span><span class="kw-2">mut </span>new_shares = refresh(keyshares).<span class="kw">await</span>;

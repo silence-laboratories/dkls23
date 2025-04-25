@@ -81,87 +81,137 @@
 <a href="#80" id="80">80</a>
 <a href="#81" id="81">81</a>
 <a href="#82" id="82">82</a>
-<a href="#83" id="83">83</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
+<a href="#83" id="83">83</a>
+<a href="#84" id="84">84</a>
+<a href="#85" id="85">85</a>
+<a href="#86" id="86">86</a>
+<a href="#87" id="87">87</a>
+<a href="#88" id="88">88</a>
+<a href="#89" id="89">89</a>
+<a href="#90" id="90">90</a>
+<a href="#91" id="91">91</a>
+<a href="#92" id="92">92</a>
+<a href="#93" id="93">93</a>
+<a href="#94" id="94">94</a>
+<a href="#95" id="95">95</a>
+<a href="#96" id="96">96</a>
+<a href="#97" id="97">97</a>
+<a href="#98" id="98">98</a>
+<a href="#99" id="99">99</a>
+<a href="#100" id="100">100</a>
+<a href="#101" id="101">101</a>
+<a href="#102" id="102">102</a>
+<a href="#103" id="103">103</a>
+<a href="#104" id="104">104</a>
+<a href="#105" id="105">105</a>
+<a href="#106" id="106">106</a>
+<a href="#107" id="107">107</a>
+<a href="#108" id="108">108</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
 
-</span><span class="doccomment">//!
+</span><span class="doccomment">//! This module defines all the constants used throughout the DKG protocol,
+//! including message tags, labels for cryptographic operations, and protocol-specific
+//! identifiers. These constants ensure consistent message handling and cryptographic
+//! operations across all protocol participants.
 
 </span><span class="kw">use </span><span class="kw">crate</span>::VERSION;
 <span class="kw">use </span>sl_mpc_mate::message::MessageTag;
 <span class="kw">use </span>sl_oblivious::label::Label;
 
-<span class="doccomment">/// LABEL for the keygen protocol
+<span class="doccomment">/// Label used for the key generation protocol.
+/// This label is used to derive protocol-specific keys and nonces.
 </span><span class="kw">pub const </span>DKG_LABEL: Label = Label::new(VERSION, <span class="number">100</span>);
 
-<span class="doccomment">/// LABEL for the commitment 1
+<span class="doccomment">/// Label used for the first commitment in the protocol.
+/// This commitment is used to ensure participants are bound to their initial values.
 </span><span class="kw">pub const </span>COMMITMENT_1_LABEL: Label = Label::new(VERSION, <span class="number">101</span>);
 
-<span class="doccomment">/// LABEL for the commitment 2
+<span class="doccomment">/// Label used for the second commitment in the protocol.
+/// This commitment is used to ensure participants are bound to their final values.
 </span><span class="kw">pub const </span>COMMITMENT_2_LABEL: Label = Label::new(VERSION, <span class="number">102</span>);
 
-<span class="doccomment">/// LABEL for the DLOG proof 1
+<span class="doccomment">/// Label used for the first discrete logarithm proof.
+/// This proof ensures the validity of certain cryptographic operations.
 </span><span class="kw">pub const </span>DLOG_PROOF1_LABEL: Label = Label::new(VERSION, <span class="number">103</span>);
 
-<span class="doccomment">/// LABEL for the DLOG proof 2
+<span class="doccomment">/// Label used for the second discrete logarithm proof.
+/// This proof ensures the validity of certain cryptographic operations.
 </span><span class="kw">pub const </span>DLOG_PROOF2_LABEL: Label = Label::new(VERSION, <span class="number">104</span>);
 
-<span class="doccomment">/// LABEL to create dlog sessionID from final_session_id and root_chain_code
+<span class="doccomment">/// Label used to create a discrete logarithm session ID from the final session ID and root chain code.
+/// This is used to ensure proper session management and key derivation.
 </span><span class="kw">pub const </span>DLOG_SESSION_ID_WITH_CHAIN_CODE: Label = Label::new(VERSION, <span class="number">105</span>);
 
-<span class="doccomment">/// LABEL for the quorum change protocol
+<span class="doccomment">/// Label used for the quorum change protocol.
+/// This label is used to derive protocol-specific keys and nonces for quorum changes.
 </span><span class="kw">pub const </span>QC_LABEL: Label = Label::new(VERSION, <span class="number">106</span>);
 
-<span class="doccomment">/// LABEL for the quorum change commitment 1
+<span class="doccomment">/// Label used for the first commitment in the quorum change protocol.
+/// This commitment is used to ensure participants are bound to their initial values.
 </span><span class="kw">pub const </span>QC_COMMITMENT_1_LABEL: Label = Label::new(VERSION, <span class="number">107</span>);
 
-<span class="doccomment">/// LABEL for the commitment 2
+<span class="doccomment">/// Label used for the second commitment in the quorum change protocol.
+/// This commitment is used to ensure participants are bound to their final values.
 </span><span class="kw">pub const </span>QC_COMMITMENT_2_LABEL: Label = Label::new(VERSION, <span class="number">108</span>);
 
-<span class="doccomment">/// Broadcast message KeygenMsg1
+<span class="doccomment">/// Message tag for the first round of the DKG protocol.
+/// This message contains initial commitments and setup information.
 </span><span class="kw">pub const </span>DKG_MSG_R1: MessageTag = MessageTag::tag(<span class="number">1</span>);
 
-<span class="doccomment">/// Broadcast message KeygenMsg2
+<span class="doccomment">/// Message tag for the second round of the DKG protocol.
+/// This message contains responses to the initial commitments.
 </span><span class="kw">pub const </span>DKG_MSG_R2: MessageTag = MessageTag::tag(<span class="number">2</span>);
 
-<span class="doccomment">/// Tag for P2P EndemicOTMsg1 message
+<span class="doccomment">/// Message tag for the first round of oblivious transfer in the DKG protocol.
+/// This message is sent peer-to-peer between participants.
 </span><span class="kw">pub const </span>DKG_MSG_OT1: MessageTag = MessageTag::tag(<span class="number">3</span>);
 
-<span class="doccomment">/// Message handled by KeygenParty&lt;R3&gt;
+<span class="doccomment">/// Message tag for the third round of the DKG protocol.
+/// This message contains final commitments and proofs.
 </span><span class="kw">pub const </span>DKG_MSG_R3: MessageTag = MessageTag::tag(<span class="number">4</span>);
 
-<span class="doccomment">/// Message handled by KeygenParty&lt;R4&gt;
+<span class="doccomment">/// Message tag for the fourth round of the DKG protocol.
+/// This message contains the final key shares and verification information.
 </span><span class="kw">pub const </span>DKG_MSG_R4: MessageTag = MessageTag::tag(<span class="number">5</span>);
 
-<span class="doccomment">/// Broadcast message QuorumChangeMsg0
+<span class="doccomment">/// Message tag for the initial round of the quorum change protocol.
+/// This message contains the request to change the quorum.
 </span><span class="kw">pub const </span>QC_MSG_R0: MessageTag = MessageTag::tag(<span class="number">10</span>);
 
-<span class="doccomment">/// Broadcast message QuorumChangeMsg1
+<span class="doccomment">/// Message tag for the first round of the quorum change protocol.
+/// This message contains initial commitments for the quorum change.
 </span><span class="kw">pub const </span>QC_MSG_R1: MessageTag = MessageTag::tag(<span class="number">11</span>);
 
-<span class="doccomment">/// Broadcast message QuorumChangeMsg2
+<span class="doccomment">/// Message tag for the second round of the quorum change protocol.
+/// This message contains responses to the quorum change commitments.
 </span><span class="kw">pub const </span>QC_MSG_R2: MessageTag = MessageTag::tag(<span class="number">12</span>);
 
-<span class="doccomment">/// Tag for P2P 1 message
+<span class="doccomment">/// Message tag for the first peer-to-peer message in the quorum change protocol.
+/// This message is sent directly between participants.
 </span><span class="kw">pub const </span>QC_MSG_P2P_1: MessageTag = MessageTag::tag(<span class="number">13</span>);
 
-<span class="doccomment">/// Tag for P2P 2 message
+<span class="doccomment">/// Message tag for the second peer-to-peer message in the quorum change protocol.
+/// This message is sent directly between participants.
 </span><span class="kw">pub const </span>QC_MSG_P2P_2: MessageTag = MessageTag::tag(<span class="number">14</span>);
 
-<span class="doccomment">/// Tag for P2P OT message 1
+<span class="doccomment">/// Message tag for the first oblivious transfer message in the quorum change protocol.
+/// This message is used for secure information exchange.
 </span><span class="kw">pub const </span>QC_MSG_OT1: MessageTag = MessageTag::tag(<span class="number">15</span>);
 
-<span class="doccomment">/// Tag for P2P OT message 2
+<span class="doccomment">/// Message tag for the second oblivious transfer message in the quorum change protocol.
+/// This message is used for secure information exchange.
 </span><span class="kw">pub const </span>QC_MSG_OT2: MessageTag = MessageTag::tag(<span class="number">16</span>);
 
-<span class="doccomment">/// Tag for final message to communicate result of keyshare
-/// create/update operation.
+<span class="doccomment">/// Message tag used to communicate the final result of a keyshare creation or update operation.
+/// This message is sent after all protocol rounds are complete.
 </span><span class="kw">pub const </span>DKG_RECONCILE: MessageTag = MessageTag::tag(u64::MAX - <span class="number">1</span>);
 
-<span class="doccomment">/// First tag available for user applications.  Use
-/// MessageTag::tag2(DKG_MSG_APP, app-specific-value) to create
-/// application specific message tags.
+<span class="doccomment">/// First available message tag for user applications.
 ///
-/// The value is u32::MAX - 1 to avoid potential clash with ABORT_MESSAGE_TAG
-/// that is equal to MessageTag::tag2(u32::MAX, u32::MAX).
+/// Applications should use `MessageTag::tag2(DKG_MSG_APP, app-specific-value)` to create
+/// application-specific message tags. This ensures tags don't conflict with protocol messages.
+///
+/// The value is set to `u32::MAX - 1` to avoid potential conflicts with `ABORT_MESSAGE_TAG`
+/// which is equal to `MessageTag::tag2(u32::MAX, u32::MAX)`.
 </span><span class="kw">pub const </span>DKG_MSG_APP: u32 = u32::MAX - <span class="number">1</span>;
 </code></pre></div></section></main></body></html>

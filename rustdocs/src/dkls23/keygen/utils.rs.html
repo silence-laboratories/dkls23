@@ -408,8 +408,101 @@
 <a href="#407" id="407">407</a>
 <a href="#408" id="408">408</a>
 <a href="#409" id="409">409</a>
-<a href="#410" id="410">410</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
+<a href="#410" id="410">410</a>
+<a href="#411" id="411">411</a>
+<a href="#412" id="412">412</a>
+<a href="#413" id="413">413</a>
+<a href="#414" id="414">414</a>
+<a href="#415" id="415">415</a>
+<a href="#416" id="416">416</a>
+<a href="#417" id="417">417</a>
+<a href="#418" id="418">418</a>
+<a href="#419" id="419">419</a>
+<a href="#420" id="420">420</a>
+<a href="#421" id="421">421</a>
+<a href="#422" id="422">422</a>
+<a href="#423" id="423">423</a>
+<a href="#424" id="424">424</a>
+<a href="#425" id="425">425</a>
+<a href="#426" id="426">426</a>
+<a href="#427" id="427">427</a>
+<a href="#428" id="428">428</a>
+<a href="#429" id="429">429</a>
+<a href="#430" id="430">430</a>
+<a href="#431" id="431">431</a>
+<a href="#432" id="432">432</a>
+<a href="#433" id="433">433</a>
+<a href="#434" id="434">434</a>
+<a href="#435" id="435">435</a>
+<a href="#436" id="436">436</a>
+<a href="#437" id="437">437</a>
+<a href="#438" id="438">438</a>
+<a href="#439" id="439">439</a>
+<a href="#440" id="440">440</a>
+<a href="#441" id="441">441</a>
+<a href="#442" id="442">442</a>
+<a href="#443" id="443">443</a>
+<a href="#444" id="444">444</a>
+<a href="#445" id="445">445</a>
+<a href="#446" id="446">446</a>
+<a href="#447" id="447">447</a>
+<a href="#448" id="448">448</a>
+<a href="#449" id="449">449</a>
+<a href="#450" id="450">450</a>
+<a href="#451" id="451">451</a>
+<a href="#452" id="452">452</a>
+<a href="#453" id="453">453</a>
+<a href="#454" id="454">454</a>
+<a href="#455" id="455">455</a>
+<a href="#456" id="456">456</a>
+<a href="#457" id="457">457</a>
+<a href="#458" id="458">458</a>
+<a href="#459" id="459">459</a>
+<a href="#460" id="460">460</a>
+<a href="#461" id="461">461</a>
+<a href="#462" id="462">462</a>
+<a href="#463" id="463">463</a>
+<a href="#464" id="464">464</a>
+<a href="#465" id="465">465</a>
+<a href="#466" id="466">466</a>
+<a href="#467" id="467">467</a>
+<a href="#468" id="468">468</a>
+<a href="#469" id="469">469</a>
+<a href="#470" id="470">470</a>
+<a href="#471" id="471">471</a>
+<a href="#472" id="472">472</a>
+<a href="#473" id="473">473</a>
+<a href="#474" id="474">474</a>
+<a href="#475" id="475">475</a>
+<a href="#476" id="476">476</a>
+<a href="#477" id="477">477</a>
+<a href="#478" id="478">478</a>
+<a href="#479" id="479">479</a>
+<a href="#480" id="480">480</a>
+<a href="#481" id="481">481</a>
+<a href="#482" id="482">482</a>
+<a href="#483" id="483">483</a>
+<a href="#484" id="484">484</a>
+<a href="#485" id="485">485</a>
+<a href="#486" id="486">486</a>
+<a href="#487" id="487">487</a>
+<a href="#488" id="488">488</a>
+<a href="#489" id="489">489</a>
+<a href="#490" id="490">490</a>
+<a href="#491" id="491">491</a>
+<a href="#492" id="492">492</a>
+<a href="#493" id="493">493</a>
+<a href="#494" id="494">494</a>
+<a href="#495" id="495">495</a>
+<a href="#496" id="496">496</a>
+<a href="#497" id="497">497</a>
+<a href="#498" id="498">498</a>
+<a href="#499" id="499">499</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
+
+</span><span class="doccomment">//! This module provides utility functions used throughout the DKG protocol implementation,
+//! including polynomial operations, key generation setup, and protocol execution helpers.
+//! It also includes test utilities for protocol simulation and verification.
 
 </span><span class="kw">use </span>std::collections::HashMap;
 
@@ -417,8 +510,7 @@
 </span><span class="kw">use </span>std::sync::Arc;
 
 <span class="kw">use </span>k256::{
-    elliptic_curve::subtle::ConstantTimeEq, NonZeroScalar, ProjectivePoint,
-    Scalar, Secp256k1,
+    elliptic_curve::subtle::ConstantTimeEq, NonZeroScalar, ProjectivePoint, Scalar, Secp256k1,
 };
 <span class="attr">#[cfg(any(test, feature = <span class="string">"test-support"</span>))]
 </span><span class="kw">use </span>rand::prelude::<span class="kw-2">*</span>;
@@ -442,7 +534,19 @@
 
 <span class="kw">use </span><span class="kw">super</span>::KeygenError;
 
-<span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>get_lagrange_coeff(
+<span class="doccomment">/// Computes the Lagrange coefficient for a given point in a polynomial.
+///
+/// This function calculates the Lagrange coefficient for a specific point `x_i`
+/// given a list of points `x_i_list` and their corresponding party IDs.
+///
+/// # Arguments
+/// * `x_i` - The point for which to compute the coefficient
+/// * `x_i_list` - List of all points in the polynomial
+/// * `party_ids` - List of party IDs corresponding to the points
+///
+/// # Returns
+/// The computed Lagrange coefficient as a scalar value
+</span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>get_lagrange_coeff(
     x_i: <span class="kw-2">&amp;</span>NonZeroScalar,
     x_i_list: <span class="kw-2">&amp;</span>[NonZeroScalar],
     party_ids: <span class="kw-2">&amp;</span>[u8],
@@ -460,16 +564,26 @@
     coeff
 }
 
-<span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>get_birkhoff_coefficients(
+<span class="doccomment">/// Computes Birkhoff coefficients for a set of points with ranks.
+///
+/// This function calculates the Birkhoff coefficients for a set of points with
+/// associated ranks, which are used in the Birkhoff interpolation process.
+///
+/// # Arguments
+/// * `rank_list` - List of ranks for each point
+/// * `x_i_list` - List of points in the polynomial
+/// * `party_ids` - List of party IDs corresponding to the points
+///
+/// # Returns
+/// A map of party IDs to their corresponding Birkhoff coefficients
+</span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>get_birkhoff_coefficients(
     rank_list: <span class="kw-2">&amp;</span>[u8],
     x_i_list: <span class="kw-2">&amp;</span>[NonZeroScalar],
     party_ids: <span class="kw-2">&amp;</span>[u8],
 ) -&gt; HashMap&lt;usize, Scalar&gt; {
     <span class="kw">let </span>params = party_ids
         .iter()
-        .map(|<span class="kw-2">&amp;</span>pid| {
-            (x_i_list[pid <span class="kw">as </span>usize], rank_list[pid <span class="kw">as </span>usize] <span class="kw">as </span>usize)
-        })
+        .map(|<span class="kw-2">&amp;</span>pid| (x_i_list[pid <span class="kw">as </span>usize], rank_list[pid <span class="kw">as </span>usize] <span class="kw">as </span>usize))
         .collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;();
 
     <span class="kw">let </span>betta_vec = birkhoff_coeffs::&lt;Secp256k1&gt;(<span class="kw-2">&amp;</span>params);
@@ -481,7 +595,21 @@
         .collect::&lt;HashMap&lt;<span class="kw">_</span>, <span class="kw">_</span>&gt;&gt;()
 }
 
-<span class="attr">#[allow(dead_code)]
+<span class="doccomment">/// Verifies that a secret can be recovered from the given shares.
+///
+/// This function checks whether the provided shares can be used to reconstruct
+/// the original secret by verifying that the reconstructed public key matches
+/// the expected public key.
+///
+/// # Arguments
+/// * `x_i_list` - List of x-coordinates for the shares
+/// * `rank_list` - List of ranks for each share
+/// * `big_s_list` - List of public key components
+/// * `public_key` - The expected public key
+///
+/// # Returns
+/// `Ok(())` if the secret can be recovered, or an error if verification fails
+</span><span class="attr">#[allow(dead_code)]
 </span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>check_secret_recovery(
     x_i_list: <span class="kw-2">&amp;</span>[NonZeroScalar],
     rank_list: <span class="kw-2">&amp;</span>[u8],
@@ -528,7 +656,20 @@
         .ok_or(KeygenError::PublicKeyMismatch)
 }
 
-<span class="doccomment">/// Generate setup messages and seeds for DKG parties.
+<span class="doccomment">/// Generates setup messages and seeds for DKG parties.
+///
+/// This function creates the necessary setup messages and seeds for all parties
+/// participating in the DKG protocol. It handles both the case where ranks are
+/// provided and where they are not.
+///
+/// # Arguments
+/// * `instance` - Optional instance identifier for the protocol
+/// * `t` - Threshold value for the protocol
+/// * `n` - Total number of parties
+/// * `ranks` - Optional list of ranks for each party
+///
+/// # Returns
+/// A vector of tuples containing setup messages and seeds for each party
 </span><span class="attr">#[cfg(any(test, feature = <span class="string">"test-support"</span>))]
 </span><span class="kw">pub fn </span>setup_keygen(
     instance: <span class="prelude-ty">Option</span>&lt;[u8; <span class="number">32</span>]&gt;,
@@ -590,13 +731,20 @@
         .collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;()
 }
 
-<span class="doccomment">/// Execute DGK for given parameters
+<span class="doccomment">/// Executes the DKG protocol with the given parameters.
+///
+/// This function runs the DKG protocol for a set of parties with the specified
+/// threshold and number of participants. It returns the generated key shares.
+///
+/// # Arguments
+/// * `t` - Threshold value for the protocol
+/// * `n` - Total number of parties
+/// * `ranks` - Optional list of ranks for each party
+///
+/// # Returns
+/// A vector of key shares, one for each party
 </span><span class="attr">#[cfg(any(test, feature = <span class="string">"test-support"</span>))]
-</span><span class="kw">pub async fn </span>gen_keyshares(
-    t: u8,
-    n: u8,
-    ranks: <span class="prelude-ty">Option</span>&lt;<span class="kw-2">&amp;</span>[u8]&gt;,
-) -&gt; Vec&lt;Arc&lt;Keyshare&gt;&gt; {
+</span><span class="kw">pub async fn </span>gen_keyshares(t: u8, n: u8, ranks: <span class="prelude-ty">Option</span>&lt;<span class="kw-2">&amp;</span>[u8]&gt;) -&gt; Vec&lt;Arc&lt;Keyshare&gt;&gt; {
     <span class="kw">let </span>coord = sl_mpc_mate::coord::SimpleMessageRelay::new();
 
     <span class="kw">let </span><span class="kw-2">mut </span>parties = tokio::task::JoinSet::new();
@@ -625,8 +773,18 @@
     shares
 }
 
-<span class="doccomment">/// Generate SetupMessage and seed for QuorumChange parties
-/// creates all new parties
+<span class="doccomment">/// Generates setup messages and seeds for quorum change parties.
+///
+/// This function creates setup messages and seeds for all parties participating
+/// in a quorum change protocol, including both existing and new parties.
+///
+/// # Arguments
+/// * `old_keyshares` - Existing key shares from the current quorum
+/// * `new_threshold` - New threshold value for the protocol
+/// * `new_n_i_list` - List of ranks for new parties
+///
+/// # Returns
+/// A vector of tuples containing setup messages and seeds for each party
 </span><span class="attr">#[cfg(any(test, feature = <span class="string">"test-support"</span>))]
 </span><span class="kw">pub fn </span>setup_quorum_change(
     old_keyshares: <span class="kw-2">&amp;</span>[Arc&lt;Keyshare&gt;],
@@ -690,8 +848,19 @@
         .collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;()
 }
 
-<span class="doccomment">/// Generate SetupMessage and seed for QuorumChange parties
-/// adds new parties
+<span class="doccomment">/// Generates setup messages and seeds for extending the quorum with new parties.
+///
+/// This function creates setup messages and seeds for a quorum change that
+/// adds new parties to the existing quorum.
+///
+/// # Arguments
+/// * `old_keyshares` - Existing key shares from the current quorum
+/// * `new_threshold` - New threshold value for the protocol
+/// * `new_participants_len` - Number of new participants to add
+/// * `new_n_i_list` - List of ranks for new parties
+///
+/// # Returns
+/// A vector of tuples containing setup messages and seeds for each party
 </span><span class="attr">#[cfg(any(test, feature = <span class="string">"test-support"</span>))]
 </span><span class="kw">pub fn </span>setup_quorum_change_extend_parties(
     old_keyshares: <span class="kw-2">&amp;</span>[Arc&lt;Keyshare&gt;],
@@ -757,8 +926,18 @@
         .collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;()
 }
 
-<span class="doccomment">/// Generate SetupMessage and seed for QuorumChange parties
-/// to change a threshold
+<span class="doccomment">/// Generates setup messages and seeds for changing the quorum threshold.
+///
+/// This function creates setup messages and seeds for a quorum change that
+/// modifies the threshold value while keeping the same set of parties.
+///
+/// # Arguments
+/// * `old_keyshares` - Existing key shares from the current quorum
+/// * `new_threshold` - New threshold value for the protocol
+/// * `new_n_i_list` - List of ranks for the parties
+///
+/// # Returns
+/// A vector of tuples containing setup messages and seeds for each party
 </span><span class="attr">#[cfg(any(test, feature = <span class="string">"test-support"</span>))]
 </span><span class="kw">pub fn </span>setup_quorum_change_threshold(
     old_keyshares: <span class="kw-2">&amp;</span>[Arc&lt;Keyshare&gt;],
@@ -775,8 +954,7 @@
 
     <span class="kw">let </span>old_parties = (<span class="number">0</span>..old_keyshares.len()).collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;();
 
-    <span class="kw">let </span>new_parties =
-        new_n_i_list.iter().copied().enumerate().collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;();
+    <span class="kw">let </span>new_parties = new_n_i_list.iter().copied().enumerate().collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;();
 
     <span class="kw">let </span><span class="kw-2">mut </span>rng = rand::thread_rng();
 

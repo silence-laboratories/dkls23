@@ -173,75 +173,96 @@
 <a href="#172" id="172">172</a>
 <a href="#173" id="173">173</a>
 <a href="#174" id="174">174</a>
-<a href="#175" id="175">175</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
+<a href="#175" id="175">175</a>
+<a href="#176" id="176">176</a>
+<a href="#177" id="177">177</a>
+<a href="#178" id="178">178</a>
+<a href="#179" id="179">179</a>
+<a href="#180" id="180">180</a>
+<a href="#181" id="181">181</a>
+<a href="#182" id="182">182</a>
+<a href="#183" id="183">183</a>
+<a href="#184" id="184">184</a>
+<a href="#185" id="185">185</a>
+<a href="#186" id="186">186</a>
+<a href="#187" id="187">187</a>
+<a href="#188" id="188">188</a>
+<a href="#189" id="189">189</a>
+<a href="#190" id="190">190</a>
+<a href="#191" id="191">191</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
+
+</span><span class="doccomment">//! This module defines the error types and common types used throughout the DKG protocol.
+//! It includes error handling for various protocol operations and test utilities for
+//! polynomial operations used in the protocol.
 
 </span><span class="kw">use </span><span class="kw">crate</span>::proto::tags::Error;
 <span class="kw">use </span>sl_mpc_mate::coord::MessageSendError;
 
-<span class="attr">#[derive(Debug, thiserror::Error)]
-#[allow(missing_docs)]
-</span><span class="doccomment">/// Distributed key generation errors
+<span class="doccomment">/// Error type for distributed key generation protocol operations.
+///
+/// This enum defines all possible errors that can occur during the execution of the
+/// DKG protocol, including message handling, cryptographic operations, and protocol
+/// state management.
+</span><span class="attr">#[derive(Debug, thiserror::Error)]
 </span><span class="kw">pub enum </span>KeygenError {
-    <span class="doccomment">/// error while serializing or deserializing or invalid message data length
-    </span><span class="attr">#[error(
-        <span class="string">"Error while deserializing message or invalid message data length"
-    </span>)]
+    <span class="doccomment">/// Error while serializing or deserializing message data, or invalid message length
+    </span><span class="attr">#[error(<span class="string">"Error while deserializing message or invalid message data length"</span>)]
     </span>InvalidMessage,
 
-    <span class="doccomment">/// Invalid commitment hash
+    <span class="doccomment">/// The commitment hash provided does not match the expected value
     </span><span class="attr">#[error(<span class="string">"Invalid commitment hash"</span>)]
     </span>InvalidCommitmentHash,
 
-    <span class="attr">#[error(<span class="string">"Invalid DLog proof"</span>)]
-    </span><span class="doccomment">/// Invalid DLog proof
+    <span class="doccomment">/// The discrete logarithm proof provided is invalid
+    </span><span class="attr">#[error(<span class="string">"Invalid DLog proof"</span>)]
     </span>InvalidDLogProof,
 
-    <span class="attr">#[error(<span class="string">"Invalid Polynomial Point"</span>)]
-    </span><span class="doccomment">/// Invalid Polynomial Point
+    <span class="doccomment">/// The polynomial point provided is invalid
+    </span><span class="attr">#[error(<span class="string">"Invalid Polynomial Point"</span>)]
     </span>InvalidPolynomialPoint,
 
-    <span class="attr">#[error(<span class="string">"Invalid key refresh"</span>)]
-    </span><span class="doccomment">/// Invalid key refresh
+    <span class="doccomment">/// The key refresh operation failed
+    </span><span class="attr">#[error(<span class="string">"Invalid key refresh"</span>)]
     </span>InvalidKeyRefresh,
 
-    <span class="attr">#[error(<span class="string">"Invalid Quorum Change"</span>)]
-    </span><span class="doccomment">/// Invalid Quorum Change
+    <span class="doccomment">/// The quorum change operation failed
+    </span><span class="attr">#[error(<span class="string">"Invalid Quorum Change"</span>)]
     </span>InvalidQuorumChange,
 
-    <span class="doccomment">/// Not unique x_i values
+    <span class="doccomment">/// The x_i values provided are not unique
     </span><span class="attr">#[error(<span class="string">"Not unique x_i values"</span>)]
     </span>NotUniqueXiValues,
 
-    <span class="doccomment">/// Big F vec mismatch
+    <span class="doccomment">/// The Big F vector does not match the expected value
     </span><span class="attr">#[error(<span class="string">"Big F vec mismatch"</span>)]
     </span>BigFVecMismatch,
 
-    <span class="doccomment">/// Failed felman verify
-    </span><span class="attr">#[error(<span class="string">"Failed felman verify"</span>)]
+    <span class="doccomment">/// The Feldman verification failed
+    </span><span class="attr">#[error(<span class="string">"Failed feldman verify"</span>)]
     </span>FailedFelmanVerify,
 
-    <span class="doccomment">/// Public key mismatch between the message and the party
+    <span class="doccomment">/// The public key in the message does not match the party's public key
     </span><span class="attr">#[error(<span class="string">"Public key mismatch between the message and the party"</span>)]
     </span>PublicKeyMismatch,
 
-    <span class="doccomment">/// Big S value mismatch
+    <span class="doccomment">/// The Big S value does not match the expected value
     </span><span class="attr">#[error(<span class="string">"Big S value mismatch"</span>)]
     </span>BigSMismatch,
 
-    <span class="attr">#[error(<span class="string">"PPRF error"</span>)]
-    </span><span class="doccomment">/// PPRF error
+    <span class="doccomment">/// An error occurred in the PPRF (Pseudorandom Function) operation
+    </span><span class="attr">#[error(<span class="string">"PPRF error"</span>)]
     </span>PPRFError(<span class="kw-2">&amp;</span><span class="lifetime">'static </span>str),
 
-    <span class="doccomment">/// Missing message
+    <span class="doccomment">/// A required message is missing
     </span><span class="attr">#[error(<span class="string">"Missing message"</span>)]
     </span>MissingMessage,
 
-    <span class="doccomment">/// We can't a send message
+    <span class="doccomment">/// Failed to send a message
     </span><span class="attr">#[error(<span class="string">"Send message"</span>)]
     </span>SendMessage,
 
-    <span class="doccomment">/// Some party decided to not participate in the protocol.
+    <span class="doccomment">/// A party has decided to abort the protocol
     </span><span class="attr">#[error(<span class="string">"Abort protocol by party {0}"</span>)]
     </span>AbortProtocol(usize),
 }
@@ -271,7 +292,12 @@
     };
     <span class="kw">use </span>sl_mpc_mate::math::{GroupPolynomial, Polynomial};
 
-    <span class="attr">#[test]
+    <span class="doccomment">/// Test the derivative calculation for large values
+    ///
+    /// This test verifies that the derivative calculation works correctly with values
+    /// close to the curve order. It tests the polynomial f(x) = 1 + 2x + (p-1)x^2
+    /// where p is the curve order.
+    </span><span class="attr">#[test]
     </span><span class="kw">fn </span>test_derivative_large() {
         <span class="comment">// order of the curve
         </span><span class="kw">let </span>order = Secp256k1::ORDER;
@@ -292,13 +318,15 @@
 
         <span class="macro">assert_eq!</span>(
             result,
-            Scalar::from_uint_unchecked(
-                order.wrapping_sub(<span class="kw-2">&amp;</span>U256::from(<span class="number">2_u64</span>))
-            )
+            Scalar::from_uint_unchecked(order.wrapping_sub(<span class="kw-2">&amp;</span>U256::from(<span class="number">2_u64</span>)))
         );
     }
 
-    <span class="attr">#[test]
+    <span class="doccomment">/// Test the derivative calculation for normal values
+    ///
+    /// This test verifies that the derivative calculation works correctly with normal
+    /// polynomial coefficients. It tests the polynomial f(x) = 1 + 2x + 3x^2 + 4x^3.
+    </span><span class="attr">#[test]
     </span><span class="kw">fn </span>test_derivative_normal() {
         <span class="comment">// f(x) = 1 + 2x + 3x^2 + 4x^3
         </span><span class="kw">let </span>u_i_k = <span class="macro">vec!</span>[
@@ -318,7 +346,11 @@
         <span class="macro">assert_eq!</span>(result, Scalar::from(<span class="number">54_u64</span>));
     }
 
-    <span class="attr">#[test]
+    <span class="doccomment">/// Test the derivative coefficients calculation
+    ///
+    /// This test verifies that the derivative coefficients are calculated correctly
+    /// for both first and second derivatives of a polynomial with group elements.
+    </span><span class="attr">#[test]
     </span><span class="kw">fn </span>test_derivative_coeffs() {
         <span class="comment">// f(x) = 1 + 2x + 3x^2 + 4x^3
         </span><span class="kw">let </span>g = ProjectivePoint::GENERATOR;

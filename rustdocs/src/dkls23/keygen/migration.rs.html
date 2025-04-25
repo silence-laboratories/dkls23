@@ -158,8 +158,58 @@
 <a href="#157" id="157">157</a>
 <a href="#158" id="158">158</a>
 <a href="#159" id="159">159</a>
-<a href="#160" id="160">160</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
+<a href="#160" id="160">160</a>
+<a href="#161" id="161">161</a>
+<a href="#162" id="162">162</a>
+<a href="#163" id="163">163</a>
+<a href="#164" id="164">164</a>
+<a href="#165" id="165">165</a>
+<a href="#166" id="166">166</a>
+<a href="#167" id="167">167</a>
+<a href="#168" id="168">168</a>
+<a href="#169" id="169">169</a>
+<a href="#170" id="170">170</a>
+<a href="#171" id="171">171</a>
+<a href="#172" id="172">172</a>
+<a href="#173" id="173">173</a>
+<a href="#174" id="174">174</a>
+<a href="#175" id="175">175</a>
+<a href="#176" id="176">176</a>
+<a href="#177" id="177">177</a>
+<a href="#178" id="178">178</a>
+<a href="#179" id="179">179</a>
+<a href="#180" id="180">180</a>
+<a href="#181" id="181">181</a>
+<a href="#182" id="182">182</a>
+<a href="#183" id="183">183</a>
+<a href="#184" id="184">184</a>
+<a href="#185" id="185">185</a>
+<a href="#186" id="186">186</a>
+<a href="#187" id="187">187</a>
+<a href="#188" id="188">188</a>
+<a href="#189" id="189">189</a>
+<a href="#190" id="190">190</a>
+<a href="#191" id="191">191</a>
+<a href="#192" id="192">192</a>
+<a href="#193" id="193">193</a>
+<a href="#194" id="194">194</a>
+<a href="#195" id="195">195</a>
+<a href="#196" id="196">196</a>
+<a href="#197" id="197">197</a>
+<a href="#198" id="198">198</a>
+<a href="#199" id="199">199</a>
+<a href="#200" id="200">200</a>
+<a href="#201" id="201">201</a>
+<a href="#202" id="202">202</a>
+<a href="#203" id="203">203</a>
+<a href="#204" id="204">204</a>
+<a href="#205" id="205">205</a>
+<a href="#206" id="206">206</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
+
+</span><span class="doccomment">//! This module provides functionality for migrating existing key shares from the other threshold ECDSA protocols
+//! such as GG** to the DKLS23 protocol format. The migration process preserves the cryptographic properties
+//! of the original key shares while updating them to the new protocol format.
 
 </span><span class="kw">use </span><span class="kw">crate</span>::keygen::{KeyRefreshData, KeygenError, Keyshare};
 <span class="kw">use </span><span class="kw">crate</span>::proto::{create_abort_message, FilteredMsgRelay};
@@ -168,7 +218,39 @@
 <span class="kw">use </span>futures_util::SinkExt;
 <span class="kw">use </span>k256::{ProjectivePoint, Scalar};
 <span class="kw">use </span>sl_mpc_mate::coord::Relay;
-<span class="doccomment">/// Migrate from GG20 shares to DKLS23 shares. Same logic as Keyrefresh but with hardcoded s_i_0
+
+<span class="doccomment">/// Migrates key shares from other ECDSA threshold protocols to DKLS23 format.
+///
+/// This function performs the migration of existing key shares to the DKLS23 protocol.
+/// It uses the same underlying logic as the key refresh process but with a hardcoded initial secret
+/// share value. The migration preserves the original public key and chain code while updating the
+/// internal representation to the new protocol format.
+///
+/// # Type Parameters
+///
+/// * `R` - A type implementing the `Relay` trait for message communication
+/// * `S` - A type implementing the `KeygenSetupMessage` trait for protocol setup
+///
+/// # Arguments
+///
+/// * `setup` - The protocol setup configuration
+/// * `seed` - The random seed for key generation
+/// * `relay` - The message relay for communication between parties
+/// * `s_i_0` - The initial additive secret share value from the existing protocol
+/// * `public_key` - The public key to be preserved during migration
+/// * `root_chain_code` - The root chain code to be preserved during migration
+///
+/// # Returns
+///
+/// * `Ok(Keyshare)` - The migrated key share in DKLS23 format
+/// * `Err(KeygenError)` - If the migration process fails
+///
+/// # Errors
+///
+/// This function may return the following errors:
+/// * `KeygenError::AbortProtocol` - If the protocol is aborted by a participant
+/// * `KeygenError::SendMessage` - If there's an error sending messages
+/// * Other `KeygenError` variants for various protocol failures
 </span><span class="kw">pub async fn </span>run&lt;R, S&gt;(
     setup: S,
     seed: Seed,
@@ -193,19 +275,14 @@
     </span>};
 
     <span class="kw">let </span>result: <span class="prelude-ty">Result</span>&lt;Keyshare, KeygenError&gt; =
-        keygen::run_inner(setup, seed, <span class="kw-2">&amp;mut </span>relay, <span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span>key_refresh_data))
-            .<span class="kw">await</span>;
+        keygen::run_inner(setup, seed, <span class="kw-2">&amp;mut </span>relay, <span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span>key_refresh_data)).<span class="kw">await</span>;
 
     <span class="kw">let </span>new_keyshare = <span class="kw">match </span>result {
         <span class="prelude-val">Ok</span>(eph_keyshare) =&gt; eph_keyshare,
 
-        <span class="prelude-val">Err</span>(KeygenError::AbortProtocol(p)) =&gt; {
-            <span class="kw">return </span><span class="prelude-val">Err</span>(KeygenError::AbortProtocol(p))
-        }
+        <span class="prelude-val">Err</span>(KeygenError::AbortProtocol(p)) =&gt; <span class="kw">return </span><span class="prelude-val">Err</span>(KeygenError::AbortProtocol(p)),
 
-        <span class="prelude-val">Err</span>(KeygenError::SendMessage) =&gt; {
-            <span class="kw">return </span><span class="prelude-val">Err</span>(KeygenError::SendMessage)
-        }
+        <span class="prelude-val">Err</span>(KeygenError::SendMessage) =&gt; <span class="kw">return </span><span class="prelude-val">Err</span>(KeygenError::SendMessage),
 
         <span class="prelude-val">Err</span>(err_message) =&gt; {
             <span class="attr">#[cfg(feature = <span class="string">"tracing"</span>)]
@@ -240,16 +317,32 @@
 
         <span class="kw">let </span><span class="kw-2">mut </span>parties = JoinSet::new();
 
-        <span class="kw">let </span>binding = hex::decode(<span class="string">"02eba32793892022121314aed023df242292d313cb657f6f69016d90b6cfc92d33"</span>.as_bytes()).unwrap();
-        <span class="kw">let </span>public_key = ProjectivePoint::from_bytes(
-            CompressedPoint::from_slice(<span class="kw-2">&amp;</span>binding),
-        );
+        <span class="kw">let </span>binding = hex::decode(
+            <span class="string">"02eba32793892022121314aed023df242292d313cb657f6f69016d90b6cfc92d33"</span>.as_bytes(),
+        )
+        .unwrap();
+        <span class="kw">let </span>public_key = ProjectivePoint::from_bytes(CompressedPoint::from_slice(<span class="kw-2">&amp;</span>binding));
 
         <span class="kw">let </span><span class="kw-2">mut </span>s_i_0 = VecDeque::new();
 
-        s_i_0.push_back(NonZeroScalar::from_uint(U256::from_be_hex(<span class="string">"3B6661CC3A28C174AF9D0FDD966E9F9D9D2A96682A504E1E9165D700BDC47809"</span>)).unwrap());
-        s_i_0.push_back(NonZeroScalar::from_uint(U256::from_be_hex(<span class="string">"3361D26EBB452DDA716E38F20405B42E3ABDC890CAEE1150AB0D019D45091DC4"</span>)).unwrap());
-        s_i_0.push_back(NonZeroScalar::from_uint(U256::from_be_hex(<span class="string">"71FDD4E9358DB270FA0EF15F4D72A6267B012781D154D2A380ECFCA86E85BEA2"</span>)).unwrap());
+        s_i_0.push_back(
+            NonZeroScalar::from_uint(U256::from_be_hex(
+                <span class="string">"3B6661CC3A28C174AF9D0FDD966E9F9D9D2A96682A504E1E9165D700BDC47809"</span>,
+            ))
+            .unwrap(),
+        );
+        s_i_0.push_back(
+            NonZeroScalar::from_uint(U256::from_be_hex(
+                <span class="string">"3361D26EBB452DDA716E38F20405B42E3ABDC890CAEE1150AB0D019D45091DC4"</span>,
+            ))
+            .unwrap(),
+        );
+        s_i_0.push_back(
+            NonZeroScalar::from_uint(U256::from_be_hex(
+                <span class="string">"71FDD4E9358DB270FA0EF15F4D72A6267B012781D154D2A380ECFCA86E85BEA2"</span>,
+            ))
+            .unwrap(),
+        );
 
         <span class="kw">let </span>sk = s_i_0.iter().fold(Scalar::ZERO, |sum, val| sum.add(val));
         <span class="kw">let </span>pub_key = ProjectivePoint::mul_by_generator(<span class="kw-2">&amp;</span>sk);
@@ -263,8 +356,7 @@
                 .collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;()
                 .join(<span class="string">"."</span>)
         );
-        <span class="kw">let </span>root_chain_code = <span class="string">"253453627f65463253453627f6546321"</span>.as_bytes()
-            [<span class="number">0</span>..<span class="number">32</span>]
+        <span class="kw">let </span>root_chain_code = <span class="string">"253453627f65463253453627f6546321"</span>.as_bytes()[<span class="number">0</span>..<span class="number">32</span>]
             .try_into()
             .unwrap();
 

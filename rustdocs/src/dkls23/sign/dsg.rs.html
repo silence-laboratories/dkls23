@@ -1010,19 +1010,198 @@
 <a href="#1009" id="1009">1009</a>
 <a href="#1010" id="1010">1010</a>
 <a href="#1011" id="1011">1011</a>
-<a href="#1012" id="1012">1012</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
+<a href="#1012" id="1012">1012</a>
+<a href="#1013" id="1013">1013</a>
+<a href="#1014" id="1014">1014</a>
+<a href="#1015" id="1015">1015</a>
+<a href="#1016" id="1016">1016</a>
+<a href="#1017" id="1017">1017</a>
+<a href="#1018" id="1018">1018</a>
+<a href="#1019" id="1019">1019</a>
+<a href="#1020" id="1020">1020</a>
+<a href="#1021" id="1021">1021</a>
+<a href="#1022" id="1022">1022</a>
+<a href="#1023" id="1023">1023</a>
+<a href="#1024" id="1024">1024</a>
+<a href="#1025" id="1025">1025</a>
+<a href="#1026" id="1026">1026</a>
+<a href="#1027" id="1027">1027</a>
+<a href="#1028" id="1028">1028</a>
+<a href="#1029" id="1029">1029</a>
+<a href="#1030" id="1030">1030</a>
+<a href="#1031" id="1031">1031</a>
+<a href="#1032" id="1032">1032</a>
+<a href="#1033" id="1033">1033</a>
+<a href="#1034" id="1034">1034</a>
+<a href="#1035" id="1035">1035</a>
+<a href="#1036" id="1036">1036</a>
+<a href="#1037" id="1037">1037</a>
+<a href="#1038" id="1038">1038</a>
+<a href="#1039" id="1039">1039</a>
+<a href="#1040" id="1040">1040</a>
+<a href="#1041" id="1041">1041</a>
+<a href="#1042" id="1042">1042</a>
+<a href="#1043" id="1043">1043</a>
+<a href="#1044" id="1044">1044</a>
+<a href="#1045" id="1045">1045</a>
+<a href="#1046" id="1046">1046</a>
+<a href="#1047" id="1047">1047</a>
+<a href="#1048" id="1048">1048</a>
+<a href="#1049" id="1049">1049</a>
+<a href="#1050" id="1050">1050</a>
+<a href="#1051" id="1051">1051</a>
+<a href="#1052" id="1052">1052</a>
+<a href="#1053" id="1053">1053</a>
+<a href="#1054" id="1054">1054</a>
+<a href="#1055" id="1055">1055</a>
+<a href="#1056" id="1056">1056</a>
+<a href="#1057" id="1057">1057</a>
+<a href="#1058" id="1058">1058</a>
+<a href="#1059" id="1059">1059</a>
+<a href="#1060" id="1060">1060</a>
+<a href="#1061" id="1061">1061</a>
+<a href="#1062" id="1062">1062</a>
+<a href="#1063" id="1063">1063</a>
+<a href="#1064" id="1064">1064</a>
+<a href="#1065" id="1065">1065</a>
+<a href="#1066" id="1066">1066</a>
+<a href="#1067" id="1067">1067</a>
+<a href="#1068" id="1068">1068</a>
+<a href="#1069" id="1069">1069</a>
+<a href="#1070" id="1070">1070</a>
+<a href="#1071" id="1071">1071</a>
+<a href="#1072" id="1072">1072</a>
+<a href="#1073" id="1073">1073</a>
+<a href="#1074" id="1074">1074</a>
+<a href="#1075" id="1075">1075</a>
+<a href="#1076" id="1076">1076</a>
+<a href="#1077" id="1077">1077</a>
+<a href="#1078" id="1078">1078</a>
+<a href="#1079" id="1079">1079</a>
+<a href="#1080" id="1080">1080</a>
+<a href="#1081" id="1081">1081</a>
+<a href="#1082" id="1082">1082</a>
+<a href="#1083" id="1083">1083</a>
+<a href="#1084" id="1084">1084</a>
+<a href="#1085" id="1085">1085</a>
+<a href="#1086" id="1086">1086</a>
+<a href="#1087" id="1087">1087</a>
+<a href="#1088" id="1088">1088</a>
+<a href="#1089" id="1089">1089</a>
+<a href="#1090" id="1090">1090</a>
+<a href="#1091" id="1091">1091</a>
+<a href="#1092" id="1092">1092</a>
+<a href="#1093" id="1093">1093</a>
+<a href="#1094" id="1094">1094</a>
+<a href="#1095" id="1095">1095</a>
+<a href="#1096" id="1096">1096</a>
+<a href="#1097" id="1097">1097</a>
+<a href="#1098" id="1098">1098</a>
+<a href="#1099" id="1099">1099</a>
+<a href="#1100" id="1100">1100</a>
+<a href="#1101" id="1101">1101</a>
+<a href="#1102" id="1102">1102</a>
+<a href="#1103" id="1103">1103</a>
+<a href="#1104" id="1104">1104</a>
+<a href="#1105" id="1105">1105</a>
+<a href="#1106" id="1106">1106</a>
+<a href="#1107" id="1107">1107</a>
+<a href="#1108" id="1108">1108</a>
+<a href="#1109" id="1109">1109</a>
+<a href="#1110" id="1110">1110</a>
+<a href="#1111" id="1111">1111</a>
+<a href="#1112" id="1112">1112</a>
+<a href="#1113" id="1113">1113</a>
+<a href="#1114" id="1114">1114</a>
+<a href="#1115" id="1115">1115</a>
+<a href="#1116" id="1116">1116</a>
+<a href="#1117" id="1117">1117</a>
+<a href="#1118" id="1118">1118</a>
+<a href="#1119" id="1119">1119</a>
+<a href="#1120" id="1120">1120</a>
+<a href="#1121" id="1121">1121</a>
+<a href="#1122" id="1122">1122</a>
+<a href="#1123" id="1123">1123</a>
+<a href="#1124" id="1124">1124</a>
+<a href="#1125" id="1125">1125</a>
+<a href="#1126" id="1126">1126</a>
+<a href="#1127" id="1127">1127</a>
+<a href="#1128" id="1128">1128</a>
+<a href="#1129" id="1129">1129</a>
+<a href="#1130" id="1130">1130</a>
+<a href="#1131" id="1131">1131</a>
+<a href="#1132" id="1132">1132</a>
+<a href="#1133" id="1133">1133</a>
+<a href="#1134" id="1134">1134</a>
+<a href="#1135" id="1135">1135</a>
+<a href="#1136" id="1136">1136</a>
+<a href="#1137" id="1137">1137</a>
+<a href="#1138" id="1138">1138</a>
+<a href="#1139" id="1139">1139</a>
+<a href="#1140" id="1140">1140</a>
+<a href="#1141" id="1141">1141</a>
+<a href="#1142" id="1142">1142</a>
+<a href="#1143" id="1143">1143</a>
+<a href="#1144" id="1144">1144</a>
+<a href="#1145" id="1145">1145</a>
+<a href="#1146" id="1146">1146</a>
+<a href="#1147" id="1147">1147</a>
+<a href="#1148" id="1148">1148</a>
+<a href="#1149" id="1149">1149</a>
+<a href="#1150" id="1150">1150</a>
+<a href="#1151" id="1151">1151</a>
+<a href="#1152" id="1152">1152</a>
+<a href="#1153" id="1153">1153</a>
+<a href="#1154" id="1154">1154</a>
+<a href="#1155" id="1155">1155</a>
+<a href="#1156" id="1156">1156</a>
+<a href="#1157" id="1157">1157</a>
+<a href="#1158" id="1158">1158</a>
+<a href="#1159" id="1159">1159</a>
+<a href="#1160" id="1160">1160</a>
+<a href="#1161" id="1161">1161</a>
+<a href="#1162" id="1162">1162</a>
+<a href="#1163" id="1163">1163</a>
+<a href="#1164" id="1164">1164</a>
+<a href="#1165" id="1165">1165</a>
+<a href="#1166" id="1166">1166</a>
+<a href="#1167" id="1167">1167</a>
+<a href="#1168" id="1168">1168</a>
+<a href="#1169" id="1169">1169</a>
+<a href="#1170" id="1170">1170</a>
+<a href="#1171" id="1171">1171</a>
+<a href="#1172" id="1172">1172</a>
+<a href="#1173" id="1173">1173</a>
+<a href="#1174" id="1174">1174</a>
+<a href="#1175" id="1175">1175</a>
+<a href="#1176" id="1176">1176</a>
+<a href="#1177" id="1177">1177</a>
+<a href="#1178" id="1178">1178</a>
+<a href="#1179" id="1179">1179</a>
+<a href="#1180" id="1180">1180</a>
+<a href="#1181" id="1181">1181</a>
+<a href="#1182" id="1182">1182</a>
+<a href="#1183" id="1183">1183</a>
+<a href="#1184" id="1184">1184</a>
+<a href="#1185" id="1185">1185</a>
+<a href="#1186" id="1186">1186</a>
+<a href="#1187" id="1187">1187</a>
+<a href="#1188" id="1188">1188</a>
+<a href="#1189" id="1189">1189</a>
+<a href="#1190" id="1190">1190</a>
+<a href="#1191" id="1191">1191</a>
+<a href="#1192" id="1192">1192</a>
+<a href="#1193" id="1193">1193</a>
+<a href="#1194" id="1194">1194</a>
+<a href="#1195" id="1195">1195</a>
+<a href="#1196" id="1196">1196</a>
+<a href="#1197" id="1197">1197</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
-
-</span><span class="doccomment">//! Distributed sign generation protocol.
-//! Based on &lt;https://eprint.iacr.org/2023/765.pdf&gt;
 
 </span><span class="kw">use </span>std::collections::HashMap;
 
 <span class="kw">use </span>k256::{
-    ecdsa::{
-        signature::hazmat::PrehashVerifier, RecoveryId, Signature,
-        VerifyingKey,
-    },
+    ecdsa::{signature::hazmat::PrehashVerifier, RecoveryId, Signature, VerifyingKey},
     elliptic_curve::{
         group::GroupEncoding,
         ops::Reduce,
@@ -1044,12 +1223,10 @@
 
 <span class="kw">use crate</span>::{
     keygen::Keyshare,
-    proto::{
-        create_abort_message, tags::<span class="kw-2">*</span>, EncryptedMessage, SignedMessage, <span class="kw-2">*</span>,
-    },
+    proto::{create_abort_message, tags::<span class="kw-2">*</span>, EncryptedMessage, SignedMessage, <span class="kw-2">*</span>},
     setup::{
-        FinalSignSetupMessage, PreSignSetupMessage, ProtocolParticipant,
-        SignSetupMessage, ABORT_MESSAGE_TAG,
+        FinalSignSetupMessage, PreSignSetupMessage, ProtocolParticipant, SignSetupMessage,
+        ABORT_MESSAGE_TAG,
     },
     sign::constants::<span class="kw-2">*</span>,
     sign::messages::<span class="kw-2">*</span>,
@@ -1060,7 +1237,29 @@
 
 <span class="kw">use </span><span class="kw">crate</span>::pairs::Pairs;
 
-<span class="kw">async fn </span>pre_signature_inner&lt;R: Relay, S: PreSignSetupMessage&gt;(
+<span class="doccomment">/// Inner function for the pre-signature phase of the DSG protocol
+///
+/// This function implements the core logic of the pre-signature phase,
+/// where parties generate a pre-signature that can be used to sign any
+/// message later.
+///
+/// # Type Parameters
+///
+/// * `R`: Type implementing the `Relay` trait for message communication
+/// * `S`: Type implementing the `PreSignSetupMessage` trait for setup parameters
+///
+/// # Arguments
+///
+/// * `setup`: Setup parameters for the protocol
+/// * `seed`: Random seed for generating random values
+/// * `relay`: Message relay for communication between parties
+///
+/// # Returns
+///
+/// A `Result` containing either:
+/// * `Ok(PreSign)`: The pre-signature result
+/// * `Err(SignError)`: An error if the protocol fails
+</span><span class="kw">async fn </span>pre_signature_inner&lt;R: Relay, S: PreSignSetupMessage&gt;(
     setup: <span class="kw-2">&amp;</span>S,
     seed: Seed,
     relay: <span class="kw-2">&amp;mut </span>FilteredMsgRelay&lt;R&gt;,
@@ -1085,15 +1284,11 @@
     <span class="kw">let </span>big_r_i = ProjectivePoint::GENERATOR * r_i;
 
     <span class="comment">// TODO: Replace with SmallVec 2?
-    </span><span class="kw">let </span><span class="kw-2">mut </span>commitments =
-        <span class="macro">vec!</span>[([<span class="number">0</span>; <span class="number">32</span>], [<span class="number">0</span>; <span class="number">32</span>]); setup.total_participants()];
+    </span><span class="kw">let </span><span class="kw-2">mut </span>commitments = <span class="macro">vec!</span>[([<span class="number">0</span>; <span class="number">32</span>], [<span class="number">0</span>; <span class="number">32</span>]); setup.total_participants()];
 
     commitments[my_party_idx].<span class="number">0 </span>= rng.gen(); <span class="comment">// generate SessionId
-    </span>commitments[my_party_idx].<span class="number">1 </span>= hash_commitment_r_i(
-        <span class="kw-2">&amp;</span>commitments[my_party_idx].<span class="number">0</span>,
-        <span class="kw-2">&amp;</span>big_r_i,
-        <span class="kw-2">&amp;</span>blind_factor,
-    );
+    </span>commitments[my_party_idx].<span class="number">1 </span>=
+        hash_commitment_r_i(<span class="kw-2">&amp;</span>commitments[my_party_idx].<span class="number">0</span>, <span class="kw-2">&amp;</span>big_r_i, <span class="kw-2">&amp;</span>blind_factor);
 
     relay
         .send(SignedMessage::build(
@@ -1182,11 +1377,9 @@
             .map(|party_idx| {
                 <span class="kw">let </span>sender_id = find_party_id(party_idx);
 
-                <span class="kw">let </span>sid =
-                    mta_session_id(<span class="kw-2">&amp;</span>final_session_id, sender_id, my_party_id);
+                <span class="kw">let </span>sid = mta_session_id(<span class="kw-2">&amp;</span>final_session_id, sender_id, my_party_id);
 
-                <span class="kw">let </span>sender_ot_results =
-                    setup.keyshare().sender_seed(sender_id);
+                <span class="kw">let </span>sender_ot_results = setup.keyshare().sender_seed(sender_id);
 
                 <span class="kw">let </span><span class="kw-2">mut </span>enc_msg = EncryptedMessage::&lt;SignMsg2&gt;::new(
                     <span class="kw-2">&amp;</span>setup.msg_id(<span class="prelude-val">Some</span>(party_idx), DSG_MSG_R2),
@@ -1199,12 +1392,8 @@
                 <span class="kw">let </span>(msg2, <span class="kw">_</span>) = enc_msg.payload(<span class="kw-2">&amp;</span>scheme);
                 msg2.final_session_id = final_session_id;
 
-                <span class="kw">let </span>(mta_receiver, chi_i_j) = RVOLEReceiver::new(
-                    sid,
-                    sender_ot_results,
-                    <span class="kw-2">&amp;mut </span>msg2.mta_msg1,
-                    <span class="kw-2">&amp;mut </span>rng,
-                );
+                <span class="kw">let </span>(mta_receiver, chi_i_j) =
+                    RVOLEReceiver::new(sid, sender_ot_results, <span class="kw-2">&amp;mut </span>msg2.mta_msg1, <span class="kw-2">&amp;mut </span>rng);
 
                 to_send.push(
                     enc_msg
@@ -1223,14 +1412,12 @@
 
     relay.flush().<span class="kw">await</span><span class="question-mark">?</span>;
 
-    <span class="kw">let </span>zeta_i =
-        get_zeta_i(setup.keyshare(), <span class="kw-2">&amp;</span>party_idx_to_id_map, <span class="kw-2">&amp;</span>digest_i);
+    <span class="kw">let </span>zeta_i = get_zeta_i(setup.keyshare(), <span class="kw-2">&amp;</span>party_idx_to_id_map, <span class="kw-2">&amp;</span>digest_i);
 
     <span class="kw">let </span>coeff = <span class="kw">if </span>setup.keyshare().zero_ranks() {
         get_lagrange_coeff(setup.keyshare(), <span class="kw-2">&amp;</span>party_idx_to_id_map)
     } <span class="kw">else </span>{
-        <span class="kw">let </span>betta_coeffs =
-            get_birkhoff_coefficients(setup.keyshare(), <span class="kw-2">&amp;</span>party_idx_to_id_map);
+        <span class="kw">let </span>betta_coeffs = get_birkhoff_coefficients(setup.keyshare(), <span class="kw-2">&amp;</span>party_idx_to_id_map);
 
         <span class="kw-2">*</span>betta_coeffs
             .get(<span class="kw-2">&amp;</span>(my_party_id <span class="kw">as </span>usize))
@@ -1251,8 +1438,7 @@
 
     <span class="kw">let </span><span class="kw-2">mut </span>sender_additive_shares = <span class="macro">vec!</span>[];
 
-    <span class="kw">let </span><span class="kw-2">mut </span>round =
-        Round::new(setup.total_participants() - <span class="number">1</span>, DSG_MSG_R2, relay);
+    <span class="kw">let </span><span class="kw-2">mut </span>round = Round::new(setup.total_participants() - <span class="number">1</span>, DSG_MSG_R2, relay);
 
     <span class="kw">while let </span><span class="prelude-val">Some</span>((msg, party_idx, is_abort)) = round.recv().<span class="kw">await</span><span class="question-mark">? </span>{
         <span class="kw">if </span>is_abort {
@@ -1262,9 +1448,7 @@
         }
 
         <span class="kw">let </span><span class="kw-2">mut </span>msg = Zeroizing::new(msg);
-        <span class="kw">let </span>msg2 = <span class="kw">match </span>EncryptedMessage::&lt;SignMsg2&gt;::decrypt(
-            <span class="kw-2">&amp;mut </span>msg, <span class="number">0</span>, <span class="kw-2">&amp;</span>scheme, party_idx,
-        ) {
+        <span class="kw">let </span>msg2 = <span class="kw">match </span>EncryptedMessage::&lt;SignMsg2&gt;::decrypt(<span class="kw-2">&amp;mut </span>msg, <span class="number">0</span>, <span class="kw-2">&amp;</span>scheme, party_idx) {
             <span class="prelude-val">Some</span>((refs, <span class="kw">_</span>)) =&gt; refs,
             <span class="kw">_ </span>=&gt; {
                 round.put_back(<span class="kw-2">&amp;</span>msg, DSG_MSG_R2, party_idx);
@@ -1336,8 +1520,7 @@
 
     <span class="kw">let </span><span class="kw-2">mut </span>receiver_additive_shares = <span class="macro">vec!</span>[];
 
-    <span class="kw">let </span><span class="kw-2">mut </span>round =
-        Round::new(setup.total_participants() - <span class="number">1</span>, DSG_MSG_R3, relay);
+    <span class="kw">let </span><span class="kw-2">mut </span>round = Round::new(setup.total_participants() - <span class="number">1</span>, DSG_MSG_R3, relay);
 
     <span class="kw">while let </span><span class="prelude-val">Some</span>((msg, party_idx, is_abort)) = round.recv().<span class="kw">await</span><span class="question-mark">? </span>{
         <span class="kw">if </span>is_abort {
@@ -1347,9 +1530,7 @@
         }
 
         <span class="kw">let </span><span class="kw-2">mut </span>msg = Zeroizing::new(msg);
-        <span class="kw">let </span>msg3 = <span class="kw">match </span>EncryptedMessage::&lt;SignMsg3&gt;::decrypt(
-            <span class="kw-2">&amp;mut </span>msg, <span class="number">0</span>, <span class="kw-2">&amp;</span>scheme, party_idx,
-        ) {
+        <span class="kw">let </span>msg3 = <span class="kw">match </span>EncryptedMessage::&lt;SignMsg3&gt;::decrypt(<span class="kw-2">&amp;mut </span>msg, <span class="number">0</span>, <span class="kw-2">&amp;</span>scheme, party_idx) {
             <span class="prelude-val">Some</span>((refs, <span class="kw">_</span>)) =&gt; refs,
             <span class="kw">_ </span>=&gt; {
                 round.put_back(<span class="kw-2">&amp;</span>msg, DSG_MSG_R3, party_idx);
@@ -1364,22 +1545,15 @@
 
         <span class="kw">let </span>(mta_receiver, chi_i_j) = mta_receivers.pop_pair(party_idx);
 
-        <span class="kw">let </span>[d_u, d_v] =
-            mta_receiver.process(<span class="kw-2">&amp;</span>msg3.mta_msg2).map_err(|<span class="kw">_</span>| {
-                SignError::AbortProtocolAndBanParty(party_idx <span class="kw">as </span>u8)
-            })<span class="question-mark">?</span>;
+        <span class="kw">let </span>[d_u, d_v] = mta_receiver
+            .process(<span class="kw-2">&amp;</span>msg3.mta_msg2)
+            .map_err(|<span class="kw">_</span>| SignError::AbortProtocolAndBanParty(party_idx <span class="kw">as </span>u8))<span class="question-mark">?</span>;
 
         <span class="kw">let </span>(sid_i, commitment) = <span class="kw-2">&amp;</span>commitments[party_idx];
 
-        <span class="kw">let </span>big_r_j =
-            decode_point(<span class="kw-2">&amp;</span>msg3.big_r_i).ok_or(SignError::InvalidMessage)<span class="question-mark">?</span>;
+        <span class="kw">let </span>big_r_j = decode_point(<span class="kw-2">&amp;</span>msg3.big_r_i).ok_or(SignError::InvalidMessage)<span class="question-mark">?</span>;
 
-        <span class="kw">if </span>!verify_commitment_r_i(
-            sid_i,
-            <span class="kw-2">&amp;</span>big_r_j,
-            <span class="kw-2">&amp;</span>msg3.blind_factor,
-            commitment,
-        ) {
+        <span class="kw">if </span>!verify_commitment_r_i(sid_i, <span class="kw-2">&amp;</span>big_r_j, <span class="kw-2">&amp;</span>msg3.blind_factor, commitment) {
             <span class="kw">return </span><span class="prelude-val">Err</span>(SignError::InvalidCommitment);
         }
 
@@ -1387,26 +1561,22 @@
             <span class="kw">return </span><span class="prelude-val">Err</span>(SignError::InvalidDigest);
         }
 
-        <span class="kw">let </span>pk_j =
-            decode_point(<span class="kw-2">&amp;</span>msg3.pk_i).ok_or(SignError::InvalidMessage)<span class="question-mark">?</span>;
+        <span class="kw">let </span>pk_j = decode_point(<span class="kw-2">&amp;</span>msg3.pk_i).ok_or(SignError::InvalidMessage)<span class="question-mark">?</span>;
 
         big_r_star += big_r_j;
         sum_pk_j += pk_j;
-        sum_psi_j_i +=
-            decode_scalar(<span class="kw-2">&amp;</span>msg3.psi).ok_or(SignError::InvalidMessage)<span class="question-mark">?</span>;
+        sum_psi_j_i += decode_scalar(<span class="kw-2">&amp;</span>msg3.psi).ok_or(SignError::InvalidMessage)<span class="question-mark">?</span>;
 
         <span class="kw">let </span>cond1 = (big_r_j * chi_i_j)
             == (ProjectivePoint::GENERATOR * d_u
-                + decode_point(<span class="kw-2">&amp;</span>msg3.gamma_u)
-                    .ok_or(SignError::InvalidMessage)<span class="question-mark">?</span>);
+                + decode_point(<span class="kw-2">&amp;</span>msg3.gamma_u).ok_or(SignError::InvalidMessage)<span class="question-mark">?</span>);
         <span class="kw">if </span>!cond1 {
             <span class="kw">return </span><span class="prelude-val">Err</span>(SignError::AbortProtocolAndBanParty(party_idx <span class="kw">as </span>u8));
         }
 
         <span class="kw">let </span>cond2 = (pk_j * chi_i_j)
             == (ProjectivePoint::GENERATOR * d_v
-                + decode_point(<span class="kw-2">&amp;</span>msg3.gamma_v)
-                    .ok_or(SignError::InvalidMessage)<span class="question-mark">?</span>);
+                + decode_point(<span class="kw-2">&amp;</span>msg3.gamma_v).ok_or(SignError::InvalidMessage)<span class="question-mark">?</span>);
         <span class="kw">if </span>!cond2 {
             <span class="kw">return </span><span class="prelude-val">Err</span>(SignError::AbortProtocolAndBanParty(party_idx <span class="kw">as </span>u8));
         }
@@ -1452,29 +1622,39 @@
     <span class="prelude-val">Ok</span>(pre_sign_result)
 }
 
-<span class="comment">// Locally create a partial signature from pre-signature and msg_hash
+<span class="doccomment">/// Creates a partial signature from a pre-signature result
+///
+/// This function takes a pre-signature result and a message hash,
+/// and creates a partial signature that can be combined with other
+/// partial signatures to form the final signature.
+///
+/// # Arguments
+///
+/// * `pre_sign_result`: The pre-signature result from the pre-signature phase
+/// * `message_hash`: The hash of the message to be signed
+///
+/// # Returns
+///
+/// A `Result` containing either:
+/// * `Ok(PartialSignature)`: The partial signature
+/// * `Err(SignError)`: An error if the partial signature cannot be created
 </span><span class="kw">fn </span>create_partial_signature(
     pre_sign_result: <span class="kw-2">&amp;</span>PreSign,
     message_hash: [u8; <span class="number">32</span>],
 ) -&gt; <span class="prelude-ty">Result</span>&lt;PartialSignature, SignError&gt; {
     <span class="kw">let </span>m = Scalar::reduce(U256::from_be_slice(<span class="kw-2">&amp;</span>message_hash));
 
-    <span class="kw">let </span>phi_i = decode_scalar(<span class="kw-2">&amp;</span>pre_sign_result.phi_i)
-        .ok_or(SignError::InvalidPreSign)<span class="question-mark">?</span>;
+    <span class="kw">let </span>phi_i = decode_scalar(<span class="kw-2">&amp;</span>pre_sign_result.phi_i).ok_or(SignError::InvalidPreSign)<span class="question-mark">?</span>;
 
-    <span class="kw">let </span>s_0 = decode_scalar(<span class="kw-2">&amp;</span>pre_sign_result.s_0)
-        .ok_or(SignError::InvalidPreSign)<span class="question-mark">?</span>;
+    <span class="kw">let </span>s_0 = decode_scalar(<span class="kw-2">&amp;</span>pre_sign_result.s_0).ok_or(SignError::InvalidPreSign)<span class="question-mark">?</span>;
 
     <span class="kw">let </span>s_0 = m * phi_i + s_0;
 
-    <span class="kw">let </span>s_1 = decode_scalar(<span class="kw-2">&amp;</span>pre_sign_result.s_1)
-        .ok_or(SignError::InvalidPreSign)<span class="question-mark">?</span>;
+    <span class="kw">let </span>s_1 = decode_scalar(<span class="kw-2">&amp;</span>pre_sign_result.s_1).ok_or(SignError::InvalidPreSign)<span class="question-mark">?</span>;
 
-    <span class="kw">let </span>r =
-        decode_point(<span class="kw-2">&amp;</span>pre_sign_result.r).ok_or(SignError::InvalidPreSign)<span class="question-mark">?</span>;
+    <span class="kw">let </span>r = decode_point(<span class="kw-2">&amp;</span>pre_sign_result.r).ok_or(SignError::InvalidPreSign)<span class="question-mark">?</span>;
 
-    <span class="kw">let </span>public_key = decode_point(<span class="kw-2">&amp;</span>pre_sign_result.public_key)
-        .ok_or(SignError::InvalidPreSign)<span class="question-mark">?</span>;
+    <span class="kw">let </span>public_key = decode_point(<span class="kw-2">&amp;</span>pre_sign_result.public_key).ok_or(SignError::InvalidPreSign)<span class="question-mark">?</span>;
 
     <span class="prelude-val">Ok</span>(PartialSignature {
         final_session_id: pre_sign_result.final_session_id,
@@ -1486,7 +1666,20 @@
     })
 }
 
-<span class="comment">// Locally combine list of t partial signatures into a final signature
+<span class="doccomment">/// Combines partial signatures into a final signature
+///
+/// This function takes a collection of partial signatures and combines
+/// them to produce the final ECDSA signature and recovery ID.
+///
+/// # Arguments
+///
+/// * `partial_signatures`: A slice of partial signatures to combine
+///
+/// # Returns
+///
+/// A `Result` containing either:
+/// * `Ok((Signature, RecoveryId))`: The final signature and recovery ID
+/// * `Err(SignError)`: An error if the signatures cannot be combined
 </span><span class="kw">fn </span>combine_partial_signature(
     partial_signatures: <span class="kw-2">&amp;</span>[PartialSignature],
 ) -&gt; <span class="prelude-ty">Result</span>&lt;(Signature, RecoveryId), SignError&gt; {
@@ -1508,9 +1701,7 @@
     }
 
     <span class="kw">if </span>check.into() {
-        <span class="kw">return </span><span class="prelude-val">Err</span>(SignError::FailedCheck(
-            <span class="string">"Invalid list of partial signatures"</span>,
-        ));
+        <span class="kw">return </span><span class="prelude-val">Err</span>(SignError::FailedCheck(<span class="string">"Invalid list of partial signatures"</span>));
     }
 
     <span class="kw">let </span>r = p0.r.to_affine();
@@ -1536,7 +1727,27 @@
     <span class="prelude-val">Ok</span>((sign, recid))
 }
 
-<span class="doccomment">/// Execute DSG protocol.
+<span class="doccomment">/// Main entry point for the DSG protocol
+///
+/// This function executes the complete DSG protocol, including both
+/// the pre-signature and finish phases.
+///
+/// # Type Parameters
+///
+/// * `R`: Type implementing the `Relay` trait for message communication
+/// * `S`: Type implementing the `SignSetupMessage` trait for setup parameters
+///
+/// # Arguments
+///
+/// * `setup`: Setup parameters for the protocol
+/// * `seed`: Random seed for generating random values
+/// * `relay`: Message relay for communication between parties
+///
+/// # Returns
+///
+/// A `Result` containing either:
+/// * `Ok((Signature, RecoveryId))`: The final signature and recovery ID
+/// * `Err(SignError)`: An error if the protocol fails
 </span><span class="kw">pub async fn </span>run&lt;R: Relay, S: SignSetupMessage&gt;(
     setup: S,
     seed: Seed,
@@ -1567,22 +1778,62 @@
     result
 }
 
-<span class="kw">async fn </span>run_inner&lt;R: Relay, S: SignSetupMessage&gt;(
+<span class="doccomment">/// Inner function for the main DSG protocol execution
+///
+/// This function implements the core logic of the DSG protocol,
+/// handling both the pre-signature and finish phases.
+///
+/// # Type Parameters
+///
+/// * `R`: Type implementing the `Relay` trait for message communication
+/// * `S`: Type implementing the `SignSetupMessage` trait for setup parameters
+///
+/// # Arguments
+///
+/// * `setup`: Setup parameters for the protocol
+/// * `seed`: Random seed for generating random values
+/// * `relay`: Message relay for communication between parties
+///
+/// # Returns
+///
+/// A `Result` containing either:
+/// * `Ok((Signature, RecoveryId))`: The final signature and recovery ID
+/// * `Err(SignError)`: An error if the protocol fails
+</span><span class="kw">async fn </span>run_inner&lt;R: Relay, S: SignSetupMessage&gt;(
     setup: S,
     seed: Seed,
     relay: <span class="kw-2">&amp;mut </span>FilteredMsgRelay&lt;R&gt;,
 ) -&gt; <span class="prelude-ty">Result</span>&lt;(Signature, RecoveryId), SignError&gt; {
     <span class="kw">let </span>t = setup.total_participants();
 
-    <span class="kw">let </span>pre_signature_result =
-        pre_signature_inner(<span class="kw-2">&amp;</span>setup, seed, relay).<span class="kw">await</span><span class="question-mark">?</span>;
+    <span class="kw">let </span>pre_signature_result = pre_signature_inner(<span class="kw-2">&amp;</span>setup, seed, relay).<span class="kw">await</span><span class="question-mark">?</span>;
 
     <span class="kw">let </span>msg_hash = setup.message_hash();
 
     run_final(<span class="kw-2">&amp;</span>setup, relay, t, msg_hash, <span class="kw-2">&amp;</span>pre_signature_result).<span class="kw">await
 </span>}
 
-<span class="doccomment">/// Execute DSG upto creation of PreSignature.
+<span class="doccomment">/// Executes the pre-signature phase of the DSG protocol
+///
+/// This function runs only the pre-signature phase of the protocol,
+/// producing a pre-signature that can be used later to sign messages.
+///
+/// # Type Parameters
+///
+/// * `R`: Type implementing the `Relay` trait for message communication
+/// * `S`: Type implementing the `PreSignSetupMessage` trait for setup parameters
+///
+/// # Arguments
+///
+/// * `setup`: Setup parameters for the protocol
+/// * `seed`: Random seed for generating random values
+/// * `relay`: Message relay for communication between parties
+///
+/// # Returns
+///
+/// A `Result` containing either:
+/// * `Ok(PreSign)`: The pre-signature result
+/// * `Err(SignError)`: An error if the protocol fails
 </span><span class="kw">pub async fn </span>pre_signature&lt;R: Relay, S: PreSignSetupMessage&gt;(
     setup: S,
     seed: Seed,
@@ -1611,7 +1862,26 @@
     result
 }
 
-<span class="doccomment">/// Finish DSG.
+<span class="doccomment">/// Executes the finish phase of the DSG protocol
+///
+/// This function runs the finish phase of the protocol, using a
+/// pre-signature to generate the final signature for a message.
+///
+/// # Type Parameters
+///
+/// * `R`: Type implementing the `Relay` trait for message communication
+/// * `S`: Type implementing the `FinalSignSetupMessage` trait for setup parameters
+///
+/// # Arguments
+///
+/// * `setup`: Setup parameters for the protocol
+/// * `relay`: Message relay for communication between parties
+///
+/// # Returns
+///
+/// A `Result` containing either:
+/// * `Ok((Signature, RecoveryId))`: The final signature and recovery ID
+/// * `Err(SignError)`: An error if the protocol fails
 </span><span class="kw">pub async fn </span>finish&lt;R: Relay, S: FinalSignSetupMessage&gt;(
     setup: S,
     relay: R,
@@ -1637,7 +1907,30 @@
     result
 }
 
-<span class="kw">async fn </span>run_final&lt;R: Relay, S: ProtocolParticipant&gt;(
+<span class="doccomment">/// Inner function for the finish phase of the DSG protocol
+///
+/// This function implements the core logic of the finish phase,
+/// where parties use a pre-signature to generate the final signature.
+///
+/// # Type Parameters
+///
+/// * `R`: Type implementing the `Relay` trait for message communication
+/// * `S`: Type implementing the `ProtocolParticipant` trait for participant information
+///
+/// # Arguments
+///
+/// * `setup`: Setup parameters for the protocol
+/// * `relay`: Message relay for communication between parties
+/// * `t`: Threshold value for the signature
+/// * `msg_hash`: Hash of the message to be signed
+/// * `pre_signature_result`: The pre-signature result from the pre-signature phase
+///
+/// # Returns
+///
+/// A `Result` containing either:
+/// * `Ok((Signature, RecoveryId))`: The final signature and recovery ID
+/// * `Err(SignError)`: An error if the protocol fails
+</span><span class="kw">async fn </span>run_final&lt;R: Relay, S: ProtocolParticipant&gt;(
     setup: <span class="kw-2">&amp;</span>S,
     relay: <span class="kw-2">&amp;mut </span>FilteredMsgRelay&lt;R&gt;,
     t: usize,
@@ -1647,8 +1940,7 @@
     <span class="kw">let </span>public_key = decode_point(<span class="kw-2">&amp;</span>pre_signature_result.public_key).unwrap();
     <span class="kw">let </span>r = decode_point(<span class="kw-2">&amp;</span>pre_signature_result.r).unwrap();
 
-    <span class="kw">let </span>partial_signature =
-        create_partial_signature(pre_signature_result, msg_hash)<span class="question-mark">?</span>;
+    <span class="kw">let </span>partial_signature = create_partial_signature(pre_signature_result, msg_hash)<span class="question-mark">?</span>;
 
     relay
         .send(SignedMessage::build(
@@ -1677,10 +1969,8 @@
                     final_session_id: msg.session_id,
                     public_key,
                     message_hash: msg_hash,
-                    s_0: decode_scalar(<span class="kw-2">&amp;</span>msg.s_0)
-                        .ok_or(SignError::InvalidMessage)<span class="question-mark">?</span>,
-                    s_1: decode_scalar(<span class="kw-2">&amp;</span>msg.s_1)
-                        .ok_or(SignError::InvalidMessage)<span class="question-mark">?</span>,
+                    s_0: decode_scalar(<span class="kw-2">&amp;</span>msg.s_0).ok_or(SignError::InvalidMessage)<span class="question-mark">?</span>,
+                    s_1: decode_scalar(<span class="kw-2">&amp;</span>msg.s_1).ok_or(SignError::InvalidMessage)<span class="question-mark">?</span>,
                     r,
                 });
 
@@ -1692,7 +1982,21 @@
     combine_partial_signature(<span class="kw-2">&amp;</span>partial_signatures)
 }
 
-<span class="kw">fn </span>hash_commitment_r_i(
+<span class="doccomment">/// Computes the hash of a commitment value
+///
+/// This function computes the hash of a commitment value using the
+/// session ID, R point, and blind factor.
+///
+/// # Arguments
+///
+/// * `session_id`: The session identifier
+/// * `big_r_i`: The R point value
+/// * `blind_factor`: The blind factor value
+///
+/// # Returns
+///
+/// A 32-byte array containing the hash of the commitment
+</span><span class="kw">fn </span>hash_commitment_r_i(
     session_id: <span class="kw-2">&amp;</span>[u8],
     big_r_i: <span class="kw-2">&amp;</span>ProjectivePoint,
     blind_factor: <span class="kw-2">&amp;</span>[u8; <span class="number">32</span>],
@@ -1707,11 +2011,21 @@
     hasher.finalize().into()
 }
 
-<span class="kw">fn </span>get_zeta_i(
-    keyshare: <span class="kw-2">&amp;</span>Keyshare,
-    party_id_list: <span class="kw-2">&amp;</span>[(usize, u8)],
-    sig_id: <span class="kw-2">&amp;</span>[u8],
-) -&gt; Scalar {
+<span class="doccomment">/// Computes the zeta_i value for a party
+///
+/// This function computes the zeta_i value used in the signature
+/// generation process.
+///
+/// # Arguments
+///
+/// * `keyshare`: The key share of the party
+/// * `party_id_list`: List of party IDs participating in the protocol
+/// * `sig_id`: The signature identifier
+///
+/// # Returns
+///
+/// The computed zeta_i scalar value
+</span><span class="kw">fn </span>get_zeta_i(keyshare: <span class="kw-2">&amp;</span>Keyshare, party_id_list: <span class="kw-2">&amp;</span>[(usize, u8)], sig_id: <span class="kw-2">&amp;</span>[u8]) -&gt; Scalar {
     <span class="kw">let </span><span class="kw-2">mut </span>sum_p_0 = Scalar::ZERO;
     <span class="kw">for </span><span class="kw-2">&amp;</span>(<span class="kw">_</span>, p_0_party) <span class="kw">in </span>party_id_list {
         <span class="kw">if </span>p_0_party &gt;= keyshare.party_id {
@@ -1747,15 +2061,26 @@
     sum_p_0 - sum_p_1
 }
 
-<span class="kw">fn </span>get_birkhoff_coefficients(
+<span class="doccomment">/// Computes the Birkhoff coefficients for the protocol
+///
+/// This function computes the Birkhoff coefficients used in the
+/// signature generation process.
+///
+/// # Arguments
+///
+/// * `keyshare`: The key share of the party
+/// * `sign_party_ids`: List of party IDs participating in the protocol
+///
+/// # Returns
+///
+/// A map of party indices to their corresponding Birkhoff coefficients
+</span><span class="kw">fn </span>get_birkhoff_coefficients(
     keyshare: <span class="kw-2">&amp;</span>Keyshare,
     sign_party_ids: <span class="kw-2">&amp;</span>[(usize, u8)],
 ) -&gt; HashMap&lt;usize, Scalar&gt; {
     <span class="kw">let </span>params = sign_party_ids
         .iter()
-        .map(|<span class="kw-2">&amp;</span>(<span class="kw">_</span>, pid)| {
-            (keyshare.get_x_i(pid), keyshare.get_rank(pid) <span class="kw">as </span>usize)
-        })
+        .map(|<span class="kw-2">&amp;</span>(<span class="kw">_</span>, pid)| (keyshare.get_x_i(pid), keyshare.get_rank(pid) <span class="kw">as </span>usize))
         .collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;();
 
     <span class="kw">let </span>betta_vec = birkhoff_coeffs::&lt;Secp256k1&gt;(<span class="kw-2">&amp;</span>params);
@@ -1767,10 +2092,20 @@
         .collect::&lt;HashMap&lt;<span class="kw">_</span>, <span class="kw">_</span>&gt;&gt;()
 }
 
-<span class="kw">fn </span>get_lagrange_coeff(
-    keyshare: <span class="kw-2">&amp;</span>Keyshare,
-    sign_party_ids: <span class="kw-2">&amp;</span>[(usize, u8)],
-) -&gt; Scalar {
+<span class="doccomment">/// Computes the Lagrange coefficient for a party
+///
+/// This function computes the Lagrange coefficient used in the
+/// signature generation process.
+///
+/// # Arguments
+///
+/// * `keyshare`: The key share of the party
+/// * `sign_party_ids`: List of party IDs participating in the protocol
+///
+/// # Returns
+///
+/// The computed Lagrange coefficient
+</span><span class="kw">fn </span>get_lagrange_coeff(keyshare: <span class="kw-2">&amp;</span>Keyshare, sign_party_ids: <span class="kw-2">&amp;</span>[(usize, u8)]) -&gt; Scalar {
     <span class="kw">let </span><span class="kw-2">mut </span>coeff = Scalar::from(<span class="number">1u64</span>);
     <span class="kw">let </span>pid = keyshare.party_id;
     <span class="kw">let </span>x_i = <span class="kw-2">&amp;</span>keyshare.get_x_i(pid) <span class="kw">as </span><span class="kw-2">&amp;</span>Scalar;
@@ -1786,7 +2121,25 @@
     coeff
 }
 
-<span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>get_lagrange_coeff_list&lt;<span class="lifetime">'a</span>, K, T&gt;(
+<span class="doccomment">/// Computes a list of Lagrange coefficients
+///
+/// This function computes a list of Lagrange coefficients for a set
+/// of party points.
+///
+/// # Type Parameters
+///
+/// * `K`: Type of the key function
+/// * `T`: Type of the party points
+///
+/// # Arguments
+///
+/// * `party_points`: List of party points
+/// * `k`: Function to extract the key from a party point
+///
+/// # Returns
+///
+/// An iterator over the computed Lagrange coefficients
+</span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>get_lagrange_coeff_list&lt;<span class="lifetime">'a</span>, K, T&gt;(
     party_points: <span class="kw-2">&amp;</span><span class="lifetime">'a </span>[T],
     k: K,
 ) -&gt; <span class="kw">impl </span>Iterator&lt;Item = Scalar&gt; + <span class="lifetime">'a
@@ -1808,7 +2161,22 @@
     })
 }
 
-<span class="kw">fn </span>verify_commitment_r_i(
+<span class="doccomment">/// Verifies a commitment value
+///
+/// This function verifies that a commitment value matches the expected
+/// hash of the session ID, R point, and blind factor.
+///
+/// # Arguments
+///
+/// * `sid`: The session identifier
+/// * `big_r_i`: The R point value
+/// * `blind_factor`: The blind factor value
+/// * `commitment`: The commitment value to verify
+///
+/// # Returns
+///
+/// `true` if the commitment is valid, `false` otherwise
+</span><span class="kw">fn </span>verify_commitment_r_i(
     sid: <span class="kw-2">&amp;</span>[u8],
     big_r_i: <span class="kw-2">&amp;</span>ProjectivePoint,
     blind_factor: <span class="kw-2">&amp;</span>[u8; <span class="number">32</span>],
@@ -1819,11 +2187,21 @@
     commitment.ct_eq(<span class="kw-2">&amp;</span>compare_commitment).into()
 }
 
-<span class="kw">fn </span>mta_session_id(
-    final_session_id: <span class="kw-2">&amp;</span>[u8],
-    sender_id: u8,
-    receiver_id: u8,
-) -&gt; [u8; <span class="number">32</span>] {
+<span class="doccomment">/// Generates a session ID for the MtA protocol
+///
+/// This function generates a unique session ID for the MtA protocol
+/// based on the final session ID and the sender/receiver IDs.
+///
+/// # Arguments
+///
+/// * `final_session_id`: The final session identifier
+/// * `sender_id`: The ID of the sender party
+/// * `receiver_id`: The ID of the receiver party
+///
+/// # Returns
+///
+/// A 32-byte array containing the generated session ID
+</span><span class="kw">fn </span>mta_session_id(final_session_id: <span class="kw-2">&amp;</span>[u8], sender_id: u8, receiver_id: u8) -&gt; [u8; <span class="number">32</span>] {
     <span class="kw">let </span><span class="kw-2">mut </span>h = Sha256::new();
     h.update(DSG_LABEL);
     h.update(final_session_id);
@@ -1835,7 +2213,11 @@
     h.finalize().into()
 }
 
-<span class="attr">#[cfg(test)]
+<span class="doccomment">/// Test module for the DSG protocol
+///
+/// This module contains various test cases for the DSG protocol,
+/// including tests for different party configurations and scenarios.
+</span><span class="attr">#[cfg(test)]
 </span><span class="kw">mod </span>tests {
     <span class="kw">use super</span>::<span class="kw-2">*</span>;
 
@@ -1878,9 +2260,7 @@
 
         <span class="kw">let </span>shares = gen_keyshares(<span class="number">2</span>, <span class="number">3</span>, <span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span>[<span class="number">0</span>, <span class="number">1</span>, <span class="number">1</span>])).<span class="kw">await</span>;
 
-        <span class="kw">let </span>vk =
-            VerifyingKey::from_affine(shares[<span class="number">0</span>].public_key().to_affine())
-                .unwrap();
+        <span class="kw">let </span>vk = VerifyingKey::from_affine(shares[<span class="number">0</span>].public_key().to_affine()).unwrap();
 
         <span class="kw">let </span>chain_path = <span class="string">"m"</span>;
 
@@ -1900,9 +2280,7 @@
 
             <span class="kw">let </span>hash = [<span class="number">1u8</span>; <span class="number">32</span>];
 
-            <span class="kw">let </span>recid2 =
-                RecoveryId::trial_recovery_from_prehash(<span class="kw-2">&amp;</span>vk, <span class="kw-2">&amp;</span>hash, <span class="kw-2">&amp;</span>sign)
-                    .unwrap();
+            <span class="kw">let </span>recid2 = RecoveryId::trial_recovery_from_prehash(<span class="kw-2">&amp;</span>vk, <span class="kw-2">&amp;</span>hash, <span class="kw-2">&amp;</span>sign).unwrap();
 
             <span class="macro">assert_eq!</span>(recid, recid2);
         }
@@ -1914,9 +2292,7 @@
 
         <span class="kw">let </span>shares = gen_keyshares(<span class="number">2</span>, <span class="number">3</span>, <span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span>[<span class="number">0</span>, <span class="number">1</span>, <span class="number">1</span>])).<span class="kw">await</span>;
 
-        <span class="kw">let </span>vk =
-            VerifyingKey::from_affine(shares[<span class="number">0</span>].public_key().to_affine())
-                .unwrap();
+        <span class="kw">let </span>vk = VerifyingKey::from_affine(shares[<span class="number">0</span>].public_key().to_affine()).unwrap();
 
         <span class="kw">let </span>chain_path = <span class="string">"m"</span>;
 
@@ -1936,9 +2312,7 @@
 
             <span class="kw">let </span>hash = [<span class="number">1u8</span>; <span class="number">32</span>];
 
-            <span class="kw">let </span>recid2 =
-                RecoveryId::trial_recovery_from_prehash(<span class="kw-2">&amp;</span>vk, <span class="kw-2">&amp;</span>hash, <span class="kw-2">&amp;</span>sign)
-                    .unwrap();
+            <span class="kw">let </span>recid2 = RecoveryId::trial_recovery_from_prehash(<span class="kw-2">&amp;</span>vk, <span class="kw-2">&amp;</span>hash, <span class="kw-2">&amp;</span>sign).unwrap();
 
             <span class="macro">assert_eq!</span>(recid, recid2);
         }
@@ -1950,9 +2324,7 @@
 
         <span class="kw">let </span>shares = gen_keyshares(<span class="number">3</span>, <span class="number">5</span>, <span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span>[<span class="number">0</span>, <span class="number">1</span>, <span class="number">1</span>, <span class="number">1</span>, <span class="number">1</span>])).<span class="kw">await</span>;
 
-        <span class="kw">let </span>vk =
-            VerifyingKey::from_affine(shares[<span class="number">0</span>].public_key().to_affine())
-                .unwrap();
+        <span class="kw">let </span>vk = VerifyingKey::from_affine(shares[<span class="number">0</span>].public_key().to_affine()).unwrap();
 
         <span class="kw">let </span>chain_path = <span class="string">"m"</span>;
 
@@ -1972,9 +2344,7 @@
 
             <span class="kw">let </span>hash = [<span class="number">1u8</span>; <span class="number">32</span>];
 
-            <span class="kw">let </span>recid2 =
-                RecoveryId::trial_recovery_from_prehash(<span class="kw-2">&amp;</span>vk, <span class="kw-2">&amp;</span>hash, <span class="kw-2">&amp;</span>sign)
-                    .unwrap();
+            <span class="kw">let </span>recid2 = RecoveryId::trial_recovery_from_prehash(<span class="kw-2">&amp;</span>vk, <span class="kw-2">&amp;</span>hash, <span class="kw-2">&amp;</span>sign).unwrap();
 
             <span class="macro">assert_eq!</span>(recid, recid2);
         }

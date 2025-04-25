@@ -198,8 +198,82 @@
 <a href="#197" id="197">197</a>
 <a href="#198" id="198">198</a>
 <a href="#199" id="199">199</a>
-<a href="#200" id="200">200</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
+<a href="#200" id="200">200</a>
+<a href="#201" id="201">201</a>
+<a href="#202" id="202">202</a>
+<a href="#203" id="203">203</a>
+<a href="#204" id="204">204</a>
+<a href="#205" id="205">205</a>
+<a href="#206" id="206">206</a>
+<a href="#207" id="207">207</a>
+<a href="#208" id="208">208</a>
+<a href="#209" id="209">209</a>
+<a href="#210" id="210">210</a>
+<a href="#211" id="211">211</a>
+<a href="#212" id="212">212</a>
+<a href="#213" id="213">213</a>
+<a href="#214" id="214">214</a>
+<a href="#215" id="215">215</a>
+<a href="#216" id="216">216</a>
+<a href="#217" id="217">217</a>
+<a href="#218" id="218">218</a>
+<a href="#219" id="219">219</a>
+<a href="#220" id="220">220</a>
+<a href="#221" id="221">221</a>
+<a href="#222" id="222">222</a>
+<a href="#223" id="223">223</a>
+<a href="#224" id="224">224</a>
+<a href="#225" id="225">225</a>
+<a href="#226" id="226">226</a>
+<a href="#227" id="227">227</a>
+<a href="#228" id="228">228</a>
+<a href="#229" id="229">229</a>
+<a href="#230" id="230">230</a>
+<a href="#231" id="231">231</a>
+<a href="#232" id="232">232</a>
+<a href="#233" id="233">233</a>
+<a href="#234" id="234">234</a>
+<a href="#235" id="235">235</a>
+<a href="#236" id="236">236</a>
+<a href="#237" id="237">237</a>
+<a href="#238" id="238">238</a>
+<a href="#239" id="239">239</a>
+<a href="#240" id="240">240</a>
+<a href="#241" id="241">241</a>
+<a href="#242" id="242">242</a>
+<a href="#243" id="243">243</a>
+<a href="#244" id="244">244</a>
+<a href="#245" id="245">245</a>
+<a href="#246" id="246">246</a>
+<a href="#247" id="247">247</a>
+<a href="#248" id="248">248</a>
+<a href="#249" id="249">249</a>
+<a href="#250" id="250">250</a>
+<a href="#251" id="251">251</a>
+<a href="#252" id="252">252</a>
+<a href="#253" id="253">253</a>
+<a href="#254" id="254">254</a>
+<a href="#255" id="255">255</a>
+<a href="#256" id="256">256</a>
+<a href="#257" id="257">257</a>
+<a href="#258" id="258">258</a>
+<a href="#259" id="259">259</a>
+<a href="#260" id="260">260</a>
+<a href="#261" id="261">261</a>
+<a href="#262" id="262">262</a>
+<a href="#263" id="263">263</a>
+<a href="#264" id="264">264</a>
+<a href="#265" id="265">265</a>
+<a href="#266" id="266">266</a>
+<a href="#267" id="267">267</a>
+<a href="#268" id="268">268</a>
+<a href="#269" id="269">269</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
+
+</span><span class="doccomment">//! Module for handling encrypted messages in the protocol.
+//! This module provides functionality for encrypting and decrypting messages
+//! with support for additional data and trailers. It uses a pluggable encryption
+//! scheme interface to allow for different encryption implementations.
 
 </span><span class="kw">use </span>std::marker::PhantomData;
 
@@ -210,22 +284,27 @@
 
 <span class="kw">pub use </span><span class="kw">crate</span>::proto::scheme::EncryptionScheme;
 
-<span class="doccomment">/// Default encryption scheme
+<span class="doccomment">/// Default encryption scheme using X25519 key exchange and ChaCha20Poly1305 for encryption.
 </span><span class="kw">pub type </span>Scheme = <span class="kw">crate</span>::proto::scheme::AeadX25519&lt;ChaCha20Poly1305&gt;;
 
-<span class="doccomment">/// A wrapper for a message of type T with support for in-place
-/// encryption/decryption with additional data.
+<span class="doccomment">/// A wrapper for a message of type T with support for in-place encryption/decryption.
 ///
-/// Format of encrypted message:
+/// This struct provides functionality for encrypting and decrypting messages while
+/// maintaining a specific format:
 ///
+/// ```text
 /// [ msg-hdr | additional-data | payload | trailer | tag + nonce ]
+/// ```
 ///
-/// `payload | trailer` are encrypted.
+/// Where:
+/// - `msg-hdr`: Message header containing ID, TTL, and flags
+/// - `additional-data`: Optional unencrypted data
+/// - `payload`: The encrypted external representation of type T
+/// - `trailer`: Optional encrypted variable-sized data
+/// - `tag + nonce`: Authentication tag and nonce for the encryption scheme
 ///
-/// `trailer` is a variable-sized part of the message.
-///
-/// `payload` is the external representation of `T`.
-///
+/// The `payload` and `trailer` sections are encrypted, while the header and
+/// additional data remain in plaintext.
 </span><span class="kw">pub struct </span>EncryptedMessage&lt;T&gt; {
     buffer: Vec&lt;u8&gt;,
     additional_data: usize, <span class="comment">// size of additional-data
@@ -235,17 +314,30 @@
 <span class="kw">impl</span>&lt;T: AnyBitPattern + NoUninit&gt; EncryptedMessage&lt;T&gt; {
     <span class="kw">const </span>T_SIZE: usize = core::mem::size_of::&lt;T&gt;();
 
-    <span class="doccomment">/// Size of the whole message with additional data and trailer bytes.
-    </span><span class="kw">pub fn </span>size(
-        ad: usize,
-        trailer: usize,
-        scheme: <span class="kw-2">&amp;</span><span class="kw">dyn </span>EncryptionScheme,
-    ) -&gt; usize {
+    <span class="doccomment">/// Calculates the total size of an encrypted message.
+    ///
+    /// # Arguments
+    /// * `ad` - Size of additional data in bytes
+    /// * `trailer` - Size of trailer data in bytes
+    /// * `scheme` - The encryption scheme to use
+    ///
+    /// # Returns
+    /// The total size in bytes needed for the encrypted message
+    </span><span class="kw">pub fn </span>size(ad: usize, trailer: usize, scheme: <span class="kw-2">&amp;</span><span class="kw">dyn </span>EncryptionScheme) -&gt; usize {
         MESSAGE_HEADER_SIZE + ad + <span class="self">Self</span>::T_SIZE + trailer + scheme.overhead()
     }
 
-    <span class="doccomment">/// Allocate a message with passed ID and TTL and additional
-    /// trailer bytes.
+    <span class="doccomment">/// Creates a new encrypted message with the specified parameters.
+    ///
+    /// # Arguments
+    /// * `id` - Message identifier
+    /// * `ttl` - Time-to-live value
+    /// * `flags` - Message flags
+    /// * `trailer` - Size of trailer data in bytes
+    /// * `scheme` - The encryption scheme to use
+    ///
+    /// # Returns
+    /// A new `EncryptedMessage` instance
     </span><span class="kw">pub fn </span>new(
         id: <span class="kw-2">&amp;</span>MsgId,
         ttl: u32,
@@ -258,8 +350,18 @@
         <span class="self">Self</span>::from_buffer(buffer, id, ttl, flags, <span class="number">0</span>, trailer, scheme)
     }
 
-    <span class="doccomment">/// Allocate a message with passed ID and TTL and additional data
-    /// and trailer bytes.
+    <span class="doccomment">/// Creates a new encrypted message with additional data.
+    ///
+    /// # Arguments
+    /// * `id` - Message identifier
+    /// * `ttl` - Time-to-live value
+    /// * `flags` - Message flags
+    /// * `additional_data` - Size of additional data in bytes
+    /// * `trailer` - Size of trailer data in bytes
+    /// * `scheme` - The encryption scheme to use
+    ///
+    /// # Returns
+    /// A new `EncryptedMessage` instance with space for additional data
     </span><span class="kw">pub fn </span>new_with_ad(
         id: <span class="kw-2">&amp;</span>MsgId,
         ttl: u32,
@@ -270,19 +372,22 @@
     ) -&gt; <span class="self">Self </span>{
         <span class="kw">let </span>buffer = <span class="macro">vec!</span>[<span class="number">0u8</span>; <span class="self">Self</span>::size(additional_data, trailer, scheme)];
 
-        <span class="self">Self</span>::from_buffer(
-            buffer,
-            id,
-            ttl,
-            flags,
-            additional_data,
-            trailer,
-            scheme,
-        )
+        <span class="self">Self</span>::from_buffer(buffer, id, ttl, flags, additional_data, trailer, scheme)
     }
 
-    <span class="doccomment">/// Use existing buffer but make sure it has the right size.
+    <span class="doccomment">/// Creates an encrypted message from an existing buffer.
     ///
+    /// # Arguments
+    /// * `buffer` - Existing buffer to use
+    /// * `id` - Message identifier
+    /// * `ttl` - Time-to-live value
+    /// * `flags` - Message flags
+    /// * `additional_data` - Size of additional data in bytes
+    /// * `trailer` - Size of trailer data in bytes
+    /// * `scheme` - The encryption scheme to use
+    ///
+    /// # Returns
+    /// A new `EncryptedMessage` instance using the provided buffer
     </span><span class="kw">pub fn </span>from_buffer(
         <span class="kw-2">mut </span>buffer: Vec&lt;u8&gt;,
         id: <span class="kw-2">&amp;</span>MsgId,
@@ -305,8 +410,16 @@
         }
     }
 
-    <span class="doccomment">/// Return a mutable references to message payload object, trailer
-    /// and additional data byte slices.
+    <span class="doccomment">/// Returns mutable references to the message payload, trailer, and additional data.
+    ///
+    /// # Arguments
+    /// * `scheme` - The encryption scheme to use
+    ///
+    /// # Returns
+    /// A tuple containing:
+    /// - Mutable reference to the payload object
+    /// - Mutable reference to the trailer bytes
+    /// - Mutable reference to the additional data bytes
     </span><span class="kw">pub fn </span>payload_with_ad(
         <span class="kw-2">&amp;mut </span><span class="self">self</span>,
         scheme: <span class="kw-2">&amp;</span><span class="kw">dyn </span>EncryptionScheme,
@@ -316,30 +429,37 @@
         <span class="comment">// body = ad | payload | trailer
         </span><span class="kw">let </span>body = <span class="kw-2">&amp;mut </span><span class="self">self</span>.buffer[MESSAGE_HEADER_SIZE..tag_offset];
 
-        <span class="kw">let </span>(additional_data, msg_and_trailer) =
-            body.split_at_mut(<span class="self">self</span>.additional_data);
+        <span class="kw">let </span>(additional_data, msg_and_trailer) = body.split_at_mut(<span class="self">self</span>.additional_data);
 
         <span class="kw">let </span>(msg, trailer) = msg_and_trailer.split_at_mut(<span class="self">Self</span>::T_SIZE);
 
         (bytemuck::from_bytes_mut(msg), trailer, additional_data)
     }
 
-    <span class="doccomment">/// Return a mutable reference to message payload object and trailer byte slice.
-    </span><span class="kw">pub fn </span>payload(
-        <span class="kw-2">&amp;mut </span><span class="self">self</span>,
-        scheme: <span class="kw-2">&amp;</span><span class="kw">dyn </span>EncryptionScheme,
-    ) -&gt; (<span class="kw-2">&amp;mut </span>T, <span class="kw-2">&amp;mut </span>[u8]) {
+    <span class="doccomment">/// Returns mutable references to the message payload and trailer.
+    ///
+    /// # Arguments
+    /// * `scheme` - The encryption scheme to use
+    ///
+    /// # Returns
+    /// A tuple containing:
+    /// - Mutable reference to the payload object
+    /// - Mutable reference to the trailer bytes
+    </span><span class="kw">pub fn </span>payload(<span class="kw-2">&amp;mut </span><span class="self">self</span>, scheme: <span class="kw-2">&amp;</span><span class="kw">dyn </span>EncryptionScheme) -&gt; (<span class="kw-2">&amp;mut </span>T, <span class="kw-2">&amp;mut </span>[u8]) {
         <span class="kw">let </span>(msg, trailer, <span class="kw">_</span>) = <span class="self">self</span>.payload_with_ad(scheme);
 
         (msg, trailer)
     }
 
-    <span class="doccomment">/// Encrypt message.
-    </span><span class="kw">pub fn </span>encrypt(
-        <span class="self">self</span>,
-        scheme: <span class="kw-2">&amp;mut </span><span class="kw">dyn </span>EncryptionScheme,
-        receiver: usize,
-    ) -&gt; <span class="prelude-ty">Option</span>&lt;Vec&lt;u8&gt;&gt; {
+    <span class="doccomment">/// Encrypts the message using the provided encryption scheme.
+    ///
+    /// # Arguments
+    /// * `scheme` - The encryption scheme to use
+    /// * `receiver` - The ID of the intended receiver
+    ///
+    /// # Returns
+    /// The encrypted message as a byte vector, or `None` if encryption failed
+    </span><span class="kw">pub fn </span>encrypt(<span class="self">self</span>, scheme: <span class="kw-2">&amp;mut </span><span class="kw">dyn </span>EncryptionScheme, receiver: usize) -&gt; <span class="prelude-ty">Option</span>&lt;Vec&lt;u8&gt;&gt; {
         <span class="kw">let </span><span class="kw-2">mut </span>buffer = <span class="self">self</span>.buffer;
 
         <span class="kw">let </span>last = buffer.len() - scheme.overhead();
@@ -355,8 +475,18 @@
         <span class="prelude-val">Some</span>(buffer)
     }
 
-    <span class="doccomment">/// Decrypt message and return references to the payload, trailer
-    /// and additional data bytes.
+    <span class="doccomment">/// Decrypts a message and returns references to the payload, trailer, and additional data.
+    ///
+    /// # Arguments
+    /// * `buffer` - The encrypted message buffer
+    /// * `additional_data` - Size of additional data in bytes
+    /// * `trailer` - Size of trailer data in bytes
+    /// * `scheme` - The encryption scheme to use
+    /// * `sender` - The ID of the message sender
+    ///
+    /// # Returns
+    /// A tuple containing references to the decrypted payload, trailer, and additional data,
+    /// or `None` if decryption failed
     </span><span class="kw">pub fn </span>decrypt_with_ad&lt;<span class="lifetime">'msg</span>&gt;(
         buffer: <span class="kw-2">&amp;</span><span class="lifetime">'msg </span><span class="kw-2">mut </span>[u8],
         additional_data: usize,
@@ -368,11 +498,9 @@
             <span class="kw">return </span><span class="prelude-val">None</span>;
         }
 
-        <span class="kw">let </span>(associated_data, body) =
-            buffer.split_at_mut(MESSAGE_HEADER_SIZE + additional_data);
+        <span class="kw">let </span>(associated_data, body) = buffer.split_at_mut(MESSAGE_HEADER_SIZE + additional_data);
 
-        <span class="kw">let </span>(ciphertext, tail) =
-            body.split_at_mut(body.len() - scheme.overhead());
+        <span class="kw">let </span>(ciphertext, tail) = body.split_at_mut(body.len() - scheme.overhead());
 
         scheme
             .decrypt(associated_data, ciphertext, tail, sender)
@@ -387,7 +515,17 @@
         ))
     }
 
-    <span class="doccomment">/// Decrypte message and return reference to the payload and trailer bytes.
+    <span class="doccomment">/// Decrypts a message and returns references to the payload and trailer.
+    ///
+    /// # Arguments
+    /// * `buffer` - The encrypted message buffer
+    /// * `trailer` - Size of trailer data in bytes
+    /// * `scheme` - The encryption scheme to use
+    /// * `sender` - The ID of the message sender
+    ///
+    /// # Returns
+    /// A tuple containing references to the decrypted payload and trailer,
+    /// or `None` if decryption failed
     </span><span class="kw">pub fn </span>decrypt&lt;<span class="lifetime">'msg</span>&gt;(
         buffer: <span class="kw-2">&amp;</span><span class="lifetime">'msg </span><span class="kw-2">mut </span>[u8],
         trailer: usize,
