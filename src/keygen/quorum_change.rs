@@ -6,7 +6,6 @@
 //! - Adding new participants
 //! - Removing existing participants
 
-
 use k256::{
     elliptic_curve::{group::GroupEncoding, subtle::ConstantTimeEq, Group},
     NonZeroScalar, ProjectivePoint, Scalar,
@@ -122,7 +121,7 @@ where
 /// * `setup` - The protocol setup configuration
 /// * `seed` - The random seed for cryptographic operations
 /// * `relay` - The message relay for communication between parties
-/// 
+///
 /// # Returns
 ///
 /// * `Ok(Some(Keyshare))` - The new key share if the protocol succeeds
