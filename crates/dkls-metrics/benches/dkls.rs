@@ -106,7 +106,7 @@ fn dsg_2x2(c: &mut Criterion) {
 
 // fn dsg_27x15(c: &mut Criterion) {
 //     bench_dsg(c, 27, 15);
-}
+// }
 
 criterion_group!(
     name =

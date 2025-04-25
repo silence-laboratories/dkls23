@@ -4,8 +4,7 @@
 //! Distributed Key Generation (DKG) Protocol Implementation
 //!
 //! This module implements a distributed key generation protocol based on Protocol 6.1 from
-//! the paper "Efficient Multi-Party Computation with Dispute Resolution" (<https://eprint.iacr.org/2022/374.pdf>).
-
+//! the paper "Efficient Multi-Party Computation with Dispute Resolution" <https://eprint.iacr.org/2022/374.pdf>.
 
 use k256::{
     elliptic_curve::{
