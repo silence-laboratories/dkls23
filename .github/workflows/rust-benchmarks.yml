@@ -24,7 +24,7 @@ permissions:
 jobs:
   get_benchmark:
     name: Run Benchmarks
-    runs-on: github-builder
+    runs-on: ubuntu-latest-m
 
     steps:
       - uses: actions/checkout@v4
@@ -45,7 +45,7 @@ jobs:
           summary-always: true
 
   make_the_html_page:
-    runs-on: github-builder
+    runs-on: ubuntu-latest-m
     name: Create html page
     needs: get_benchmark
 
