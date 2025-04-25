@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["SoftSpokenOTError"],"fn":["build_pprf","eval_pprf","generate_all_but_one_seed_ot"],"struct":["PPRF","PPRFOutput","ReceiverExtendedOutput","ReceiverOTSeed","Round1Output","SenderExtendedOutput","SenderOTSeed","SoftSpokenOTReceiver","SoftSpokenOTSender"]};

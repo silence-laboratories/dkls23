@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["MESSAGE_HEADER_SIZE","MESSAGE_ID_SIZE"],"enum":["Kind"],"fn":["allocate_message"],"struct":["AskMsg","InstanceId","MessageTag","MsgHdr","MsgId"]};

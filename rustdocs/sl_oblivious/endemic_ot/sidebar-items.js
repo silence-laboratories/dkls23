@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":["EndemicOTMsg1","EndemicOTMsg2","EndemicOTReceiver","EndemicOTSender","ReceiverOutput","SenderOutput"],"type":["PointBytes"]};

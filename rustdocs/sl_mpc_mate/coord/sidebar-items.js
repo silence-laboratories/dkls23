@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["stats"],"struct":["BufferedMsgRelay","Feed","MaybeFeed","MessageSendError"],"trait":["MessageRelayService","Relay","Sink","SinkExt","Stream","StreamExt"]};

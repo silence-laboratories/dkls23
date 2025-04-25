@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["birkhoff_coeffs","factorial","factorial_range","feldman_verify","polynomial_coeff_multipliers"],"struct":["GroupPolynomial","Polynomial"]};
