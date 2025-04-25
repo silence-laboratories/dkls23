@@ -3,8 +3,8 @@
 
 //! Module for handling the migration of key shares from GG20 to DKLS23 format.
 //!
-//! This module provides functionality for migrating existing key shares from the GG20 protocol
-//! to the DKLS23 protocol format. The migration process preserves the cryptographic properties
+//! This module provides functionality for migrating existing key shares from the other threshold ECDSA protocols
+//! such as GG** to the DKLS23 protocol format. The migration process preserves the cryptographic properties
 //! of the original key shares while updating them to the new protocol format.
 
 use crate::keygen::{KeyRefreshData, KeygenError, Keyshare};

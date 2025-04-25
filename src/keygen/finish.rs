@@ -2,11 +2,7 @@
 // This software is licensed under the Silence Laboratories License Agreement.
 
 //! Module for handling the finalization phase of the distributed key generation protocol.
-//!
-//! This module provides functionality for creating, verifying, and parsing final messages
-//! that are exchanged between protocol participants during the completion phase of the
-//! distributed key generation process. These messages contain status codes and optional
-//! details about the protocol outcome.
+
 
 use sl_mpc_mate::message::MsgId;
 

@@ -2,35 +2,6 @@
 // This software is licensed under the Silence Laboratories License Agreement.
 
 //! Distributed Signature Generation (DSG) Protocol Implementation
-//!
-//! This module implements the Distributed Signature Generation protocol based on
-//! the paper "Efficient Threshold ECDSA with an Offline Recovery Party" by
-//! Gennaro, Goldfeder, and Narula (2023).
-//!
-//! The protocol allows a group of parties to collaboratively generate an ECDSA
-//! signature without revealing their individual secret shares. It consists of
-//! two main phases:
-//!
-//! 1. Pre-signature phase: Parties generate a pre-signature that can be used
-//!    to sign any message later.
-//! 2. Finish phase: Parties use the pre-signature to generate the final
-//!    signature for a specific message.
-//!
-//! # Security Properties
-//!
-//! - Threshold security: The protocol requires a threshold number of parties
-//!   to participate in signing.
-//! - Privacy: Individual secret shares are never revealed.
-//! - Robustness: The protocol can handle malicious parties and network failures.
-//!
-//! # Implementation Details
-//!
-//! The implementation uses the following cryptographic primitives:
-//! - secp256k1 curve for ECDSA
-//! - ChaCha20 for random number generation
-//! - SHA-256 for hashing
-//! - Oblivious Transfer for secure multi-party computation
-
 use std::collections::HashMap;
 
 use k256::{

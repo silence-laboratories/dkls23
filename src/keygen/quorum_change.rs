@@ -2,25 +2,11 @@
 // This software is licensed under the Silence Laboratories License Agreement.
 
 //! Module for implementing the Quorum Change Protocol.
-//!
-//! This module implements Protocol 7.1 (Relaxed DLog Keygen) from the paper
-//! "Efficient Multi-Party Computation with Dispute Control" (https://eprint.iacr.org/2023/765.pdf).
-//! The protocol allows for changing the quorum of participants in a distributed key generation
-//! scheme while maintaining the security properties of the original key.
-//!
 //! The protocol supports:
 //! - Adding new participants
 //! - Removing existing participants
-//! - Changing the threshold value
-//! - Modifying participant ranks
-//!
-//! # Protocol Overview
-//!
-//! The quorum change protocol consists of several rounds:
-//! 1. Initialization and party identification
-//! 2. Commitment to new shares
-//! 3. Share distribution and verification
-//! 4. Final key share generation
+
+
 
 use k256::{
     elliptic_curve::{group::GroupEncoding, subtle::ConstantTimeEq, Group},
