@@ -53,12 +53,12 @@ async fn main() {
 
         // At that point we have created the correct setup msgs for each party with the aforementioned helper function, which
         // in real world does not exist but the consumers of the library node should create. The next step is to execute each
-        // task in a an async fashion. That function in a real world example runs by each node independently who want to compute the final
+        // task in an async fashion. That function in a real world example runs by each node independently who want to compute the final
         // signature.
         parties.spawn(sign::run(setup, rng.gen(), relay));
     }
 
-    // After all the tasks have finished we extract the signature and verifying it against the public key
+    // After all the tasks have finished we extract the signature and verify it against the public key
     while let Some(fini) = parties.join_next().await {
         let fini = fini.unwrap();
 

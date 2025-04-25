@@ -1,6 +1,25 @@
 // Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
 
+//! Distributed Signature Generation (DSG) Protocol Implementation
+//!
+//! This module implements a distributed signature generation protocol that allows
+//! multiple parties to collaboratively generate digital signatures without any
+//! single party knowing the complete private key.
+//!
+//! # Protocol Overview
+//!
+//! The DSG protocol consists of two main phases:
+//! 1. Pre-signing phase: Generates a pre-signature that can be completed later
+//! 2. Finish phase: Completes the signature using the pre-signature
+//!
+//! # Security Properties
+//!
+//! The protocol provides the following security guarantees:
+//! - Threshold security: Signatures can only be generated with a sufficient number of parties
+//! - Privacy: No information about the private key is leaked
+//! - Verifiability: Signatures can be verified using standard ECDSA verification
+
 mod constants;
 mod dsg;
 mod messages;
@@ -16,20 +35,36 @@ pub use k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
 use crate::setup::{ProtocolParticipant, ABORT_MESSAGE_TAG};
 use sl_mpc_mate::message::MsgId;
 
-/// DSG variant
+/// Variants of the Distributed Signature Generation protocol
+///
+/// This enum represents the different modes in which the DSG protocol can be run:
+/// - Full protocol execution
+/// - Pre-signing only
+/// - Finish phase only
 pub enum DsgVariant {
-    /// SignPre + Finish
+    /// Execute both PreSign and Finish phases
     Full,
-    /// PreSign only
+    /// Execute only the PreSign phase
     PreSign,
-    /// Finish only
+    /// Execute only the Finish phase
     Finish,
 }
 
-/// Generate message receiver map.
+/// Generates a map of message receivers for the DSG protocol
 ///
-/// Call the passed closure for each pair (msg_id, receiver)
+/// This function helps set up the message routing for the DSG protocol by
+/// determining which messages should be sent to which participants.
 ///
+/// # Type Parameters
+///
+/// * `S` - A type implementing the `ProtocolParticipant` trait
+/// * `F` - A closure type for handling message receivers
+///
+/// # Arguments
+///
+/// * `setup` - The protocol setup configuration
+/// * `variant` - The variant of the DSG protocol to run
+/// * `msg_receiver` - A closure that will be called for each (message_id, verifier) pair
 pub fn message_receivers<S, F>(setup: &S, variant: DsgVariant, mut msg_receiver: F)
 where
     S: ProtocolParticipant,
@@ -76,7 +111,28 @@ mod support {
         Seed,
     };
 
-    /// Test helper
+    /// Sets up the DSG protocol for testing
+    ///
+    /// This function creates the necessary setup messages and seeds for testing
+    /// the DSG protocol with a given set of key shares.
+    ///
+    /// # Arguments
+    ///
+    /// * `instance` - Optional instance identifier
+    /// * `shares` - Vector of key shares for the participants
+    /// * `chain_path` - The derivation path for the key
+    ///
+    /// # Returns
+    ///
+    /// A vector of tuples containing:
+    /// * The setup message for each participant
+    /// * The random seed for each participant
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if:
+    /// * The number of shares is less than the threshold
+    /// * The first share does not have rank 0
     pub fn setup_dsg(
         instance: Option<[u8; 32]>,
         shares: &[Arc<Keyshare>],
@@ -128,7 +184,18 @@ mod support {
             .collect::<Vec<_>>()
     }
 
-    /// The same as
+    /// Sets up the finish phase of the DSG protocol
+    ///
+    /// This function creates the necessary setup messages for completing
+    /// the signature generation using pre-signatures.
+    ///
+    /// # Arguments
+    ///
+    /// * `pre_signs` - Vector of pre-signatures from the participants
+    ///
+    /// # Returns
+    ///
+    /// A vector of setup messages for the finish phase
     pub fn setup_finish_sign(pre_signs: Vec<PreSign>) -> Vec<FinishSetupMsg> {
         let mut rng = rand::thread_rng();
 

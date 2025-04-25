@@ -1,6 +1,12 @@
 // Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
 
+//! Utility Functions for DKG Protocol
+//!
+//! This module provides utility functions used throughout the DKG protocol implementation,
+//! including polynomial operations, key generation setup, and protocol execution helpers.
+//! It also includes test utilities for protocol simulation and verification.
+
 use std::collections::HashMap;
 
 #[cfg(any(test, feature = "test-support"))]
@@ -31,6 +37,18 @@ use super::Keyshare;
 
 use super::KeygenError;
 
+/// Computes the Lagrange coefficient for a given point in a polynomial.
+///
+/// This function calculates the Lagrange coefficient for a specific point `x_i`
+/// given a list of points `x_i_list` and their corresponding party IDs.
+///
+/// # Arguments
+/// * `x_i` - The point for which to compute the coefficient
+/// * `x_i_list` - List of all points in the polynomial
+/// * `party_ids` - List of party IDs corresponding to the points
+///
+/// # Returns
+/// The computed Lagrange coefficient as a scalar value
 pub(crate) fn get_lagrange_coeff(
     x_i: &NonZeroScalar,
     x_i_list: &[NonZeroScalar],
@@ -49,6 +67,18 @@ pub(crate) fn get_lagrange_coeff(
     coeff
 }
 
+/// Computes Birkhoff coefficients for a set of points with ranks.
+///
+/// This function calculates the Birkhoff coefficients for a set of points with
+/// associated ranks, which are used in the Birkhoff interpolation process.
+///
+/// # Arguments
+/// * `rank_list` - List of ranks for each point
+/// * `x_i_list` - List of points in the polynomial
+/// * `party_ids` - List of party IDs corresponding to the points
+///
+/// # Returns
+/// A map of party IDs to their corresponding Birkhoff coefficients
 pub(crate) fn get_birkhoff_coefficients(
     rank_list: &[u8],
     x_i_list: &[NonZeroScalar],
@@ -68,6 +98,20 @@ pub(crate) fn get_birkhoff_coefficients(
         .collect::<HashMap<_, _>>()
 }
 
+/// Verifies that a secret can be recovered from the given shares.
+///
+/// This function checks whether the provided shares can be used to reconstruct
+/// the original secret by verifying that the reconstructed public key matches
+/// the expected public key.
+///
+/// # Arguments
+/// * `x_i_list` - List of x-coordinates for the shares
+/// * `rank_list` - List of ranks for each share
+/// * `big_s_list` - List of public key components
+/// * `public_key` - The expected public key
+///
+/// # Returns
+/// `Ok(())` if the secret can be recovered, or an error if verification fails
 #[allow(dead_code)]
 pub(crate) fn check_secret_recovery(
     x_i_list: &[NonZeroScalar],
@@ -115,7 +159,20 @@ pub(crate) fn check_secret_recovery(
         .ok_or(KeygenError::PublicKeyMismatch)
 }
 
-/// Generate setup messages and seeds for DKG parties.
+/// Generates setup messages and seeds for DKG parties.
+///
+/// This function creates the necessary setup messages and seeds for all parties
+/// participating in the DKG protocol. It handles both the case where ranks are
+/// provided and where they are not.
+///
+/// # Arguments
+/// * `instance` - Optional instance identifier for the protocol
+/// * `t` - Threshold value for the protocol
+/// * `n` - Total number of parties
+/// * `ranks` - Optional list of ranks for each party
+///
+/// # Returns
+/// A vector of tuples containing setup messages and seeds for each party
 #[cfg(any(test, feature = "test-support"))]
 pub fn setup_keygen(
     instance: Option<[u8; 32]>,
@@ -177,7 +234,18 @@ pub fn setup_keygen(
         .collect::<Vec<_>>()
 }
 
-/// Execute DGK for given parameters
+/// Executes the DKG protocol with the given parameters.
+///
+/// This function runs the DKG protocol for a set of parties with the specified
+/// threshold and number of participants. It returns the generated key shares.
+///
+/// # Arguments
+/// * `t` - Threshold value for the protocol
+/// * `n` - Total number of parties
+/// * `ranks` - Optional list of ranks for each party
+///
+/// # Returns
+/// A vector of key shares, one for each party
 #[cfg(any(test, feature = "test-support"))]
 pub async fn gen_keyshares(t: u8, n: u8, ranks: Option<&[u8]>) -> Vec<Arc<Keyshare>> {
     let coord = sl_mpc_mate::coord::SimpleMessageRelay::new();
@@ -208,8 +276,18 @@ pub async fn gen_keyshares(t: u8, n: u8, ranks: Option<&[u8]>) -> Vec<Arc<Keysha
     shares
 }
 
-/// Generate SetupMessage and seed for QuorumChange parties
-/// creates all new parties
+/// Generates setup messages and seeds for quorum change parties.
+///
+/// This function creates setup messages and seeds for all parties participating
+/// in a quorum change protocol, including both existing and new parties.
+///
+/// # Arguments
+/// * `old_keyshares` - Existing key shares from the current quorum
+/// * `new_threshold` - New threshold value for the protocol
+/// * `new_n_i_list` - List of ranks for new parties
+///
+/// # Returns
+/// A vector of tuples containing setup messages and seeds for each party
 #[cfg(any(test, feature = "test-support"))]
 pub fn setup_quorum_change(
     old_keyshares: &[Arc<Keyshare>],
@@ -273,8 +351,19 @@ pub fn setup_quorum_change(
         .collect::<Vec<_>>()
 }
 
-/// Generate SetupMessage and seed for QuorumChange parties
-/// adds new parties
+/// Generates setup messages and seeds for extending the quorum with new parties.
+///
+/// This function creates setup messages and seeds for a quorum change that
+/// adds new parties to the existing quorum.
+///
+/// # Arguments
+/// * `old_keyshares` - Existing key shares from the current quorum
+/// * `new_threshold` - New threshold value for the protocol
+/// * `new_participants_len` - Number of new participants to add
+/// * `new_n_i_list` - List of ranks for new parties
+///
+/// # Returns
+/// A vector of tuples containing setup messages and seeds for each party
 #[cfg(any(test, feature = "test-support"))]
 pub fn setup_quorum_change_extend_parties(
     old_keyshares: &[Arc<Keyshare>],
@@ -340,8 +429,18 @@ pub fn setup_quorum_change_extend_parties(
         .collect::<Vec<_>>()
 }
 
-/// Generate SetupMessage and seed for QuorumChange parties
-/// to change a threshold
+/// Generates setup messages and seeds for changing the quorum threshold.
+///
+/// This function creates setup messages and seeds for a quorum change that
+/// modifies the threshold value while keeping the same set of parties.
+///
+/// # Arguments
+/// * `old_keyshares` - Existing key shares from the current quorum
+/// * `new_threshold` - New threshold value for the protocol
+/// * `new_n_i_list` - List of ranks for the parties
+///
+/// # Returns
+/// A vector of tuples containing setup messages and seeds for each party
 #[cfg(any(test, feature = "test-support"))]
 pub fn setup_quorum_change_threshold(
     old_keyshares: &[Arc<Keyshare>],

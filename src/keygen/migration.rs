@@ -1,6 +1,12 @@
 // Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
 
+//! Module for handling the migration of key shares  to DKLS23 format.
+//!
+//! This module provides functionality for migrating existing key shares from the other threshold ECDSA protocols
+//! such as GG** to the DKLS23 protocol format. The migration process preserves the cryptographic properties
+//! of the original key shares while updating them to the new protocol format.
+
 use crate::keygen::{KeyRefreshData, KeygenError, Keyshare};
 use crate::proto::{create_abort_message, FilteredMsgRelay};
 use crate::setup::KeygenSetupMessage;
@@ -8,7 +14,39 @@ use crate::{keygen, Seed};
 use futures_util::SinkExt;
 use k256::{ProjectivePoint, Scalar};
 use sl_mpc_mate::coord::Relay;
-/// Migrate from GG20 shares to DKLS23 shares. Same logic as Keyrefresh but with hardcoded s_i_0
+
+/// Migrates key shares from other ECDSA threshold protocols to DKLS23 format.
+///
+/// This function performs the migration of existing key shares to the DKLS23 protocol.
+/// It uses the same underlying logic as the key refresh process but with a hardcoded initial secret
+/// share value. The migration preserves the original public key and chain code while updating the
+/// internal representation to the new protocol format.
+///
+/// # Type Parameters
+///
+/// * `R` - A type implementing the `Relay` trait for message communication
+/// * `S` - A type implementing the `KeygenSetupMessage` trait for protocol setup
+///
+/// # Arguments
+///
+/// * `setup` - The protocol setup configuration
+/// * `seed` - The random seed for key generation
+/// * `relay` - The message relay for communication between parties
+/// * `s_i_0` - The initial additive secret share value from the existing protocol
+/// * `public_key` - The public key to be preserved during migration
+/// * `root_chain_code` - The root chain code to be preserved during migration
+///
+/// # Returns
+///
+/// * `Ok(Keyshare)` - The migrated key share in DKLS23 format
+/// * `Err(KeygenError)` - If the migration process fails
+///
+/// # Errors
+///
+/// This function may return the following errors:
+/// * `KeygenError::AbortProtocol` - If the protocol is aborted by a participant
+/// * `KeygenError::SendMessage` - If there's an error sending messages
+/// * Other `KeygenError` variants for various protocol failures
 pub async fn run<R, S>(
     setup: S,
     seed: Seed,

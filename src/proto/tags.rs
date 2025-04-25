@@ -1,6 +1,12 @@
 // Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
 
+//! Module for handling message tags and message relay functionality.
+//!
+//! This module provides functionality for filtering and managing message relays,
+//! including support for message tags, message filtering, and round-based message handling.
+//! It includes structures for managing expected messages and handling message rounds.
+
 use std::{
     collections::HashMap,
     ops::{Deref, DerefMut},
@@ -20,19 +26,27 @@ use crate::{
     setup::{ProtocolParticipant, ABORT_MESSAGE_TAG},
 };
 
-/// Relay Errors
+/// Errors that can occur during message relay operations.
+#[derive(Debug)]
 pub enum Error {
-    /// Abort
+    /// Protocol was aborted by a participant
     Abort(usize),
-    /// Recv
+    /// Error receiving a message
     Recv,
-    /// Send
+    /// Error sending a message
     Send,
-    /// InvalidMessage
+    /// Received message was invalid
     InvalidMessage,
 }
 
-/// custom message relay
+/// A message relay that filters messages based on expected tags and party IDs.
+///
+/// This struct wraps an underlying relay and provides additional functionality
+/// for filtering messages based on expected tags and party IDs. It maintains
+/// a buffer of received messages and tracks expected messages.
+///
+/// # Type Parameters
+/// * `R` - The type of the underlying relay implementation
 pub struct FilteredMsgRelay<R> {
     relay: R,
     in_buf: Vec<(Vec<u8>, usize, MessageTag)>,
@@ -40,7 +54,13 @@ pub struct FilteredMsgRelay<R> {
 }
 
 impl<R: Relay> FilteredMsgRelay<R> {
-    /// Construct a FilteredMsgRelay by wrapping up a Relay object
+    /// Creates a new `FilteredMsgRelay` by wrapping an existing relay.
+    ///
+    /// # Arguments
+    /// * `relay` - The underlying relay to wrap
+    ///
+    /// # Returns
+    /// A new `FilteredMsgRelay` instance
     pub fn new(relay: R) -> Self {
         Self {
             relay,
@@ -49,13 +69,24 @@ impl<R: Relay> FilteredMsgRelay<R> {
         }
     }
 
-    /// Return underlying relay object
+    /// Returns the underlying relay object.
+    ///
+    /// # Returns
+    /// The wrapped relay object
     pub fn into_inner(self) -> R {
         self.relay
     }
 
-    /// Mark message with ID as expected and associate pair (party-id,
-    /// tag) with it.
+    /// Marks a message with the given ID as expected and associates it with a party ID and tag.
+    ///
+    /// # Arguments
+    /// * `id` - The message ID to expect
+    /// * `tag` - The expected message tag
+    /// * `party_id` - The ID of the party sending the message
+    /// * `ttl` - Time-to-live for the message request
+    ///
+    /// # Returns
+    /// `Ok(())` if successful, or an error if the message request fails
     pub async fn expect_message(
         &mut self,
         id: MsgId,
@@ -69,13 +100,27 @@ impl<R: Relay> FilteredMsgRelay<R> {
         Ok(())
     }
 
+    /// Returns a message back to the expected messages queue.
+    ///
+    /// # Arguments
+    /// * `msg` - The message to put back
+    /// * `tag` - The message tag
+    /// * `party_id` - The ID of the party that sent the message
     fn put_back(&mut self, msg: &[u8], tag: MessageTag, party_id: usize) {
         self.expected
             .insert(msg.try_into().unwrap(), (party_id, tag));
     }
 
-    /// Receive an expected message with given tag, and return a
-    /// party-id associated with it.
+    /// Receives an expected message with the given tag and returns the associated party ID.
+    ///
+    /// # Arguments
+    /// * `tag` - The expected message tag
+    ///
+    /// # Returns
+    /// A tuple containing:
+    /// - The received message
+    /// - The party ID of the sender
+    /// - A boolean indicating if this is an abort message
     pub async fn recv(&mut self, tag: MessageTag) -> Result<(Vec<u8>, usize, bool), Error> {
         // flush output message messages.
         self.relay.flush().await.map_err(|_| Error::Recv)?;
@@ -111,8 +156,15 @@ impl<R: Relay> FilteredMsgRelay<R> {
         }
     }
 
-    /// Add expected messages and Ask underlying message relay to
-    /// receive them.
+    /// Adds expected messages and asks the underlying relay to receive them.
+    ///
+    /// # Arguments
+    /// * `setup` - The protocol participant setup
+    /// * `tag` - The expected message tag
+    /// * `p2p` - Whether this is a peer-to-peer message
+    ///
+    /// # Returns
+    /// The number of messages with the same tag
     pub async fn ask_messages<P: ProtocolParticipant>(
         &mut self,
         setup: &P,
@@ -123,12 +175,18 @@ impl<R: Relay> FilteredMsgRelay<R> {
             .await
     }
 
-    /// Ask set of messages with a given `tag` from a set of `parties`.
+    /// Asks for messages with a given tag from a set of parties.
     ///
-    /// Filter out own `party_index` from `parties`.
+    /// Filters out the current party's index from the list of parties.
     ///
-    /// Returns number of messages with the same tag.
+    /// # Arguments
+    /// * `setup` - The protocol participant setup
+    /// * `tag` - The expected message tag
+    /// * `from_parties` - Iterator over party indices to receive from
+    /// * `p2p` - Whether this is a peer-to-peer message
     ///
+    /// # Returns
+    /// The number of messages with the same tag
     pub async fn ask_messages_from_iter<P, I>(
         &mut self,
         setup: &P,
@@ -161,7 +219,16 @@ impl<R: Relay> FilteredMsgRelay<R> {
         Ok(count)
     }
 
-    /// The same as `ask_messages_from_iter()` by accepts slice of indices
+    /// Similar to `ask_messages_from_iter` but accepts a slice of indices.
+    ///
+    /// # Arguments
+    /// * `setup` - The protocol participant setup
+    /// * `tag` - The expected message tag
+    /// * `from_parties` - Slice of party indices to receive from
+    /// * `p2p` - Whether this is a peer-to-peer message
+    ///
+    /// # Returns
+    /// The number of messages with the same tag
     pub async fn ask_messages_from_slice<'a, P, I>(
         &mut self,
         setup: &P,
@@ -177,7 +244,14 @@ impl<R: Relay> FilteredMsgRelay<R> {
             .await
     }
 
-    /// Create a round
+    /// Creates a new round for receiving messages.
+    ///
+    /// # Arguments
+    /// * `count` - Number of messages to receive in this round
+    /// * `tag` - The expected message tag
+    ///
+    /// # Returns
+    /// A new `Round` instance
     pub fn round(&mut self, count: usize, tag: MessageTag) -> Round<'_, R> {
         Round::new(count, tag, self)
     }
@@ -197,7 +271,14 @@ impl<R> DerefMut for FilteredMsgRelay<R> {
     }
 }
 
-/// Structure to receive a round of messages
+/// A structure for receiving a round of messages.
+///
+/// This struct manages the reception of a fixed number of messages with a specific tag
+/// in a single round of communication.
+///
+/// # Type Parameters
+/// * `'a` - The lifetime of the parent `FilteredMsgRelay`
+/// * `R` - The type of the underlying relay
 pub struct Round<'a, R> {
     tag: MessageTag,
     count: usize,
@@ -205,15 +286,25 @@ pub struct Round<'a, R> {
 }
 
 impl<'a, R: Relay> Round<'a, R> {
-    /// Create a new round with a given number of messages to receive.
+    /// Creates a new round with a given number of messages to receive.
+    ///
+    /// # Arguments
+    /// * `count` - Number of messages to receive in this round
+    /// * `tag` - The expected message tag
+    /// * `relay` - The parent message relay
+    ///
+    /// # Returns
+    /// A new `Round` instance
     pub fn new(count: usize, tag: MessageTag, relay: &'a mut FilteredMsgRelay<R>) -> Self {
         Self { count, tag, relay }
     }
 
-    /// Receive next message in the round.
-    /// On success returns Ok(Some(message, party_index, is_abort_flag)).
-    /// At the end of the round it returns Ok(None).
+    /// Receives the next message in the round.
     ///
+    /// # Returns
+    /// - `Ok(Some(message, party_index, is_abort_flag))` on successful reception
+    /// - `Ok(None)` when the round is complete
+    /// - `Err(Error)` if an error occurs
     pub async fn recv(&mut self) -> Result<Option<(Vec<u8>, usize, bool)>, Error> {
         Ok(if self.count > 0 {
             let msg = self.relay.recv(self.tag).await;
@@ -233,10 +324,14 @@ impl<'a, R: Relay> Round<'a, R> {
         })
     }
 
-    /// It is possible to receive a invalid message with a correct ID.
-    /// In this case, it have to put the message id back into
-    /// relay.expected table and increment a counter of waiting
-    /// messages in the round.
+    /// Returns a message back to the expected messages queue.
+    ///
+    /// This is used when a message is received but found to be invalid.
+    ///
+    /// # Arguments
+    /// * `msg` - The message to put back
+    /// * `tag` - The message tag
+    /// * `party_id` - The ID of the party that sent the message
     pub fn put_back(&mut self, msg: &[u8], tag: MessageTag, party_id: usize) {
         self.relay.put_back(msg, tag, party_id);
         self.count += 1;
@@ -244,8 +339,21 @@ impl<'a, R: Relay> Round<'a, R> {
         // TODO Should we ASK it again?
     }
 
-    /// Receiver all messages in the round, verify, decode and pass to
-    /// given handler.
+    /// Receives all messages in the round, verifies them, decodes them, and passes them to a handler.
+    ///
+    /// # Type Parameters
+    /// * `T` - The type of the message payload
+    /// * `F` - The handler function type
+    /// * `S` - The protocol participant type
+    /// * `E` - The error type
+    ///
+    /// # Arguments
+    /// * `setup` - The protocol participant setup
+    /// * `abort_err` - Function to create an error from an abort message
+    /// * `handler` - Function to handle each received message
+    ///
+    /// # Returns
+    /// `Ok(())` if all messages are successfully processed, or an error if any message fails
     pub async fn of_signed_messages<T, F, S, E>(
         mut self,
         setup: &S,
@@ -280,8 +388,23 @@ impl<'a, R: Relay> Round<'a, R> {
         Ok(())
     }
 
-    /// Receiver all messages in the round, decrypt, decode and pass
-    /// to given handler.
+    /// Receives all encrypted messages in the round, decrypts them, and passes them to a handler.
+    ///
+    /// # Type Parameters
+    /// * `T` - The type of the message payload
+    /// * `F` - The handler function type
+    /// * `P` - The protocol participant type
+    /// * `E` - The error type
+    ///
+    /// # Arguments
+    /// * `setup` - The protocol participant setup
+    /// * `scheme` - The encryption scheme to use
+    /// * `trailer` - Size of the trailer data
+    /// * `err` - Function to create an error from an abort message
+    /// * `handler` - Function to handle each received message
+    ///
+    /// # Returns
+    /// `Ok(())` if all messages are successfully processed, or an error if any message fails
     pub async fn of_encrypted_messages<T, F, P, E>(
         mut self,
         setup: &P,
@@ -322,7 +445,21 @@ impl<'a, R: Relay> Round<'a, R> {
         Ok(())
     }
 
-    /// Broadcast 4 values and collect 4 values from others in the round
+    /// Broadcasts four different types of messages to all participants.
+    ///
+    /// # Type Parameters
+    /// * `P` - The protocol participant type
+    /// * `T1` - The type of the first message
+    /// * `T2` - The type of the second message
+    /// * `T3` - The type of the third message
+    /// * `T4` - The type of the fourth message
+    ///
+    /// # Arguments
+    /// * `setup` - The protocol participant setup
+    /// * `msg` - Tuple of four messages to broadcast
+    ///
+    /// # Returns
+    /// A tuple of four `Pairs` containing the broadcast messages and their senders
     pub async fn broadcast_4<P, T1, T2, T3, T4>(
         self,
         setup: &P,
@@ -389,8 +526,21 @@ impl<'a, R: Relay> Round<'a, R> {
         Ok((p0, p1, p2, p3))
     }
 
-    /// Receive broadcasted 4 values from all parties in the round and
-    /// collect them into 4 Pairs vectors.
+    /// Receives four different types of broadcast messages from all participants.
+    ///
+    /// # Type Parameters
+    /// * `P` - The protocol participant type
+    /// * `T1` - The type of the first message
+    /// * `T2` - The type of the second message
+    /// * `T3` - The type of the third message
+    /// * `T4` - The type of the fourth message
+    ///
+    /// # Arguments
+    /// * `setup` - The protocol participant setup
+    /// * `sizes` - Array of sizes for each message type
+    ///
+    /// # Returns
+    /// A tuple of four `Pairs` containing the received messages and their senders
     pub async fn recv_broadcast_4<P, T1, T2, T3, T4>(
         mut self,
         setup: &P,

@@ -11,6 +11,7 @@
   - [Benchmarks](#benchmarks)
     - [Criterion](#criterion)
     - [Detailed Metrics](#detailed-metrics)
+  - [Rustdocs](#rustdocs)
 - [Crates structure](#crates-structure)
   - [Protocols](#protocols)
   - [Primitives](#primitives)
@@ -60,6 +61,8 @@ Under `/examples` directory there are example codes to keygen,sign and refresh:
 - `cargo run --example sign`
 - `cargo run --example refresh`
 
+ ### Rustdocs
+ https://silence-laboratories.github.io/dkls23/rustdocs/dkls23/
 
 ##  Crates structure
 

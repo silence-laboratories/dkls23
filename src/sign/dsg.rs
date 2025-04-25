@@ -1,9 +1,7 @@
 // Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
 
-//! Distributed sign generation protocol.
-//! Based on <https://eprint.iacr.org/2023/765.pdf>
-
+//! Distributed Signature Generation (DSG) Protocol Implementation
 use std::collections::HashMap;
 
 use k256::{
@@ -43,6 +41,28 @@ use super::SignError;
 
 use crate::pairs::Pairs;
 
+/// Inner function for the pre-signature phase of the DSG protocol
+///
+/// This function implements the core logic of the pre-signature phase,
+/// where parties generate a pre-signature that can be used to sign any
+/// message later.
+///
+/// # Type Parameters
+///
+/// * `R`: Type implementing the `Relay` trait for message communication
+/// * `S`: Type implementing the `PreSignSetupMessage` trait for setup parameters
+///
+/// # Arguments
+///
+/// * `setup`: Setup parameters for the protocol
+/// * `seed`: Random seed for generating random values
+/// * `relay`: Message relay for communication between parties
+///
+/// # Returns
+///
+/// A `Result` containing either:
+/// * `Ok(PreSign)`: The pre-signature result
+/// * `Err(SignError)`: An error if the protocol fails
 async fn pre_signature_inner<R: Relay, S: PreSignSetupMessage>(
     setup: &S,
     seed: Seed,
@@ -406,7 +426,22 @@ async fn pre_signature_inner<R: Relay, S: PreSignSetupMessage>(
     Ok(pre_sign_result)
 }
 
-// Locally create a partial signature from pre-signature and msg_hash
+/// Creates a partial signature from a pre-signature result
+///
+/// This function takes a pre-signature result and a message hash,
+/// and creates a partial signature that can be combined with other
+/// partial signatures to form the final signature.
+///
+/// # Arguments
+///
+/// * `pre_sign_result`: The pre-signature result from the pre-signature phase
+/// * `message_hash`: The hash of the message to be signed
+///
+/// # Returns
+///
+/// A `Result` containing either:
+/// * `Ok(PartialSignature)`: The partial signature
+/// * `Err(SignError)`: An error if the partial signature cannot be created
 fn create_partial_signature(
     pre_sign_result: &PreSign,
     message_hash: [u8; 32],
@@ -435,7 +470,20 @@ fn create_partial_signature(
     })
 }
 
-// Locally combine list of t partial signatures into a final signature
+/// Combines partial signatures into a final signature
+///
+/// This function takes a collection of partial signatures and combines
+/// them to produce the final ECDSA signature and recovery ID.
+///
+/// # Arguments
+///
+/// * `partial_signatures`: A slice of partial signatures to combine
+///
+/// # Returns
+///
+/// A `Result` containing either:
+/// * `Ok((Signature, RecoveryId))`: The final signature and recovery ID
+/// * `Err(SignError)`: An error if the signatures cannot be combined
 fn combine_partial_signature(
     partial_signatures: &[PartialSignature],
 ) -> Result<(Signature, RecoveryId), SignError> {
@@ -483,7 +531,27 @@ fn combine_partial_signature(
     Ok((sign, recid))
 }
 
-/// Execute DSG protocol.
+/// Main entry point for the DSG protocol
+///
+/// This function executes the complete DSG protocol, including both
+/// the pre-signature and finish phases.
+///
+/// # Type Parameters
+///
+/// * `R`: Type implementing the `Relay` trait for message communication
+/// * `S`: Type implementing the `SignSetupMessage` trait for setup parameters
+///
+/// # Arguments
+///
+/// * `setup`: Setup parameters for the protocol
+/// * `seed`: Random seed for generating random values
+/// * `relay`: Message relay for communication between parties
+///
+/// # Returns
+///
+/// A `Result` containing either:
+/// * `Ok((Signature, RecoveryId))`: The final signature and recovery ID
+/// * `Err(SignError)`: An error if the protocol fails
 pub async fn run<R: Relay, S: SignSetupMessage>(
     setup: S,
     seed: Seed,
@@ -514,6 +582,27 @@ pub async fn run<R: Relay, S: SignSetupMessage>(
     result
 }
 
+/// Inner function for the main DSG protocol execution
+///
+/// This function implements the core logic of the DSG protocol,
+/// handling both the pre-signature and finish phases.
+///
+/// # Type Parameters
+///
+/// * `R`: Type implementing the `Relay` trait for message communication
+/// * `S`: Type implementing the `SignSetupMessage` trait for setup parameters
+///
+/// # Arguments
+///
+/// * `setup`: Setup parameters for the protocol
+/// * `seed`: Random seed for generating random values
+/// * `relay`: Message relay for communication between parties
+///
+/// # Returns
+///
+/// A `Result` containing either:
+/// * `Ok((Signature, RecoveryId))`: The final signature and recovery ID
+/// * `Err(SignError)`: An error if the protocol fails
 async fn run_inner<R: Relay, S: SignSetupMessage>(
     setup: S,
     seed: Seed,
@@ -528,7 +617,27 @@ async fn run_inner<R: Relay, S: SignSetupMessage>(
     run_final(&setup, relay, t, msg_hash, &pre_signature_result).await
 }
 
-/// Execute DSG upto creation of PreSignature.
+/// Executes the pre-signature phase of the DSG protocol
+///
+/// This function runs only the pre-signature phase of the protocol,
+/// producing a pre-signature that can be used later to sign messages.
+///
+/// # Type Parameters
+///
+/// * `R`: Type implementing the `Relay` trait for message communication
+/// * `S`: Type implementing the `PreSignSetupMessage` trait for setup parameters
+///
+/// # Arguments
+///
+/// * `setup`: Setup parameters for the protocol
+/// * `seed`: Random seed for generating random values
+/// * `relay`: Message relay for communication between parties
+///
+/// # Returns
+///
+/// A `Result` containing either:
+/// * `Ok(PreSign)`: The pre-signature result
+/// * `Err(SignError)`: An error if the protocol fails
 pub async fn pre_signature<R: Relay, S: PreSignSetupMessage>(
     setup: S,
     seed: Seed,
@@ -557,7 +666,26 @@ pub async fn pre_signature<R: Relay, S: PreSignSetupMessage>(
     result
 }
 
-/// Finish DSG.
+/// Executes the finish phase of the DSG protocol
+///
+/// This function runs the finish phase of the protocol, using a
+/// pre-signature to generate the final signature for a message.
+///
+/// # Type Parameters
+///
+/// * `R`: Type implementing the `Relay` trait for message communication
+/// * `S`: Type implementing the `FinalSignSetupMessage` trait for setup parameters
+///
+/// # Arguments
+///
+/// * `setup`: Setup parameters for the protocol
+/// * `relay`: Message relay for communication between parties
+///
+/// # Returns
+///
+/// A `Result` containing either:
+/// * `Ok((Signature, RecoveryId))`: The final signature and recovery ID
+/// * `Err(SignError)`: An error if the protocol fails
 pub async fn finish<R: Relay, S: FinalSignSetupMessage>(
     setup: S,
     relay: R,
@@ -583,6 +711,29 @@ pub async fn finish<R: Relay, S: FinalSignSetupMessage>(
     result
 }
 
+/// Inner function for the finish phase of the DSG protocol
+///
+/// This function implements the core logic of the finish phase,
+/// where parties use a pre-signature to generate the final signature.
+///
+/// # Type Parameters
+///
+/// * `R`: Type implementing the `Relay` trait for message communication
+/// * `S`: Type implementing the `ProtocolParticipant` trait for participant information
+///
+/// # Arguments
+///
+/// * `setup`: Setup parameters for the protocol
+/// * `relay`: Message relay for communication between parties
+/// * `t`: Threshold value for the signature
+/// * `msg_hash`: Hash of the message to be signed
+/// * `pre_signature_result`: The pre-signature result from the pre-signature phase
+///
+/// # Returns
+///
+/// A `Result` containing either:
+/// * `Ok((Signature, RecoveryId))`: The final signature and recovery ID
+/// * `Err(SignError)`: An error if the protocol fails
 async fn run_final<R: Relay, S: ProtocolParticipant>(
     setup: &S,
     relay: &mut FilteredMsgRelay<R>,
@@ -635,6 +786,20 @@ async fn run_final<R: Relay, S: ProtocolParticipant>(
     combine_partial_signature(&partial_signatures)
 }
 
+/// Computes the hash of a commitment value
+///
+/// This function computes the hash of a commitment value using the
+/// session ID, R point, and blind factor.
+///
+/// # Arguments
+///
+/// * `session_id`: The session identifier
+/// * `big_r_i`: The R point value
+/// * `blind_factor`: The blind factor value
+///
+/// # Returns
+///
+/// A 32-byte array containing the hash of the commitment
 fn hash_commitment_r_i(
     session_id: &[u8],
     big_r_i: &ProjectivePoint,
@@ -650,6 +815,20 @@ fn hash_commitment_r_i(
     hasher.finalize().into()
 }
 
+/// Computes the zeta_i value for a party
+///
+/// This function computes the zeta_i value used in the signature
+/// generation process.
+///
+/// # Arguments
+///
+/// * `keyshare`: The key share of the party
+/// * `party_id_list`: List of party IDs participating in the protocol
+/// * `sig_id`: The signature identifier
+///
+/// # Returns
+///
+/// The computed zeta_i scalar value
 fn get_zeta_i(keyshare: &Keyshare, party_id_list: &[(usize, u8)], sig_id: &[u8]) -> Scalar {
     let mut sum_p_0 = Scalar::ZERO;
     for &(_, p_0_party) in party_id_list {
@@ -686,6 +865,19 @@ fn get_zeta_i(keyshare: &Keyshare, party_id_list: &[(usize, u8)], sig_id: &[u8])
     sum_p_0 - sum_p_1
 }
 
+/// Computes the Birkhoff coefficients for the protocol
+///
+/// This function computes the Birkhoff coefficients used in the
+/// signature generation process.
+///
+/// # Arguments
+///
+/// * `keyshare`: The key share of the party
+/// * `sign_party_ids`: List of party IDs participating in the protocol
+///
+/// # Returns
+///
+/// A map of party indices to their corresponding Birkhoff coefficients
 fn get_birkhoff_coefficients(
     keyshare: &Keyshare,
     sign_party_ids: &[(usize, u8)],
@@ -704,6 +896,19 @@ fn get_birkhoff_coefficients(
         .collect::<HashMap<_, _>>()
 }
 
+/// Computes the Lagrange coefficient for a party
+///
+/// This function computes the Lagrange coefficient used in the
+/// signature generation process.
+///
+/// # Arguments
+///
+/// * `keyshare`: The key share of the party
+/// * `sign_party_ids`: List of party IDs participating in the protocol
+///
+/// # Returns
+///
+/// The computed Lagrange coefficient
 fn get_lagrange_coeff(keyshare: &Keyshare, sign_party_ids: &[(usize, u8)]) -> Scalar {
     let mut coeff = Scalar::from(1u64);
     let pid = keyshare.party_id;
@@ -720,6 +925,24 @@ fn get_lagrange_coeff(keyshare: &Keyshare, sign_party_ids: &[(usize, u8)]) -> Sc
     coeff
 }
 
+/// Computes a list of Lagrange coefficients
+///
+/// This function computes a list of Lagrange coefficients for a set
+/// of party points.
+///
+/// # Type Parameters
+///
+/// * `K`: Type of the key function
+/// * `T`: Type of the party points
+///
+/// # Arguments
+///
+/// * `party_points`: List of party points
+/// * `k`: Function to extract the key from a party point
+///
+/// # Returns
+///
+/// An iterator over the computed Lagrange coefficients
 pub(crate) fn get_lagrange_coeff_list<'a, K, T>(
     party_points: &'a [T],
     k: K,
@@ -742,6 +965,21 @@ where
     })
 }
 
+/// Verifies a commitment value
+///
+/// This function verifies that a commitment value matches the expected
+/// hash of the session ID, R point, and blind factor.
+///
+/// # Arguments
+///
+/// * `sid`: The session identifier
+/// * `big_r_i`: The R point value
+/// * `blind_factor`: The blind factor value
+/// * `commitment`: The commitment value to verify
+///
+/// # Returns
+///
+/// `true` if the commitment is valid, `false` otherwise
 fn verify_commitment_r_i(
     sid: &[u8],
     big_r_i: &ProjectivePoint,
@@ -753,6 +991,20 @@ fn verify_commitment_r_i(
     commitment.ct_eq(&compare_commitment).into()
 }
 
+/// Generates a session ID for the MtA protocol
+///
+/// This function generates a unique session ID for the MtA protocol
+/// based on the final session ID and the sender/receiver IDs.
+///
+/// # Arguments
+///
+/// * `final_session_id`: The final session identifier
+/// * `sender_id`: The ID of the sender party
+/// * `receiver_id`: The ID of the receiver party
+///
+/// # Returns
+///
+/// A 32-byte array containing the generated session ID
 fn mta_session_id(final_session_id: &[u8], sender_id: u8, receiver_id: u8) -> [u8; 32] {
     let mut h = Sha256::new();
     h.update(DSG_LABEL);
@@ -765,6 +1017,10 @@ fn mta_session_id(final_session_id: &[u8], sender_id: u8, receiver_id: u8) -> [u
     h.finalize().into()
 }
 
+/// Test module for the DSG protocol
+///
+/// This module contains various test cases for the DSG protocol,
+/// including tests for different party configurations and scenarios.
 #[cfg(test)]
 mod tests {
     use super::*;

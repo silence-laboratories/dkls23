@@ -1,46 +1,48 @@
 // Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
 
+//! Module for handling the finalization phase of the distributed key generation protocol.
+
+
 use sl_mpc_mate::message::MsgId;
 
 use crate::{
     keygen::constants, proto::SignedMessage, setup::ProtocolParticipant,
 };
 
-/// Constructs a final message for a given protocol participant,
-/// encoding a status code and an optional details.
+/// Constructs a final message for a given protocol participant.
 ///
-/// This function is used to create a message that signifies the end
-/// or completion of a protocol process between participants. It
-/// incorporates a status code and an optional reason, which are
-/// signed and marshaled into a format specified by the
-/// `SignedMessage` structure.
+/// This function creates a signed message that indicates the completion or termination
+/// of the protocol process. The message includes a status code and optional details
+/// that provide additional context about the protocol outcome.
 ///
 /// # Type Parameters
 ///
-/// - `S`: A type that implements the `ProtocolParticipant`
-///   trait. This trait provides necessary methods and types for
-///   facilitating the message creation process.
+/// * `S` - A type implementing the `ProtocolParticipant` trait, providing necessary
+///   protocol context and signing capabilities.
 ///
-/// # Parameters
+/// # Arguments
 ///
-/// - `setup`: A reference to an instance of a type `S` that
-///   implements the `ProtocolParticipant` trait. It provides context
-///   and utilities needed for message creation, such as message
-///   identifiers and signature information.
-///
-/// - `code`: A `u16` status code that indicates the final status or
-///   outcome of the protocol. This code could represent success,
-///   failure, or any other relevant state.
-///
-/// - `details`: An optional byte slice that provides additional
-///   information or context for the status code.
+/// * `setup` - A reference to the protocol participant setup, providing context and
+///   signing capabilities.
+/// * `code` - A status code indicating the final state of the protocol (e.g., success,
+///   failure, or specific error conditions).
+/// * `details` - Optional additional information about the protocol outcome, provided
+///   as a byte slice.
 ///
 /// # Returns
 ///
-/// - `Vec<u8>`: A vector of bytes representing the serialized and
-///   signed final message.
+/// A vector of bytes containing the serialized and signed final message.
 ///
+/// # Examples
+///
+/// ```rust
+/// # use crate::setup::ProtocolParticipant;
+/// # use crate::keygen::finish::create_final_message;
+/// # let setup = unimplemented!();
+/// let success_code = 0;
+/// let message = create_final_message(&setup, success_code, None);
+/// ```
 pub fn create_final_message<S: ProtocolParticipant>(
     setup: &S,
     code: u16,
@@ -60,8 +62,30 @@ pub fn create_final_message<S: ProtocolParticipant>(
     )
 }
 
-/// Determines whether a given message matches the expected final
-/// message identifier for a specified sender.
+/// Verifies if a message matches the expected final message identifier for a sender.
+///
+/// This function checks whether a given message corresponds to the final message
+/// type expected from a specific protocol participant.
+///
+/// # Arguments
+///
+/// * `setup` - A reference to the protocol participant setup.
+/// * `sender_id` - The identifier of the message sender.
+/// * `message` - The message to verify.
+///
+/// # Returns
+///
+/// `true` if the message matches the expected final message identifier, `false` otherwise.
+///
+/// # Examples
+///
+/// ```rust
+/// # use crate::setup::ProtocolParticipant;
+/// # use crate::keygen::finish::is_final_message;
+/// # let setup = unimplemented!();
+/// # let message = unimplemented!();
+/// let is_final = is_final_message(&setup, 0, &message);
+/// ```
 pub fn is_final_message<S: ProtocolParticipant>(
     setup: &S,
     sender_id: usize,
@@ -77,51 +101,39 @@ pub fn is_final_message<S: ProtocolParticipant>(
         .is_some()
 }
 
-/// Parses and verifies a final message, extracting the status code
-/// and optional details.
+/// Parses and verifies a final message from a protocol participant.
 ///
-/// This function is responsible for interpreting a message received
-/// from a protocol participant, verifying its authenticity, and
-/// extracting status code and an optional details.
+/// This function decodes a final message, verifies its authenticity using the sender's
+/// verification key, and extracts the status code and optional details.
 ///
 /// # Type Parameters
 ///
-/// - `S`: A type that implements the `ProtocolParticipant`
-///   trait. This type provides the necessary verification capabilities
-///   and signature types required for message interpretation and
-///   validation.
+/// * `S` - A type implementing the `ProtocolParticipant` trait.
+/// * `E` - The error type returned when message parsing or verification fails.
 ///
-/// - `E`: The error type returned by the function if message parsing
-///   or verification fails.
+/// # Arguments
 ///
-/// # Parameters
-///
-/// - `setup`: A reference to an instance of a type `S` that
-///   implements the `ProtocolParticipant` trait. This setup instance is
-///   used to obtain the verifier for the corresponding protocol
-///   participant.
-///
-/// - `msg`: A byte slice representing the message to be parsed and
-///   verified. This message contains serialized data, including a
-///   status code and an optional reason string.
-///
-/// - `party_id`: The identifier for the party whose message is being
-///   verified. This identifier is used to obtain verification criteria
-///   specific to the party from the `setup`.
-///
-/// - `err`: A closure that takes a `usize` (representing the
-///   `party_id`) and returns an error of type `E`.  This closure is
-///   invoked if the function encounters issues with the message (e.g.,
-///   verification failure).
+/// * `setup` - A reference to the protocol participant setup.
+/// * `msg` - The message to parse and verify.
+/// * `party_id` - The identifier of the message sender.
+/// * `err` - A closure that creates an error when message verification fails.
 ///
 /// # Returns
 ///
-/// - `Result<(u16, Option<&'[u8]>), E>`: On successful parsing and
-///   verification, returns a tuple consisting of a `u16` status code
-///   and an optional details. If any error is encountered during
-///   message verification or parsing, an error of type `E` is
-///   returned constructed by calling `err`.
+/// * `Ok((u16, Option<&[u8]>))` - On success, returns a tuple containing:
+///   - The status code
+///   - Optional details as a byte slice
+/// * `Err(E)` - If message parsing or verification fails
 ///
+/// # Examples
+///
+/// ```rust
+/// # use crate::setup::ProtocolParticipant;
+/// # use crate::keygen::finish::parse_final_message;
+/// # let setup = unimplemented!();
+/// # let message = unimplemented!();
+/// let result = parse_final_message(&setup, &message, 0, |id| format!("Invalid message from party {}", id));
+/// ```
 pub fn parse_final_message<'a, S: ProtocolParticipant, E>(
     setup: &S,
     msg: &'a [u8],
@@ -143,3 +155,5 @@ pub fn parse_final_message<'a, S: ProtocolParticipant, E>(
         .map(|(&code, reason)| (code, reason.is_empty().then_some(reason)))
         .ok_or_else(|| err(party_id))
 }
+
+
