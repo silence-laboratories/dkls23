@@ -13,7 +13,7 @@ on:
 jobs:
   lints:
     name: Lints
-    runs-on: github-builder-dedicated
+    runs-on: github-builder
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
@@ -33,7 +33,7 @@ jobs:
 
   build-and-test:
     name: Rust tests
-    runs-on: github-builder-dedicated
+    runs-on: github-builder
     needs: lints
     steps:
       - name: Checkout sources
