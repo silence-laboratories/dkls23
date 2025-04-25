@@ -15,7 +15,7 @@
 //! * `key_refresh` - Protocol for refreshing existing keys
 //! * `keyshare` - Key share management and related definitions
 //! * `constants` - Protocol constants and configuration
-//! * `migration` - Migration utilities from GG20 protocol
+//! * `migration` - Migration utilities to DKLS23 protocol
 //! * `quorum_change` - Protocol for changing the quorum of participants
 
 mod dkg;
@@ -39,7 +39,7 @@ pub mod keyshare;
 /// Various contants
 pub mod constants;
 
-/// Migrate shares from GG20
+/// Migrate shares to DKLS23
 pub mod migration;
 
 /// Quorum change protocol

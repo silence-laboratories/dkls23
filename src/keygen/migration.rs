@@ -1,7 +1,7 @@
 // Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
 
-//! Module for handling the migration of key shares from GG20 to DKLS23 format.
+//! Module for handling the migration of key shares  to DKLS23 format.
 //!
 //! This module provides functionality for migrating existing key shares from the other threshold ECDSA protocols
 //! such as GG** to the DKLS23 protocol format. The migration process preserves the cryptographic properties
@@ -15,9 +15,9 @@ use futures_util::SinkExt;
 use k256::{ProjectivePoint, Scalar};
 use sl_mpc_mate::coord::Relay;
 
-/// Migrates key shares from GG20 format to DKLS23 format.
+/// Migrates key shares from other ECDSA threshold protocols to DKLS23 format.
 ///
-/// This function performs the migration of key shares from the GG20 protocol to the DKLS23 protocol.
+/// This function performs the migration of existing key shares to the DKLS23 protocol.
 /// It uses the same underlying logic as the key refresh process but with a hardcoded initial secret
 /// share value. The migration preserves the original public key and chain code while updating the
 /// internal representation to the new protocol format.
@@ -32,7 +32,7 @@ use sl_mpc_mate::coord::Relay;
 /// * `setup` - The protocol setup configuration
 /// * `seed` - The random seed for key generation
 /// * `relay` - The message relay for communication between parties
-/// * `s_i_0` - The initial secret share value from the GG20 protocol
+/// * `s_i_0` - The initial additive secret share value from the existing protocol
 /// * `public_key` - The public key to be preserved during migration
 /// * `root_chain_code` - The root chain code to be preserved during migration
 ///
