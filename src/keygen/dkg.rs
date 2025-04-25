@@ -4,28 +4,8 @@
 //! Distributed Key Generation (DKG) Protocol Implementation
 //!
 //! This module implements a distributed key generation protocol based on Protocol 6.1 from
-//! the paper "Efficient Multi-Party Computation with Dispute Resolution" (https://eprint.iacr.org/2022/374.pdf).
-//!
-//! The protocol allows a group of participants to jointly generate a secret key in a distributed manner,
-//! where each participant holds a share of the key. The protocol ensures that:
-//! - No single participant knows the complete secret key
-//! - A threshold number of participants can reconstruct the key
-//! - The protocol is secure against malicious participants
-//!
-//! # Protocol Overview
-//!
-//! The DKG protocol consists of several phases:
-//! 1. Initialization and commitment
-//! 2. Share distribution and verification
-//! 3. Oblivious transfer setup
-//! 4. Final key share computation
-//!
-//! # Security Properties
-//!
-//! The protocol provides the following security guarantees:
-//! - Threshold security: The secret can only be reconstructed with a sufficient number of shares
-//! - Verifiability: Participants can verify the correctness of their shares
-//! - Privacy: No information about the secret is leaked to malicious participants
+//! the paper "Efficient Multi-Party Computation with Dispute Resolution" (<https://eprint.iacr.org/2022/374.pdf>).
+
 
 use k256::{
     elliptic_curve::{

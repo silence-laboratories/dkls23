@@ -78,7 +78,7 @@ jobs:
           cp scripts/sil.jpg docs
           mv gh-pages/* docs 
           mv index.html docs
-          mv target/doc/* docs/rustdocs
+          cp -rf target/doc/* docs/rustdocs
 
       - name: Deploy to GitHub Pages
         uses: JamesIves/github-pages-deploy-action@v4
