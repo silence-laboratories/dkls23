@@ -72,7 +72,7 @@ jobs:
           python -m pip install --upgrade pip
           python scripts/process_benchmarks_to_html.py gh-pages/docs/data.js
           cargo clean
-          cargo doc --no-deps 
+          cargo doc 
           mkdir -p docs
           mkdir -p docs/rustdocs
           cp scripts/sil.jpg docs
