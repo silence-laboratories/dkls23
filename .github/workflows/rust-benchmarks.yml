@@ -73,8 +73,6 @@ jobs:
           python scripts/process_benchmarks_to_html.py gh-pages/docs/data.js
           cargo clean
           cargo doc --no-deps
-          cargo fix --lib -p dkls23
-          mkdir -p docs
           mkdir -p docs/rustdocs
           cp scripts/sil.jpg docs
           mv gh-pages/* docs 
