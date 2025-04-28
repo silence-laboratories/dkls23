@@ -26,7 +26,7 @@
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
 ## DKLs23
-The repository implements threshold ECDSA signatures implementing DKLs23 protocol.
+Threshold ECDSA signing implemented based on the DKLs23 protocol. This implementation is used  by Silent Shard SDK.
 
 ## Functionality
 
@@ -99,7 +99,7 @@ Under `/examples` directory there are example codes to keygen,sign and refresh:
   </tr>
   <tr>
     <td>Import</td>
-    <td><a href="sss"></a>reference</td>
+    <td>reference</td>
     <td><a href="/src/key_import.rs">code</a></td>
     <td>No</td>
 
@@ -243,12 +243,17 @@ and 49kb.
 
 ## Contributing
 
-Please see [Contributing](CONTRIBUTING.md) section
+Please refer to [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Security
 
-Please see [Security](SECURITY.md) section
+If you discover a vulnerability, please follow the instructions in [SECURITY.md](SECURITY.md).
 
-## Audit
+## Security Audit
 
-Trail of bits has [audited](docs/ToB-SilenceLaboratories_2024.04.10.pdf) commit hash `1510c2fafe3cd6866581ce3e2c43c565561b929b` from [dkls23](https://github.com/silence-laboratories/dkls23/commit/1510c2fafe3cd6866581ce3e2c43c565561b929b) and commit hash `a6b014722a29027d813bcb58720412da68f63d07` from [sl-crypto](https://github.com/silence-laboratories/sl-crypto/commit/a6b014722a29027d813bcb58720412da68f63d07) repo.
+Trail of Bits has performed a security audit in Feb 2024 on the following commits:
+- `1510c2fafe3c` from the [dkls23](https://github.com/silence-laboratories/dkls23/commit/1510c2fafe3cd6866581ce3e2c43c565561b929b) repository.
+- `a6b014722a29` from the [sl-crypto](https://github.com/silence-laboratories/sl-crypto/commit/a6b014722a29027d813bcb58720412da68f63d07) repository.
+
+The report is available here:
+- [Security Assessment Report: Silent Shard - Trail of Bits, Feb 2024](docs/ToB-SilenceLaboratories_2024.04.10.pdf).
