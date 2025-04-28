@@ -11,489 +11,497 @@
 <a href=#11 id=11 data-nosnippet>11</a></span><span class="kw">use </span>std::sync::Arc;
 <a href=#12 id=12 data-nosnippet>12</a>
 <a href=#13 id=13 data-nosnippet>13</a><span class="kw">use </span>k256::{
-<a href=#14 id=14 data-nosnippet>14</a>    elliptic_curve::subtle::ConstantTimeEq, NonZeroScalar, ProjectivePoint, Scalar, Secp256k1,
-<a href=#15 id=15 data-nosnippet>15</a>};
-<a href=#16 id=16 data-nosnippet>16</a><span class="attr">#[cfg(any(test, feature = <span class="string">"test-support"</span>))]
-<a href=#17 id=17 data-nosnippet>17</a></span><span class="kw">use </span>rand::prelude::<span class="kw-2">*</span>;
-<a href=#18 id=18 data-nosnippet>18</a><span class="attr">#[cfg(any(test, feature = <span class="string">"test-support"</span>))]
-<a href=#19 id=19 data-nosnippet>19</a></span><span class="kw">use </span>sha2::{Digest, Sha256};
-<a href=#20 id=20 data-nosnippet>20</a>
-<a href=#21 id=21 data-nosnippet>21</a><span class="kw">use </span>sl_mpc_mate::math::birkhoff_coeffs;
-<a href=#22 id=22 data-nosnippet>22</a>
-<a href=#23 id=23 data-nosnippet>23</a><span class="attr">#[cfg(any(test, feature = <span class="string">"test-support"</span>))]
-<a href=#24 id=24 data-nosnippet>24</a></span><span class="kw">use </span><span class="kw">crate</span>::setup::{keygen::SetupMessage, <span class="kw-2">*</span>};
-<a href=#25 id=25 data-nosnippet>25</a>
-<a href=#26 id=26 data-nosnippet>26</a><span class="attr">#[cfg(any(test, feature = <span class="string">"test-support"</span>))]
-<a href=#27 id=27 data-nosnippet>27</a></span><span class="kw">use </span><span class="kw">crate</span>::setup::{
-<a href=#28 id=28 data-nosnippet>28</a>    keygen::SetupMessage <span class="kw">as </span>KeygenSetupMessage,
-<a href=#29 id=29 data-nosnippet>29</a>    quorum_change::SetupMessage <span class="kw">as </span>QuorumChangeSetupMessage,
-<a href=#30 id=30 data-nosnippet>30</a>};
-<a href=#31 id=31 data-nosnippet>31</a><span class="kw">use </span><span class="kw">crate</span>::sign::get_lagrange_coeff_list;
-<a href=#32 id=32 data-nosnippet>32</a>
-<a href=#33 id=33 data-nosnippet>33</a><span class="attr">#[cfg(any(test, feature = <span class="string">"test-support"</span>))]
-<a href=#34 id=34 data-nosnippet>34</a></span><span class="kw">use </span><span class="kw">super</span>::Keyshare;
-<a href=#35 id=35 data-nosnippet>35</a>
-<a href=#36 id=36 data-nosnippet>36</a><span class="kw">use </span><span class="kw">super</span>::KeygenError;
-<a href=#37 id=37 data-nosnippet>37</a>
-<a href=#38 id=38 data-nosnippet>38</a><span class="doccomment">/// Computes the Lagrange coefficient for a given point in a polynomial.
-<a href=#39 id=39 data-nosnippet>39</a>///
-<a href=#40 id=40 data-nosnippet>40</a>/// This function calculates the Lagrange coefficient for a specific point `x_i`
-<a href=#41 id=41 data-nosnippet>41</a>/// given a list of points `x_i_list` and their corresponding party IDs.
-<a href=#42 id=42 data-nosnippet>42</a>///
-<a href=#43 id=43 data-nosnippet>43</a>/// # Arguments
-<a href=#44 id=44 data-nosnippet>44</a>/// * `x_i` - The point for which to compute the coefficient
-<a href=#45 id=45 data-nosnippet>45</a>/// * `x_i_list` - List of all points in the polynomial
-<a href=#46 id=46 data-nosnippet>46</a>/// * `party_ids` - List of party IDs corresponding to the points
-<a href=#47 id=47 data-nosnippet>47</a>///
-<a href=#48 id=48 data-nosnippet>48</a>/// # Returns
-<a href=#49 id=49 data-nosnippet>49</a>/// The computed Lagrange coefficient as a scalar value
-<a href=#50 id=50 data-nosnippet>50</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>get_lagrange_coeff(
-<a href=#51 id=51 data-nosnippet>51</a>    x_i: <span class="kw-2">&amp;</span>NonZeroScalar,
-<a href=#52 id=52 data-nosnippet>52</a>    x_i_list: <span class="kw-2">&amp;</span>[NonZeroScalar],
-<a href=#53 id=53 data-nosnippet>53</a>    party_ids: <span class="kw-2">&amp;</span>[u8],
-<a href=#54 id=54 data-nosnippet>54</a>) -&gt; Scalar {
-<a href=#55 id=55 data-nosnippet>55</a>    <span class="kw">let </span><span class="kw-2">mut </span>coeff = Scalar::ONE;
-<a href=#56 id=56 data-nosnippet>56</a>    <span class="kw">let </span>x_i = x_i <span class="kw">as </span><span class="kw-2">&amp;</span>Scalar;
-<a href=#57 id=57 data-nosnippet>57</a>    <span class="kw">for </span><span class="kw-2">&amp;</span>party_id <span class="kw">in </span>party_ids {
-<a href=#58 id=58 data-nosnippet>58</a>        <span class="kw">let </span>x_j = <span class="kw-2">&amp;</span>x_i_list[party_id <span class="kw">as </span>usize] <span class="kw">as </span><span class="kw-2">&amp;</span>Scalar;
-<a href=#59 id=59 data-nosnippet>59</a>        <span class="kw">if </span>x_i.ct_ne(x_j).into() {
-<a href=#60 id=60 data-nosnippet>60</a>            <span class="kw">let </span>sub = x_j - x_i;
-<a href=#61 id=61 data-nosnippet>61</a>            coeff <span class="kw-2">*</span>= x_j * <span class="kw-2">&amp;</span>sub.invert().unwrap();
-<a href=#62 id=62 data-nosnippet>62</a>        }
-<a href=#63 id=63 data-nosnippet>63</a>    }
-<a href=#64 id=64 data-nosnippet>64</a>
-<a href=#65 id=65 data-nosnippet>65</a>    coeff
-<a href=#66 id=66 data-nosnippet>66</a>}
-<a href=#67 id=67 data-nosnippet>67</a>
-<a href=#68 id=68 data-nosnippet>68</a><span class="doccomment">/// Computes Birkhoff coefficients for a set of points with ranks.
-<a href=#69 id=69 data-nosnippet>69</a>///
-<a href=#70 id=70 data-nosnippet>70</a>/// This function calculates the Birkhoff coefficients for a set of points with
-<a href=#71 id=71 data-nosnippet>71</a>/// associated ranks, which are used in the Birkhoff interpolation process.
-<a href=#72 id=72 data-nosnippet>72</a>///
-<a href=#73 id=73 data-nosnippet>73</a>/// # Arguments
-<a href=#74 id=74 data-nosnippet>74</a>/// * `rank_list` - List of ranks for each point
-<a href=#75 id=75 data-nosnippet>75</a>/// * `x_i_list` - List of points in the polynomial
-<a href=#76 id=76 data-nosnippet>76</a>/// * `party_ids` - List of party IDs corresponding to the points
-<a href=#77 id=77 data-nosnippet>77</a>///
-<a href=#78 id=78 data-nosnippet>78</a>/// # Returns
-<a href=#79 id=79 data-nosnippet>79</a>/// A map of party IDs to their corresponding Birkhoff coefficients
-<a href=#80 id=80 data-nosnippet>80</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>get_birkhoff_coefficients(
-<a href=#81 id=81 data-nosnippet>81</a>    rank_list: <span class="kw-2">&amp;</span>[u8],
-<a href=#82 id=82 data-nosnippet>82</a>    x_i_list: <span class="kw-2">&amp;</span>[NonZeroScalar],
-<a href=#83 id=83 data-nosnippet>83</a>    party_ids: <span class="kw-2">&amp;</span>[u8],
-<a href=#84 id=84 data-nosnippet>84</a>) -&gt; HashMap&lt;usize, Scalar&gt; {
-<a href=#85 id=85 data-nosnippet>85</a>    <span class="kw">let </span>params = party_ids
-<a href=#86 id=86 data-nosnippet>86</a>        .iter()
-<a href=#87 id=87 data-nosnippet>87</a>        .map(|<span class="kw-2">&amp;</span>pid| (x_i_list[pid <span class="kw">as </span>usize], rank_list[pid <span class="kw">as </span>usize] <span class="kw">as </span>usize))
-<a href=#88 id=88 data-nosnippet>88</a>        .collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;();
-<a href=#89 id=89 data-nosnippet>89</a>
-<a href=#90 id=90 data-nosnippet>90</a>    <span class="kw">let </span>betta_vec = birkhoff_coeffs::&lt;Secp256k1&gt;(<span class="kw-2">&amp;</span>params);
-<a href=#91 id=91 data-nosnippet>91</a>
-<a href=#92 id=92 data-nosnippet>92</a>    party_ids
-<a href=#93 id=93 data-nosnippet>93</a>        .iter()
-<a href=#94 id=94 data-nosnippet>94</a>        .zip(betta_vec)
-<a href=#95 id=95 data-nosnippet>95</a>        .map(|(<span class="kw-2">&amp;</span>pid, w_i)| (pid <span class="kw">as </span>usize, w_i))
-<a href=#96 id=96 data-nosnippet>96</a>        .collect::&lt;HashMap&lt;<span class="kw">_</span>, <span class="kw">_</span>&gt;&gt;()
-<a href=#97 id=97 data-nosnippet>97</a>}
-<a href=#98 id=98 data-nosnippet>98</a>
-<a href=#99 id=99 data-nosnippet>99</a><span class="doccomment">/// Verifies that a secret can be recovered from the given shares.
-<a href=#100 id=100 data-nosnippet>100</a>///
-<a href=#101 id=101 data-nosnippet>101</a>/// This function checks whether the provided shares can be used to reconstruct
-<a href=#102 id=102 data-nosnippet>102</a>/// the original secret by verifying that the reconstructed public key matches
-<a href=#103 id=103 data-nosnippet>103</a>/// the expected public key.
-<a href=#104 id=104 data-nosnippet>104</a>///
-<a href=#105 id=105 data-nosnippet>105</a>/// # Arguments
-<a href=#106 id=106 data-nosnippet>106</a>/// * `x_i_list` - List of x-coordinates for the shares
-<a href=#107 id=107 data-nosnippet>107</a>/// * `rank_list` - List of ranks for each share
-<a href=#108 id=108 data-nosnippet>108</a>/// * `big_s_list` - List of public key components
-<a href=#109 id=109 data-nosnippet>109</a>/// * `public_key` - The expected public key
-<a href=#110 id=110 data-nosnippet>110</a>///
-<a href=#111 id=111 data-nosnippet>111</a>/// # Returns
-<a href=#112 id=112 data-nosnippet>112</a>/// `Ok(())` if the secret can be recovered, or an error if verification fails
-<a href=#113 id=113 data-nosnippet>113</a></span><span class="attr">#[allow(dead_code)]
-<a href=#114 id=114 data-nosnippet>114</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>check_secret_recovery(
-<a href=#115 id=115 data-nosnippet>115</a>    x_i_list: <span class="kw-2">&amp;</span>[NonZeroScalar],
-<a href=#116 id=116 data-nosnippet>116</a>    rank_list: <span class="kw-2">&amp;</span>[u8],
-<a href=#117 id=117 data-nosnippet>117</a>    big_s_list: <span class="kw-2">&amp;</span>[ProjectivePoint],
-<a href=#118 id=118 data-nosnippet>118</a>    public_key: <span class="kw-2">&amp;</span>ProjectivePoint,
-<a href=#119 id=119 data-nosnippet>119</a>) -&gt; <span class="prelude-ty">Result</span>&lt;(), KeygenError&gt; {
-<a href=#120 id=120 data-nosnippet>120</a>    <span class="comment">// If ranks are all zero, then we use lagrange interpolation
-<a href=#121 id=121 data-nosnippet>121</a>    </span><span class="kw">let </span>exp_public_key = <span class="kw">if </span>rank_list.iter().all(|<span class="kw-2">&amp;</span>r| r == <span class="number">0</span>) {
-<a href=#122 id=122 data-nosnippet>122</a>        <span class="kw">let </span>coeff_vector = get_lagrange_coeff_list(x_i_list, |x| x);
-<a href=#123 id=123 data-nosnippet>123</a>        big_s_list
-<a href=#124 id=124 data-nosnippet>124</a>            .iter()
-<a href=#125 id=125 data-nosnippet>125</a>            .zip(coeff_vector)
-<a href=#126 id=126 data-nosnippet>126</a>            .fold(ProjectivePoint::IDENTITY, |acc, (point, betta_i)| {
-<a href=#127 id=127 data-nosnippet>127</a>                acc + point * <span class="kw-2">&amp;</span>betta_i
-<a href=#128 id=128 data-nosnippet>128</a>            })
-<a href=#129 id=129 data-nosnippet>129</a>    } <span class="kw">else </span>{
-<a href=#130 id=130 data-nosnippet>130</a>        <span class="comment">// Otherwise, we use Birkhoff interpolation
-<a href=#131 id=131 data-nosnippet>131</a>        </span><span class="kw">let </span><span class="kw-2">mut </span>party_params_list = x_i_list
-<a href=#132 id=132 data-nosnippet>132</a>            .iter()
-<a href=#133 id=133 data-nosnippet>133</a>            .zip(rank_list)
-<a href=#134 id=134 data-nosnippet>134</a>            .zip(big_s_list)
-<a href=#135 id=135 data-nosnippet>135</a>            .collect::&lt;Vec&lt;((<span class="kw-2">&amp;</span>NonZeroScalar, <span class="kw-2">&amp;</span>u8), <span class="kw-2">&amp;</span>ProjectivePoint)&gt;&gt;();
-<a href=#136 id=136 data-nosnippet>136</a>
-<a href=#137 id=137 data-nosnippet>137</a>        party_params_list.sort_by_key(|((<span class="kw">_</span>, <span class="kw-2">&amp;</span>n_i), <span class="kw">_</span>)| n_i);
-<a href=#138 id=138 data-nosnippet>138</a>
-<a href=#139 id=139 data-nosnippet>139</a>        <span class="kw">let </span>params = party_params_list
-<a href=#140 id=140 data-nosnippet>140</a>            .iter()
-<a href=#141 id=141 data-nosnippet>141</a>            .map(|((<span class="kw-2">&amp;</span>x_i, <span class="kw-2">&amp;</span>n_i), <span class="kw">_</span>)| (x_i, n_i <span class="kw">as </span>usize))
-<a href=#142 id=142 data-nosnippet>142</a>            .collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;();
-<a href=#143 id=143 data-nosnippet>143</a>
-<a href=#144 id=144 data-nosnippet>144</a>        <span class="kw">let </span>betta_vector = birkhoff_coeffs(<span class="kw-2">&amp;</span>params);
-<a href=#145 id=145 data-nosnippet>145</a>
-<a href=#146 id=146 data-nosnippet>146</a>        party_params_list
-<a href=#147 id=147 data-nosnippet>147</a>            .into_iter()
-<a href=#148 id=148 data-nosnippet>148</a>            .map(|((<span class="kw">_</span>, <span class="kw">_</span>), <span class="kw-2">&amp;</span>big_s_i)| big_s_i)
-<a href=#149 id=149 data-nosnippet>149</a>            .zip(betta_vector)
-<a href=#150 id=150 data-nosnippet>150</a>            .fold(ProjectivePoint::IDENTITY, |acc, (point, betta_i)| {
-<a href=#151 id=151 data-nosnippet>151</a>                acc + point * betta_i
-<a href=#152 id=152 data-nosnippet>152</a>            })
-<a href=#153 id=153 data-nosnippet>153</a>    };
-<a href=#154 id=154 data-nosnippet>154</a>
-<a href=#155 id=155 data-nosnippet>155</a>    (public_key == <span class="kw-2">&amp;</span>exp_public_key)
-<a href=#156 id=156 data-nosnippet>156</a>        .then_some(())
-<a href=#157 id=157 data-nosnippet>157</a>        .ok_or(KeygenError::PublicKeyMismatch)
-<a href=#158 id=158 data-nosnippet>158</a>}
-<a href=#159 id=159 data-nosnippet>159</a>
-<a href=#160 id=160 data-nosnippet>160</a><span class="doccomment">/// Generates setup messages and seeds for DKG parties.
-<a href=#161 id=161 data-nosnippet>161</a>///
-<a href=#162 id=162 data-nosnippet>162</a>/// This function creates the necessary setup messages and seeds for all parties
-<a href=#163 id=163 data-nosnippet>163</a>/// participating in the DKG protocol. It handles both the case where ranks are
-<a href=#164 id=164 data-nosnippet>164</a>/// provided and where they are not.
-<a href=#165 id=165 data-nosnippet>165</a>///
-<a href=#166 id=166 data-nosnippet>166</a>/// # Arguments
-<a href=#167 id=167 data-nosnippet>167</a>/// * `instance` - Optional instance identifier for the protocol
-<a href=#168 id=168 data-nosnippet>168</a>/// * `t` - Threshold value for the protocol
-<a href=#169 id=169 data-nosnippet>169</a>/// * `n` - Total number of parties
-<a href=#170 id=170 data-nosnippet>170</a>/// * `ranks` - Optional list of ranks for each party
-<a href=#171 id=171 data-nosnippet>171</a>///
-<a href=#172 id=172 data-nosnippet>172</a>/// # Returns
-<a href=#173 id=173 data-nosnippet>173</a>/// A vector of tuples containing setup messages and seeds for each party
-<a href=#174 id=174 data-nosnippet>174</a></span><span class="attr">#[cfg(any(test, feature = <span class="string">"test-support"</span>))]
-<a href=#175 id=175 data-nosnippet>175</a></span><span class="kw">pub fn </span>setup_keygen(
-<a href=#176 id=176 data-nosnippet>176</a>    instance: <span class="prelude-ty">Option</span>&lt;[u8; <span class="number">32</span>]&gt;,
-<a href=#177 id=177 data-nosnippet>177</a>    t: u8,
-<a href=#178 id=178 data-nosnippet>178</a>    n: u8,
-<a href=#179 id=179 data-nosnippet>179</a>    ranks: <span class="prelude-ty">Option</span>&lt;<span class="kw-2">&amp;</span>[u8]&gt;,
-<a href=#180 id=180 data-nosnippet>180</a>) -&gt; Vec&lt;(KeygenSetupMessage, [u8; <span class="number">32</span>])&gt; {
-<a href=#181 id=181 data-nosnippet>181</a>    <span class="kw">use </span>std::time::Duration;
-<a href=#182 id=182 data-nosnippet>182</a>
-<a href=#183 id=183 data-nosnippet>183</a>    <span class="kw">use </span>sl_mpc_mate::message::InstanceId;
-<a href=#184 id=184 data-nosnippet>184</a>
-<a href=#185 id=185 data-nosnippet>185</a>    <span class="kw">let </span>ranks = <span class="kw">if let </span><span class="prelude-val">Some</span>(ranks) = ranks {
-<a href=#186 id=186 data-nosnippet>186</a>        <span class="macro">assert_eq!</span>(ranks.len(), n <span class="kw">as </span>usize);
-<a href=#187 id=187 data-nosnippet>187</a>        ranks.to_vec()
-<a href=#188 id=188 data-nosnippet>188</a>    } <span class="kw">else </span>{
-<a href=#189 id=189 data-nosnippet>189</a>        <span class="macro">vec!</span>[<span class="number">0u8</span>; n <span class="kw">as </span>usize]
-<a href=#190 id=190 data-nosnippet>190</a>    };
-<a href=#191 id=191 data-nosnippet>191</a>
-<a href=#192 id=192 data-nosnippet>192</a>    <span class="kw">let </span>instance = instance.unwrap_or_else(rand::random);
-<a href=#193 id=193 data-nosnippet>193</a>
-<a href=#194 id=194 data-nosnippet>194</a>    <span class="comment">// a signing key for each party.
-<a href=#195 id=195 data-nosnippet>195</a>    </span><span class="kw">let </span>party_sk: Vec&lt;NoSigningKey&gt; = std::iter::repeat_with(|| NoSigningKey)
-<a href=#196 id=196 data-nosnippet>196</a>        .take(n <span class="kw">as </span>usize)
-<a href=#197 id=197 data-nosnippet>197</a>        .collect();
-<a href=#198 id=198 data-nosnippet>198</a>
-<a href=#199 id=199 data-nosnippet>199</a>    <span class="kw">let </span>party_vk: Vec&lt;NoVerifyingKey&gt; = party_sk
-<a href=#200 id=200 data-nosnippet>200</a>        .iter()
-<a href=#201 id=201 data-nosnippet>201</a>        .enumerate()
-<a href=#202 id=202 data-nosnippet>202</a>        .map(|(party_id, <span class="kw">_</span>)| NoVerifyingKey::new(party_id))
-<a href=#203 id=203 data-nosnippet>203</a>        .collect();
-<a href=#204 id=204 data-nosnippet>204</a>
-<a href=#205 id=205 data-nosnippet>205</a>    party_sk
-<a href=#206 id=206 data-nosnippet>206</a>        .into_iter()
-<a href=#207 id=207 data-nosnippet>207</a>        .enumerate()
-<a href=#208 id=208 data-nosnippet>208</a>        .map(|(party_id, sk)| {
-<a href=#209 id=209 data-nosnippet>209</a>            SetupMessage::new(
-<a href=#210 id=210 data-nosnippet>210</a>                InstanceId::new(instance),
-<a href=#211 id=211 data-nosnippet>211</a>                sk,
-<a href=#212 id=212 data-nosnippet>212</a>                party_id,
-<a href=#213 id=213 data-nosnippet>213</a>                party_vk.clone(),
-<a href=#214 id=214 data-nosnippet>214</a>                <span class="kw-2">&amp;</span>ranks,
-<a href=#215 id=215 data-nosnippet>215</a>                t <span class="kw">as </span>usize,
-<a href=#216 id=216 data-nosnippet>216</a>            )
-<a href=#217 id=217 data-nosnippet>217</a>            .with_ttl(Duration::from_secs(<span class="number">1000</span>)) <span class="comment">// for dkls-metrics benchmarks
-<a href=#218 id=218 data-nosnippet>218</a>        </span>})
-<a href=#219 id=219 data-nosnippet>219</a>        .map(|setup| {
-<a href=#220 id=220 data-nosnippet>220</a>            <span class="kw">let </span>mixin = [setup.participant_index() <span class="kw">as </span>u8 + <span class="number">1</span>];
-<a href=#221 id=221 data-nosnippet>221</a>
-<a href=#222 id=222 data-nosnippet>222</a>            (
-<a href=#223 id=223 data-nosnippet>223</a>                setup,
-<a href=#224 id=224 data-nosnippet>224</a>                Sha256::new()
-<a href=#225 id=225 data-nosnippet>225</a>                    .chain_update(instance)
-<a href=#226 id=226 data-nosnippet>226</a>                    .chain_update(<span class="string">b"party-seed"</span>)
-<a href=#227 id=227 data-nosnippet>227</a>                    .chain_update(mixin)
-<a href=#228 id=228 data-nosnippet>228</a>                    .finalize()
-<a href=#229 id=229 data-nosnippet>229</a>                    .into(),
-<a href=#230 id=230 data-nosnippet>230</a>            )
-<a href=#231 id=231 data-nosnippet>231</a>        })
-<a href=#232 id=232 data-nosnippet>232</a>        .collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;()
-<a href=#233 id=233 data-nosnippet>233</a>}
-<a href=#234 id=234 data-nosnippet>234</a>
-<a href=#235 id=235 data-nosnippet>235</a><span class="doccomment">/// Executes the DKG protocol with the given parameters.
-<a href=#236 id=236 data-nosnippet>236</a>///
-<a href=#237 id=237 data-nosnippet>237</a>/// This function runs the DKG protocol for a set of parties with the specified
-<a href=#238 id=238 data-nosnippet>238</a>/// threshold and number of participants. It returns the generated key shares.
+<a href=#14 id=14 data-nosnippet>14</a>    elliptic_curve::subtle::ConstantTimeEq, NonZeroScalar, ProjectivePoint,
+<a href=#15 id=15 data-nosnippet>15</a>    Scalar, Secp256k1,
+<a href=#16 id=16 data-nosnippet>16</a>};
+<a href=#17 id=17 data-nosnippet>17</a><span class="attr">#[cfg(any(test, feature = <span class="string">"test-support"</span>))]
+<a href=#18 id=18 data-nosnippet>18</a></span><span class="kw">use </span>rand::prelude::<span class="kw-2">*</span>;
+<a href=#19 id=19 data-nosnippet>19</a><span class="attr">#[cfg(any(test, feature = <span class="string">"test-support"</span>))]
+<a href=#20 id=20 data-nosnippet>20</a></span><span class="kw">use </span>sha2::{Digest, Sha256};
+<a href=#21 id=21 data-nosnippet>21</a>
+<a href=#22 id=22 data-nosnippet>22</a><span class="kw">use </span>sl_mpc_mate::math::birkhoff_coeffs;
+<a href=#23 id=23 data-nosnippet>23</a>
+<a href=#24 id=24 data-nosnippet>24</a><span class="attr">#[cfg(any(test, feature = <span class="string">"test-support"</span>))]
+<a href=#25 id=25 data-nosnippet>25</a></span><span class="kw">use </span><span class="kw">crate</span>::setup::{keygen::SetupMessage, <span class="kw-2">*</span>};
+<a href=#26 id=26 data-nosnippet>26</a>
+<a href=#27 id=27 data-nosnippet>27</a><span class="attr">#[cfg(any(test, feature = <span class="string">"test-support"</span>))]
+<a href=#28 id=28 data-nosnippet>28</a></span><span class="kw">use </span><span class="kw">crate</span>::setup::{
+<a href=#29 id=29 data-nosnippet>29</a>    keygen::SetupMessage <span class="kw">as </span>KeygenSetupMessage,
+<a href=#30 id=30 data-nosnippet>30</a>    quorum_change::SetupMessage <span class="kw">as </span>QuorumChangeSetupMessage,
+<a href=#31 id=31 data-nosnippet>31</a>};
+<a href=#32 id=32 data-nosnippet>32</a><span class="kw">use </span><span class="kw">crate</span>::sign::get_lagrange_coeff_list;
+<a href=#33 id=33 data-nosnippet>33</a>
+<a href=#34 id=34 data-nosnippet>34</a><span class="attr">#[cfg(any(test, feature = <span class="string">"test-support"</span>))]
+<a href=#35 id=35 data-nosnippet>35</a></span><span class="kw">use </span><span class="kw">super</span>::Keyshare;
+<a href=#36 id=36 data-nosnippet>36</a>
+<a href=#37 id=37 data-nosnippet>37</a><span class="kw">use </span><span class="kw">super</span>::KeygenError;
+<a href=#38 id=38 data-nosnippet>38</a>
+<a href=#39 id=39 data-nosnippet>39</a><span class="doccomment">/// Computes the Lagrange coefficient for a given point in a polynomial.
+<a href=#40 id=40 data-nosnippet>40</a>///
+<a href=#41 id=41 data-nosnippet>41</a>/// This function calculates the Lagrange coefficient for a specific point `x_i`
+<a href=#42 id=42 data-nosnippet>42</a>/// given a list of points `x_i_list` and their corresponding party IDs.
+<a href=#43 id=43 data-nosnippet>43</a>///
+<a href=#44 id=44 data-nosnippet>44</a>/// # Arguments
+<a href=#45 id=45 data-nosnippet>45</a>/// * `x_i` - The point for which to compute the coefficient
+<a href=#46 id=46 data-nosnippet>46</a>/// * `x_i_list` - List of all points in the polynomial
+<a href=#47 id=47 data-nosnippet>47</a>/// * `party_ids` - List of party IDs corresponding to the points
+<a href=#48 id=48 data-nosnippet>48</a>///
+<a href=#49 id=49 data-nosnippet>49</a>/// # Returns
+<a href=#50 id=50 data-nosnippet>50</a>/// The computed Lagrange coefficient as a scalar value
+<a href=#51 id=51 data-nosnippet>51</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>get_lagrange_coeff(
+<a href=#52 id=52 data-nosnippet>52</a>    x_i: <span class="kw-2">&amp;</span>NonZeroScalar,
+<a href=#53 id=53 data-nosnippet>53</a>    x_i_list: <span class="kw-2">&amp;</span>[NonZeroScalar],
+<a href=#54 id=54 data-nosnippet>54</a>    party_ids: <span class="kw-2">&amp;</span>[u8],
+<a href=#55 id=55 data-nosnippet>55</a>) -&gt; Scalar {
+<a href=#56 id=56 data-nosnippet>56</a>    <span class="kw">let </span><span class="kw-2">mut </span>coeff = Scalar::ONE;
+<a href=#57 id=57 data-nosnippet>57</a>    <span class="kw">let </span>x_i = x_i <span class="kw">as </span><span class="kw-2">&amp;</span>Scalar;
+<a href=#58 id=58 data-nosnippet>58</a>    <span class="kw">for </span><span class="kw-2">&amp;</span>party_id <span class="kw">in </span>party_ids {
+<a href=#59 id=59 data-nosnippet>59</a>        <span class="kw">let </span>x_j = <span class="kw-2">&amp;</span>x_i_list[party_id <span class="kw">as </span>usize] <span class="kw">as </span><span class="kw-2">&amp;</span>Scalar;
+<a href=#60 id=60 data-nosnippet>60</a>        <span class="kw">if </span>x_i.ct_ne(x_j).into() {
+<a href=#61 id=61 data-nosnippet>61</a>            <span class="kw">let </span>sub = x_j - x_i;
+<a href=#62 id=62 data-nosnippet>62</a>            coeff <span class="kw-2">*</span>= x_j * <span class="kw-2">&amp;</span>sub.invert().unwrap();
+<a href=#63 id=63 data-nosnippet>63</a>        }
+<a href=#64 id=64 data-nosnippet>64</a>    }
+<a href=#65 id=65 data-nosnippet>65</a>
+<a href=#66 id=66 data-nosnippet>66</a>    coeff
+<a href=#67 id=67 data-nosnippet>67</a>}
+<a href=#68 id=68 data-nosnippet>68</a>
+<a href=#69 id=69 data-nosnippet>69</a><span class="doccomment">/// Computes Birkhoff coefficients for a set of points with ranks.
+<a href=#70 id=70 data-nosnippet>70</a>///
+<a href=#71 id=71 data-nosnippet>71</a>/// This function calculates the Birkhoff coefficients for a set of points with
+<a href=#72 id=72 data-nosnippet>72</a>/// associated ranks, which are used in the Birkhoff interpolation process.
+<a href=#73 id=73 data-nosnippet>73</a>///
+<a href=#74 id=74 data-nosnippet>74</a>/// # Arguments
+<a href=#75 id=75 data-nosnippet>75</a>/// * `rank_list` - List of ranks for each point
+<a href=#76 id=76 data-nosnippet>76</a>/// * `x_i_list` - List of points in the polynomial
+<a href=#77 id=77 data-nosnippet>77</a>/// * `party_ids` - List of party IDs corresponding to the points
+<a href=#78 id=78 data-nosnippet>78</a>///
+<a href=#79 id=79 data-nosnippet>79</a>/// # Returns
+<a href=#80 id=80 data-nosnippet>80</a>/// A map of party IDs to their corresponding Birkhoff coefficients
+<a href=#81 id=81 data-nosnippet>81</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>get_birkhoff_coefficients(
+<a href=#82 id=82 data-nosnippet>82</a>    rank_list: <span class="kw-2">&amp;</span>[u8],
+<a href=#83 id=83 data-nosnippet>83</a>    x_i_list: <span class="kw-2">&amp;</span>[NonZeroScalar],
+<a href=#84 id=84 data-nosnippet>84</a>    party_ids: <span class="kw-2">&amp;</span>[u8],
+<a href=#85 id=85 data-nosnippet>85</a>) -&gt; HashMap&lt;usize, Scalar&gt; {
+<a href=#86 id=86 data-nosnippet>86</a>    <span class="kw">let </span>params = party_ids
+<a href=#87 id=87 data-nosnippet>87</a>        .iter()
+<a href=#88 id=88 data-nosnippet>88</a>        .map(|<span class="kw-2">&amp;</span>pid| {
+<a href=#89 id=89 data-nosnippet>89</a>            (x_i_list[pid <span class="kw">as </span>usize], rank_list[pid <span class="kw">as </span>usize] <span class="kw">as </span>usize)
+<a href=#90 id=90 data-nosnippet>90</a>        })
+<a href=#91 id=91 data-nosnippet>91</a>        .collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;();
+<a href=#92 id=92 data-nosnippet>92</a>
+<a href=#93 id=93 data-nosnippet>93</a>    <span class="kw">let </span>betta_vec = birkhoff_coeffs::&lt;Secp256k1&gt;(<span class="kw-2">&amp;</span>params);
+<a href=#94 id=94 data-nosnippet>94</a>
+<a href=#95 id=95 data-nosnippet>95</a>    party_ids
+<a href=#96 id=96 data-nosnippet>96</a>        .iter()
+<a href=#97 id=97 data-nosnippet>97</a>        .zip(betta_vec)
+<a href=#98 id=98 data-nosnippet>98</a>        .map(|(<span class="kw-2">&amp;</span>pid, w_i)| (pid <span class="kw">as </span>usize, w_i))
+<a href=#99 id=99 data-nosnippet>99</a>        .collect::&lt;HashMap&lt;<span class="kw">_</span>, <span class="kw">_</span>&gt;&gt;()
+<a href=#100 id=100 data-nosnippet>100</a>}
+<a href=#101 id=101 data-nosnippet>101</a>
+<a href=#102 id=102 data-nosnippet>102</a><span class="doccomment">/// Verifies that a secret can be recovered from the given shares.
+<a href=#103 id=103 data-nosnippet>103</a>///
+<a href=#104 id=104 data-nosnippet>104</a>/// This function checks whether the provided shares can be used to reconstruct
+<a href=#105 id=105 data-nosnippet>105</a>/// the original secret by verifying that the reconstructed public key matches
+<a href=#106 id=106 data-nosnippet>106</a>/// the expected public key.
+<a href=#107 id=107 data-nosnippet>107</a>///
+<a href=#108 id=108 data-nosnippet>108</a>/// # Arguments
+<a href=#109 id=109 data-nosnippet>109</a>/// * `x_i_list` - List of x-coordinates for the shares
+<a href=#110 id=110 data-nosnippet>110</a>/// * `rank_list` - List of ranks for each share
+<a href=#111 id=111 data-nosnippet>111</a>/// * `big_s_list` - List of public key components
+<a href=#112 id=112 data-nosnippet>112</a>/// * `public_key` - The expected public key
+<a href=#113 id=113 data-nosnippet>113</a>///
+<a href=#114 id=114 data-nosnippet>114</a>/// # Returns
+<a href=#115 id=115 data-nosnippet>115</a>/// `Ok(())` if the secret can be recovered, or an error if verification fails
+<a href=#116 id=116 data-nosnippet>116</a></span><span class="attr">#[allow(dead_code)]
+<a href=#117 id=117 data-nosnippet>117</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>check_secret_recovery(
+<a href=#118 id=118 data-nosnippet>118</a>    x_i_list: <span class="kw-2">&amp;</span>[NonZeroScalar],
+<a href=#119 id=119 data-nosnippet>119</a>    rank_list: <span class="kw-2">&amp;</span>[u8],
+<a href=#120 id=120 data-nosnippet>120</a>    big_s_list: <span class="kw-2">&amp;</span>[ProjectivePoint],
+<a href=#121 id=121 data-nosnippet>121</a>    public_key: <span class="kw-2">&amp;</span>ProjectivePoint,
+<a href=#122 id=122 data-nosnippet>122</a>) -&gt; <span class="prelude-ty">Result</span>&lt;(), KeygenError&gt; {
+<a href=#123 id=123 data-nosnippet>123</a>    <span class="comment">// If ranks are all zero, then we use lagrange interpolation
+<a href=#124 id=124 data-nosnippet>124</a>    </span><span class="kw">let </span>exp_public_key = <span class="kw">if </span>rank_list.iter().all(|<span class="kw-2">&amp;</span>r| r == <span class="number">0</span>) {
+<a href=#125 id=125 data-nosnippet>125</a>        <span class="kw">let </span>coeff_vector = get_lagrange_coeff_list(x_i_list, |x| x);
+<a href=#126 id=126 data-nosnippet>126</a>        big_s_list
+<a href=#127 id=127 data-nosnippet>127</a>            .iter()
+<a href=#128 id=128 data-nosnippet>128</a>            .zip(coeff_vector)
+<a href=#129 id=129 data-nosnippet>129</a>            .fold(ProjectivePoint::IDENTITY, |acc, (point, betta_i)| {
+<a href=#130 id=130 data-nosnippet>130</a>                acc + point * <span class="kw-2">&amp;</span>betta_i
+<a href=#131 id=131 data-nosnippet>131</a>            })
+<a href=#132 id=132 data-nosnippet>132</a>    } <span class="kw">else </span>{
+<a href=#133 id=133 data-nosnippet>133</a>        <span class="comment">// Otherwise, we use Birkhoff interpolation
+<a href=#134 id=134 data-nosnippet>134</a>        </span><span class="kw">let </span><span class="kw-2">mut </span>party_params_list = x_i_list
+<a href=#135 id=135 data-nosnippet>135</a>            .iter()
+<a href=#136 id=136 data-nosnippet>136</a>            .zip(rank_list)
+<a href=#137 id=137 data-nosnippet>137</a>            .zip(big_s_list)
+<a href=#138 id=138 data-nosnippet>138</a>            .collect::&lt;Vec&lt;((<span class="kw-2">&amp;</span>NonZeroScalar, <span class="kw-2">&amp;</span>u8), <span class="kw-2">&amp;</span>ProjectivePoint)&gt;&gt;();
+<a href=#139 id=139 data-nosnippet>139</a>
+<a href=#140 id=140 data-nosnippet>140</a>        party_params_list.sort_by_key(|((<span class="kw">_</span>, <span class="kw-2">&amp;</span>n_i), <span class="kw">_</span>)| n_i);
+<a href=#141 id=141 data-nosnippet>141</a>
+<a href=#142 id=142 data-nosnippet>142</a>        <span class="kw">let </span>params = party_params_list
+<a href=#143 id=143 data-nosnippet>143</a>            .iter()
+<a href=#144 id=144 data-nosnippet>144</a>            .map(|((<span class="kw-2">&amp;</span>x_i, <span class="kw-2">&amp;</span>n_i), <span class="kw">_</span>)| (x_i, n_i <span class="kw">as </span>usize))
+<a href=#145 id=145 data-nosnippet>145</a>            .collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;();
+<a href=#146 id=146 data-nosnippet>146</a>
+<a href=#147 id=147 data-nosnippet>147</a>        <span class="kw">let </span>betta_vector = birkhoff_coeffs(<span class="kw-2">&amp;</span>params);
+<a href=#148 id=148 data-nosnippet>148</a>
+<a href=#149 id=149 data-nosnippet>149</a>        party_params_list
+<a href=#150 id=150 data-nosnippet>150</a>            .into_iter()
+<a href=#151 id=151 data-nosnippet>151</a>            .map(|((<span class="kw">_</span>, <span class="kw">_</span>), <span class="kw-2">&amp;</span>big_s_i)| big_s_i)
+<a href=#152 id=152 data-nosnippet>152</a>            .zip(betta_vector)
+<a href=#153 id=153 data-nosnippet>153</a>            .fold(ProjectivePoint::IDENTITY, |acc, (point, betta_i)| {
+<a href=#154 id=154 data-nosnippet>154</a>                acc + point * betta_i
+<a href=#155 id=155 data-nosnippet>155</a>            })
+<a href=#156 id=156 data-nosnippet>156</a>    };
+<a href=#157 id=157 data-nosnippet>157</a>
+<a href=#158 id=158 data-nosnippet>158</a>    (public_key == <span class="kw-2">&amp;</span>exp_public_key)
+<a href=#159 id=159 data-nosnippet>159</a>        .then_some(())
+<a href=#160 id=160 data-nosnippet>160</a>        .ok_or(KeygenError::PublicKeyMismatch)
+<a href=#161 id=161 data-nosnippet>161</a>}
+<a href=#162 id=162 data-nosnippet>162</a>
+<a href=#163 id=163 data-nosnippet>163</a><span class="doccomment">/// Generates setup messages and seeds for DKG parties.
+<a href=#164 id=164 data-nosnippet>164</a>///
+<a href=#165 id=165 data-nosnippet>165</a>/// This function creates the necessary setup messages and seeds for all parties
+<a href=#166 id=166 data-nosnippet>166</a>/// participating in the DKG protocol. It handles both the case where ranks are
+<a href=#167 id=167 data-nosnippet>167</a>/// provided and where they are not.
+<a href=#168 id=168 data-nosnippet>168</a>///
+<a href=#169 id=169 data-nosnippet>169</a>/// # Arguments
+<a href=#170 id=170 data-nosnippet>170</a>/// * `instance` - Optional instance identifier for the protocol
+<a href=#171 id=171 data-nosnippet>171</a>/// * `t` - Threshold value for the protocol
+<a href=#172 id=172 data-nosnippet>172</a>/// * `n` - Total number of parties
+<a href=#173 id=173 data-nosnippet>173</a>/// * `ranks` - Optional list of ranks for each party
+<a href=#174 id=174 data-nosnippet>174</a>///
+<a href=#175 id=175 data-nosnippet>175</a>/// # Returns
+<a href=#176 id=176 data-nosnippet>176</a>/// A vector of tuples containing setup messages and seeds for each party
+<a href=#177 id=177 data-nosnippet>177</a></span><span class="attr">#[cfg(any(test, feature = <span class="string">"test-support"</span>))]
+<a href=#178 id=178 data-nosnippet>178</a></span><span class="kw">pub fn </span>setup_keygen(
+<a href=#179 id=179 data-nosnippet>179</a>    instance: <span class="prelude-ty">Option</span>&lt;[u8; <span class="number">32</span>]&gt;,
+<a href=#180 id=180 data-nosnippet>180</a>    t: u8,
+<a href=#181 id=181 data-nosnippet>181</a>    n: u8,
+<a href=#182 id=182 data-nosnippet>182</a>    ranks: <span class="prelude-ty">Option</span>&lt;<span class="kw-2">&amp;</span>[u8]&gt;,
+<a href=#183 id=183 data-nosnippet>183</a>) -&gt; Vec&lt;(KeygenSetupMessage, [u8; <span class="number">32</span>])&gt; {
+<a href=#184 id=184 data-nosnippet>184</a>    <span class="kw">use </span>std::time::Duration;
+<a href=#185 id=185 data-nosnippet>185</a>
+<a href=#186 id=186 data-nosnippet>186</a>    <span class="kw">use </span>sl_mpc_mate::message::InstanceId;
+<a href=#187 id=187 data-nosnippet>187</a>
+<a href=#188 id=188 data-nosnippet>188</a>    <span class="kw">let </span>ranks = <span class="kw">if let </span><span class="prelude-val">Some</span>(ranks) = ranks {
+<a href=#189 id=189 data-nosnippet>189</a>        <span class="macro">assert_eq!</span>(ranks.len(), n <span class="kw">as </span>usize);
+<a href=#190 id=190 data-nosnippet>190</a>        ranks.to_vec()
+<a href=#191 id=191 data-nosnippet>191</a>    } <span class="kw">else </span>{
+<a href=#192 id=192 data-nosnippet>192</a>        <span class="macro">vec!</span>[<span class="number">0u8</span>; n <span class="kw">as </span>usize]
+<a href=#193 id=193 data-nosnippet>193</a>    };
+<a href=#194 id=194 data-nosnippet>194</a>
+<a href=#195 id=195 data-nosnippet>195</a>    <span class="kw">let </span>instance = instance.unwrap_or_else(rand::random);
+<a href=#196 id=196 data-nosnippet>196</a>
+<a href=#197 id=197 data-nosnippet>197</a>    <span class="comment">// a signing key for each party.
+<a href=#198 id=198 data-nosnippet>198</a>    </span><span class="kw">let </span>party_sk: Vec&lt;NoSigningKey&gt; = std::iter::repeat_with(|| NoSigningKey)
+<a href=#199 id=199 data-nosnippet>199</a>        .take(n <span class="kw">as </span>usize)
+<a href=#200 id=200 data-nosnippet>200</a>        .collect();
+<a href=#201 id=201 data-nosnippet>201</a>
+<a href=#202 id=202 data-nosnippet>202</a>    <span class="kw">let </span>party_vk: Vec&lt;NoVerifyingKey&gt; = party_sk
+<a href=#203 id=203 data-nosnippet>203</a>        .iter()
+<a href=#204 id=204 data-nosnippet>204</a>        .enumerate()
+<a href=#205 id=205 data-nosnippet>205</a>        .map(|(party_id, <span class="kw">_</span>)| NoVerifyingKey::new(party_id))
+<a href=#206 id=206 data-nosnippet>206</a>        .collect();
+<a href=#207 id=207 data-nosnippet>207</a>
+<a href=#208 id=208 data-nosnippet>208</a>    party_sk
+<a href=#209 id=209 data-nosnippet>209</a>        .into_iter()
+<a href=#210 id=210 data-nosnippet>210</a>        .enumerate()
+<a href=#211 id=211 data-nosnippet>211</a>        .map(|(party_id, sk)| {
+<a href=#212 id=212 data-nosnippet>212</a>            SetupMessage::new(
+<a href=#213 id=213 data-nosnippet>213</a>                InstanceId::new(instance),
+<a href=#214 id=214 data-nosnippet>214</a>                sk,
+<a href=#215 id=215 data-nosnippet>215</a>                party_id,
+<a href=#216 id=216 data-nosnippet>216</a>                party_vk.clone(),
+<a href=#217 id=217 data-nosnippet>217</a>                <span class="kw-2">&amp;</span>ranks,
+<a href=#218 id=218 data-nosnippet>218</a>                t <span class="kw">as </span>usize,
+<a href=#219 id=219 data-nosnippet>219</a>            )
+<a href=#220 id=220 data-nosnippet>220</a>            .with_ttl(Duration::from_secs(<span class="number">1000</span>)) <span class="comment">// for dkls-metrics benchmarks
+<a href=#221 id=221 data-nosnippet>221</a>        </span>})
+<a href=#222 id=222 data-nosnippet>222</a>        .map(|setup| {
+<a href=#223 id=223 data-nosnippet>223</a>            <span class="kw">let </span>mixin = [setup.participant_index() <span class="kw">as </span>u8 + <span class="number">1</span>];
+<a href=#224 id=224 data-nosnippet>224</a>
+<a href=#225 id=225 data-nosnippet>225</a>            (
+<a href=#226 id=226 data-nosnippet>226</a>                setup,
+<a href=#227 id=227 data-nosnippet>227</a>                Sha256::new()
+<a href=#228 id=228 data-nosnippet>228</a>                    .chain_update(instance)
+<a href=#229 id=229 data-nosnippet>229</a>                    .chain_update(<span class="string">b"party-seed"</span>)
+<a href=#230 id=230 data-nosnippet>230</a>                    .chain_update(mixin)
+<a href=#231 id=231 data-nosnippet>231</a>                    .finalize()
+<a href=#232 id=232 data-nosnippet>232</a>                    .into(),
+<a href=#233 id=233 data-nosnippet>233</a>            )
+<a href=#234 id=234 data-nosnippet>234</a>        })
+<a href=#235 id=235 data-nosnippet>235</a>        .collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;()
+<a href=#236 id=236 data-nosnippet>236</a>}
+<a href=#237 id=237 data-nosnippet>237</a>
+<a href=#238 id=238 data-nosnippet>238</a><span class="doccomment">/// Executes the DKG protocol with the given parameters.
 <a href=#239 id=239 data-nosnippet>239</a>///
-<a href=#240 id=240 data-nosnippet>240</a>/// # Arguments
-<a href=#241 id=241 data-nosnippet>241</a>/// * `t` - Threshold value for the protocol
-<a href=#242 id=242 data-nosnippet>242</a>/// * `n` - Total number of parties
-<a href=#243 id=243 data-nosnippet>243</a>/// * `ranks` - Optional list of ranks for each party
-<a href=#244 id=244 data-nosnippet>244</a>///
-<a href=#245 id=245 data-nosnippet>245</a>/// # Returns
-<a href=#246 id=246 data-nosnippet>246</a>/// A vector of key shares, one for each party
-<a href=#247 id=247 data-nosnippet>247</a></span><span class="attr">#[cfg(any(test, feature = <span class="string">"test-support"</span>))]
-<a href=#248 id=248 data-nosnippet>248</a></span><span class="kw">pub async fn </span>gen_keyshares(t: u8, n: u8, ranks: <span class="prelude-ty">Option</span>&lt;<span class="kw-2">&amp;</span>[u8]&gt;) -&gt; Vec&lt;Arc&lt;Keyshare&gt;&gt; {
-<a href=#249 id=249 data-nosnippet>249</a>    <span class="kw">let </span>coord = sl_mpc_mate::coord::SimpleMessageRelay::new();
-<a href=#250 id=250 data-nosnippet>250</a>
-<a href=#251 id=251 data-nosnippet>251</a>    <span class="kw">let </span><span class="kw-2">mut </span>parties = tokio::task::JoinSet::new();
-<a href=#252 id=252 data-nosnippet>252</a>    <span class="kw">for </span>(setup, seed) <span class="kw">in </span>setup_keygen(<span class="prelude-val">None</span>, t, n, ranks) {
-<a href=#253 id=253 data-nosnippet>253</a>        parties.spawn({
-<a href=#254 id=254 data-nosnippet>254</a>            <span class="kw">let </span>relay = coord.connect();
-<a href=#255 id=255 data-nosnippet>255</a>            <span class="kw">crate</span>::keygen::run(setup, seed, relay)
-<a href=#256 id=256 data-nosnippet>256</a>        });
-<a href=#257 id=257 data-nosnippet>257</a>    }
-<a href=#258 id=258 data-nosnippet>258</a>
-<a href=#259 id=259 data-nosnippet>259</a>    <span class="kw">let </span><span class="kw-2">mut </span>shares = <span class="macro">vec!</span>[];
-<a href=#260 id=260 data-nosnippet>260</a>
-<a href=#261 id=261 data-nosnippet>261</a>    <span class="kw">while let </span><span class="prelude-val">Some</span>(fini) = parties.join_next().<span class="kw">await </span>{
-<a href=#262 id=262 data-nosnippet>262</a>        <span class="kw">if let </span><span class="prelude-val">Err</span>(<span class="kw-2">ref </span>err) = fini {
-<a href=#263 id=263 data-nosnippet>263</a>            <span class="macro">println!</span>(<span class="string">"error {err:?}"</span>);
-<a href=#264 id=264 data-nosnippet>264</a>        } <span class="kw">else </span>{
-<a href=#265 id=265 data-nosnippet>265</a>            <span class="kw">match </span>fini.unwrap() {
-<a href=#266 id=266 data-nosnippet>266</a>                <span class="prelude-val">Err</span>(err) =&gt; <span class="macro">panic!</span>(<span class="string">"err {:?}"</span>, err),
-<a href=#267 id=267 data-nosnippet>267</a>                <span class="prelude-val">Ok</span>(share) =&gt; shares.push(Arc::new(share)),
-<a href=#268 id=268 data-nosnippet>268</a>            }
-<a href=#269 id=269 data-nosnippet>269</a>        }
-<a href=#270 id=270 data-nosnippet>270</a>    }
-<a href=#271 id=271 data-nosnippet>271</a>
-<a href=#272 id=272 data-nosnippet>272</a>    shares.sort_by_key(|share| share.party_id);
-<a href=#273 id=273 data-nosnippet>273</a>
-<a href=#274 id=274 data-nosnippet>274</a>    shares
-<a href=#275 id=275 data-nosnippet>275</a>}
-<a href=#276 id=276 data-nosnippet>276</a>
-<a href=#277 id=277 data-nosnippet>277</a><span class="doccomment">/// Generates setup messages and seeds for quorum change parties.
-<a href=#278 id=278 data-nosnippet>278</a>///
-<a href=#279 id=279 data-nosnippet>279</a>/// This function creates setup messages and seeds for all parties participating
-<a href=#280 id=280 data-nosnippet>280</a>/// in a quorum change protocol, including both existing and new parties.
-<a href=#281 id=281 data-nosnippet>281</a>///
-<a href=#282 id=282 data-nosnippet>282</a>/// # Arguments
-<a href=#283 id=283 data-nosnippet>283</a>/// * `old_keyshares` - Existing key shares from the current quorum
-<a href=#284 id=284 data-nosnippet>284</a>/// * `new_threshold` - New threshold value for the protocol
-<a href=#285 id=285 data-nosnippet>285</a>/// * `new_n_i_list` - List of ranks for new parties
-<a href=#286 id=286 data-nosnippet>286</a>///
-<a href=#287 id=287 data-nosnippet>287</a>/// # Returns
-<a href=#288 id=288 data-nosnippet>288</a>/// A vector of tuples containing setup messages and seeds for each party
-<a href=#289 id=289 data-nosnippet>289</a></span><span class="attr">#[cfg(any(test, feature = <span class="string">"test-support"</span>))]
-<a href=#290 id=290 data-nosnippet>290</a></span><span class="kw">pub fn </span>setup_quorum_change(
-<a href=#291 id=291 data-nosnippet>291</a>    old_keyshares: <span class="kw-2">&amp;</span>[Arc&lt;Keyshare&gt;],
-<a href=#292 id=292 data-nosnippet>292</a>    new_threshold: u8,
-<a href=#293 id=293 data-nosnippet>293</a>    new_n_i_list: <span class="kw-2">&amp;</span>[u8],
-<a href=#294 id=294 data-nosnippet>294</a>) -&gt; Vec&lt;(QuorumChangeSetupMessage, [u8; <span class="number">32</span>])&gt; {
-<a href=#295 id=295 data-nosnippet>295</a>    <span class="kw">let </span>old_threshold = old_keyshares[<span class="number">0</span>].threshold <span class="kw">as </span>usize;
-<a href=#296 id=296 data-nosnippet>296</a>    <span class="kw">let </span>old_participants = old_keyshares.len();
-<a href=#297 id=297 data-nosnippet>297</a>    <span class="macro">assert!</span>(old_keyshares.len() &gt;= old_threshold);
-<a href=#298 id=298 data-nosnippet>298</a>
-<a href=#299 id=299 data-nosnippet>299</a>    <span class="kw">let </span>public_key = old_keyshares[<span class="number">0</span>].public_key();
-<a href=#300 id=300 data-nosnippet>300</a>
-<a href=#301 id=301 data-nosnippet>301</a>    <span class="kw">let </span>total_parties = old_participants + new_n_i_list.len();
-<a href=#302 id=302 data-nosnippet>302</a>
-<a href=#303 id=303 data-nosnippet>303</a>    <span class="kw">let </span>old_parties = (<span class="number">0</span>..old_participants).collect::&lt;Vec&lt;usize&gt;&gt;();
-<a href=#304 id=304 data-nosnippet>304</a>    <span class="kw">let </span>new_parties = new_n_i_list
-<a href=#305 id=305 data-nosnippet>305</a>        .iter()
-<a href=#306 id=306 data-nosnippet>306</a>        .enumerate()
-<a href=#307 id=307 data-nosnippet>307</a>        .map(|(p, <span class="kw-2">&amp;</span>r)| ((p + old_participants), r))
-<a href=#308 id=308 data-nosnippet>308</a>        .collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;();
+<a href=#240 id=240 data-nosnippet>240</a>/// This function runs the DKG protocol for a set of parties with the specified
+<a href=#241 id=241 data-nosnippet>241</a>/// threshold and number of participants. It returns the generated key shares.
+<a href=#242 id=242 data-nosnippet>242</a>///
+<a href=#243 id=243 data-nosnippet>243</a>/// # Arguments
+<a href=#244 id=244 data-nosnippet>244</a>/// * `t` - Threshold value for the protocol
+<a href=#245 id=245 data-nosnippet>245</a>/// * `n` - Total number of parties
+<a href=#246 id=246 data-nosnippet>246</a>/// * `ranks` - Optional list of ranks for each party
+<a href=#247 id=247 data-nosnippet>247</a>///
+<a href=#248 id=248 data-nosnippet>248</a>/// # Returns
+<a href=#249 id=249 data-nosnippet>249</a>/// A vector of key shares, one for each party
+<a href=#250 id=250 data-nosnippet>250</a></span><span class="attr">#[cfg(any(test, feature = <span class="string">"test-support"</span>))]
+<a href=#251 id=251 data-nosnippet>251</a></span><span class="kw">pub async fn </span>gen_keyshares(
+<a href=#252 id=252 data-nosnippet>252</a>    t: u8,
+<a href=#253 id=253 data-nosnippet>253</a>    n: u8,
+<a href=#254 id=254 data-nosnippet>254</a>    ranks: <span class="prelude-ty">Option</span>&lt;<span class="kw-2">&amp;</span>[u8]&gt;,
+<a href=#255 id=255 data-nosnippet>255</a>) -&gt; Vec&lt;Arc&lt;Keyshare&gt;&gt; {
+<a href=#256 id=256 data-nosnippet>256</a>    <span class="kw">let </span>coord = sl_mpc_mate::coord::SimpleMessageRelay::new();
+<a href=#257 id=257 data-nosnippet>257</a>
+<a href=#258 id=258 data-nosnippet>258</a>    <span class="kw">let </span><span class="kw-2">mut </span>parties = tokio::task::JoinSet::new();
+<a href=#259 id=259 data-nosnippet>259</a>    <span class="kw">for </span>(setup, seed) <span class="kw">in </span>setup_keygen(<span class="prelude-val">None</span>, t, n, ranks) {
+<a href=#260 id=260 data-nosnippet>260</a>        parties.spawn({
+<a href=#261 id=261 data-nosnippet>261</a>            <span class="kw">let </span>relay = coord.connect();
+<a href=#262 id=262 data-nosnippet>262</a>            <span class="kw">crate</span>::keygen::run(setup, seed, relay)
+<a href=#263 id=263 data-nosnippet>263</a>        });
+<a href=#264 id=264 data-nosnippet>264</a>    }
+<a href=#265 id=265 data-nosnippet>265</a>
+<a href=#266 id=266 data-nosnippet>266</a>    <span class="kw">let </span><span class="kw-2">mut </span>shares = <span class="macro">vec!</span>[];
+<a href=#267 id=267 data-nosnippet>267</a>
+<a href=#268 id=268 data-nosnippet>268</a>    <span class="kw">while let </span><span class="prelude-val">Some</span>(fini) = parties.join_next().<span class="kw">await </span>{
+<a href=#269 id=269 data-nosnippet>269</a>        <span class="kw">if let </span><span class="prelude-val">Err</span>(<span class="kw-2">ref </span>err) = fini {
+<a href=#270 id=270 data-nosnippet>270</a>            <span class="macro">println!</span>(<span class="string">"error {err:?}"</span>);
+<a href=#271 id=271 data-nosnippet>271</a>        } <span class="kw">else </span>{
+<a href=#272 id=272 data-nosnippet>272</a>            <span class="kw">match </span>fini.unwrap() {
+<a href=#273 id=273 data-nosnippet>273</a>                <span class="prelude-val">Err</span>(err) =&gt; <span class="macro">panic!</span>(<span class="string">"err {:?}"</span>, err),
+<a href=#274 id=274 data-nosnippet>274</a>                <span class="prelude-val">Ok</span>(share) =&gt; shares.push(Arc::new(share)),
+<a href=#275 id=275 data-nosnippet>275</a>            }
+<a href=#276 id=276 data-nosnippet>276</a>        }
+<a href=#277 id=277 data-nosnippet>277</a>    }
+<a href=#278 id=278 data-nosnippet>278</a>
+<a href=#279 id=279 data-nosnippet>279</a>    shares.sort_by_key(|share| share.party_id);
+<a href=#280 id=280 data-nosnippet>280</a>
+<a href=#281 id=281 data-nosnippet>281</a>    shares
+<a href=#282 id=282 data-nosnippet>282</a>}
+<a href=#283 id=283 data-nosnippet>283</a>
+<a href=#284 id=284 data-nosnippet>284</a><span class="doccomment">/// Generates setup messages and seeds for quorum change parties.
+<a href=#285 id=285 data-nosnippet>285</a>///
+<a href=#286 id=286 data-nosnippet>286</a>/// This function creates setup messages and seeds for all parties participating
+<a href=#287 id=287 data-nosnippet>287</a>/// in a quorum change protocol, including both existing and new parties.
+<a href=#288 id=288 data-nosnippet>288</a>///
+<a href=#289 id=289 data-nosnippet>289</a>/// # Arguments
+<a href=#290 id=290 data-nosnippet>290</a>/// * `old_keyshares` - Existing key shares from the current quorum
+<a href=#291 id=291 data-nosnippet>291</a>/// * `new_threshold` - New threshold value for the protocol
+<a href=#292 id=292 data-nosnippet>292</a>/// * `new_n_i_list` - List of ranks for new parties
+<a href=#293 id=293 data-nosnippet>293</a>///
+<a href=#294 id=294 data-nosnippet>294</a>/// # Returns
+<a href=#295 id=295 data-nosnippet>295</a>/// A vector of tuples containing setup messages and seeds for each party
+<a href=#296 id=296 data-nosnippet>296</a></span><span class="attr">#[cfg(any(test, feature = <span class="string">"test-support"</span>))]
+<a href=#297 id=297 data-nosnippet>297</a></span><span class="kw">pub fn </span>setup_quorum_change(
+<a href=#298 id=298 data-nosnippet>298</a>    old_keyshares: <span class="kw-2">&amp;</span>[Arc&lt;Keyshare&gt;],
+<a href=#299 id=299 data-nosnippet>299</a>    new_threshold: u8,
+<a href=#300 id=300 data-nosnippet>300</a>    new_n_i_list: <span class="kw-2">&amp;</span>[u8],
+<a href=#301 id=301 data-nosnippet>301</a>) -&gt; Vec&lt;(QuorumChangeSetupMessage, [u8; <span class="number">32</span>])&gt; {
+<a href=#302 id=302 data-nosnippet>302</a>    <span class="kw">let </span>old_threshold = old_keyshares[<span class="number">0</span>].threshold <span class="kw">as </span>usize;
+<a href=#303 id=303 data-nosnippet>303</a>    <span class="kw">let </span>old_participants = old_keyshares.len();
+<a href=#304 id=304 data-nosnippet>304</a>    <span class="macro">assert!</span>(old_keyshares.len() &gt;= old_threshold);
+<a href=#305 id=305 data-nosnippet>305</a>
+<a href=#306 id=306 data-nosnippet>306</a>    <span class="kw">let </span>public_key = old_keyshares[<span class="number">0</span>].public_key();
+<a href=#307 id=307 data-nosnippet>307</a>
+<a href=#308 id=308 data-nosnippet>308</a>    <span class="kw">let </span>total_parties = old_participants + new_n_i_list.len();
 <a href=#309 id=309 data-nosnippet>309</a>
-<a href=#310 id=310 data-nosnippet>310</a>    <span class="kw">let </span><span class="kw-2">mut </span>rng = rand::thread_rng();
-<a href=#311 id=311 data-nosnippet>311</a>
-<a href=#312 id=312 data-nosnippet>312</a>    <span class="kw">let </span>instance = rng.gen::&lt;[u8; <span class="number">32</span>]&gt;().into();
-<a href=#313 id=313 data-nosnippet>313</a>
-<a href=#314 id=314 data-nosnippet>314</a>    <span class="comment">// a signing key for each party.
-<a href=#315 id=315 data-nosnippet>315</a>    </span><span class="kw">let </span>party_sk: Vec&lt;NoSigningKey&gt; = std::iter::repeat_with(|| NoSigningKey)
-<a href=#316 id=316 data-nosnippet>316</a>        .take(total_parties)
-<a href=#317 id=317 data-nosnippet>317</a>        .collect();
+<a href=#310 id=310 data-nosnippet>310</a>    <span class="kw">let </span>old_parties = (<span class="number">0</span>..old_participants).collect::&lt;Vec&lt;usize&gt;&gt;();
+<a href=#311 id=311 data-nosnippet>311</a>    <span class="kw">let </span>new_parties = new_n_i_list
+<a href=#312 id=312 data-nosnippet>312</a>        .iter()
+<a href=#313 id=313 data-nosnippet>313</a>        .enumerate()
+<a href=#314 id=314 data-nosnippet>314</a>        .map(|(p, <span class="kw-2">&amp;</span>r)| ((p + old_participants), r))
+<a href=#315 id=315 data-nosnippet>315</a>        .collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;();
+<a href=#316 id=316 data-nosnippet>316</a>
+<a href=#317 id=317 data-nosnippet>317</a>    <span class="kw">let </span><span class="kw-2">mut </span>rng = rand::thread_rng();
 <a href=#318 id=318 data-nosnippet>318</a>
-<a href=#319 id=319 data-nosnippet>319</a>    <span class="kw">let </span>party_vk: Vec&lt;NoVerifyingKey&gt; = party_sk
-<a href=#320 id=320 data-nosnippet>320</a>        .iter()
-<a href=#321 id=321 data-nosnippet>321</a>        .enumerate()
-<a href=#322 id=322 data-nosnippet>322</a>        .map(|(p, <span class="kw">_</span>)| NoVerifyingKey::new(p))
-<a href=#323 id=323 data-nosnippet>323</a>        .collect();
-<a href=#324 id=324 data-nosnippet>324</a>
-<a href=#325 id=325 data-nosnippet>325</a>    party_sk
-<a href=#326 id=326 data-nosnippet>326</a>        .into_iter()
-<a href=#327 id=327 data-nosnippet>327</a>        .enumerate()
-<a href=#328 id=328 data-nosnippet>328</a>        .map(|(p, sk)| {
-<a href=#329 id=329 data-nosnippet>329</a>            <span class="comment">// first old_parties_n with Keyshare
-<a href=#330 id=330 data-nosnippet>330</a>            </span><span class="kw">let </span>keyshare = <span class="kw">if </span>p &lt; old_participants {
-<a href=#331 id=331 data-nosnippet>331</a>                <span class="prelude-val">Some</span>(old_keyshares[p].clone())
-<a href=#332 id=332 data-nosnippet>332</a>            } <span class="kw">else </span>{
-<a href=#333 id=333 data-nosnippet>333</a>                <span class="prelude-val">None
-<a href=#334 id=334 data-nosnippet>334</a>            </span>};
-<a href=#335 id=335 data-nosnippet>335</a>
-<a href=#336 id=336 data-nosnippet>336</a>            QuorumChangeSetupMessage::new(
-<a href=#337 id=337 data-nosnippet>337</a>                instance,
-<a href=#338 id=338 data-nosnippet>338</a>                p,
-<a href=#339 id=339 data-nosnippet>339</a>                <span class="kw-2">&amp;</span>old_parties,
-<a href=#340 id=340 data-nosnippet>340</a>                <span class="kw-2">&amp;</span>new_parties,
-<a href=#341 id=341 data-nosnippet>341</a>                new_threshold <span class="kw">as </span>usize,
-<a href=#342 id=342 data-nosnippet>342</a>                sk,
-<a href=#343 id=343 data-nosnippet>343</a>                party_vk.clone(),
-<a href=#344 id=344 data-nosnippet>344</a>                public_key,
-<a href=#345 id=345 data-nosnippet>345</a>            )
-<a href=#346 id=346 data-nosnippet>346</a>            .with_keyshare_opt(keyshare)
-<a href=#347 id=347 data-nosnippet>347</a>        })
-<a href=#348 id=348 data-nosnippet>348</a>        .map(|setup| (setup, rng.gen()))
-<a href=#349 id=349 data-nosnippet>349</a>        .collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;()
-<a href=#350 id=350 data-nosnippet>350</a>}
-<a href=#351 id=351 data-nosnippet>351</a>
-<a href=#352 id=352 data-nosnippet>352</a><span class="doccomment">/// Generates setup messages and seeds for extending the quorum with new parties.
-<a href=#353 id=353 data-nosnippet>353</a>///
-<a href=#354 id=354 data-nosnippet>354</a>/// This function creates setup messages and seeds for a quorum change that
-<a href=#355 id=355 data-nosnippet>355</a>/// adds new parties to the existing quorum.
-<a href=#356 id=356 data-nosnippet>356</a>///
-<a href=#357 id=357 data-nosnippet>357</a>/// # Arguments
-<a href=#358 id=358 data-nosnippet>358</a>/// * `old_keyshares` - Existing key shares from the current quorum
-<a href=#359 id=359 data-nosnippet>359</a>/// * `new_threshold` - New threshold value for the protocol
-<a href=#360 id=360 data-nosnippet>360</a>/// * `new_participants_len` - Number of new participants to add
-<a href=#361 id=361 data-nosnippet>361</a>/// * `new_n_i_list` - List of ranks for new parties
-<a href=#362 id=362 data-nosnippet>362</a>///
-<a href=#363 id=363 data-nosnippet>363</a>/// # Returns
-<a href=#364 id=364 data-nosnippet>364</a>/// A vector of tuples containing setup messages and seeds for each party
-<a href=#365 id=365 data-nosnippet>365</a></span><span class="attr">#[cfg(any(test, feature = <span class="string">"test-support"</span>))]
-<a href=#366 id=366 data-nosnippet>366</a></span><span class="kw">pub fn </span>setup_quorum_change_extend_parties(
-<a href=#367 id=367 data-nosnippet>367</a>    old_keyshares: <span class="kw-2">&amp;</span>[Arc&lt;Keyshare&gt;],
-<a href=#368 id=368 data-nosnippet>368</a>    new_threshold: u8,
-<a href=#369 id=369 data-nosnippet>369</a>    new_participants_len: u8,
-<a href=#370 id=370 data-nosnippet>370</a>    new_n_i_list: <span class="kw-2">&amp;</span>[u8],
-<a href=#371 id=371 data-nosnippet>371</a>) -&gt; Vec&lt;(QuorumChangeSetupMessage, [u8; <span class="number">32</span>])&gt; {
-<a href=#372 id=372 data-nosnippet>372</a>    <span class="kw">let </span>new_n = old_keyshares.len() + new_participants_len <span class="kw">as </span>usize;
-<a href=#373 id=373 data-nosnippet>373</a>
-<a href=#374 id=374 data-nosnippet>374</a>    <span class="kw">let </span>old_threshold = old_keyshares[<span class="number">0</span>].threshold <span class="kw">as </span>usize;
-<a href=#375 id=375 data-nosnippet>375</a>    <span class="kw">let </span>old_participants = old_keyshares.len();
-<a href=#376 id=376 data-nosnippet>376</a>    <span class="macro">assert!</span>(old_keyshares.len() &gt;= old_threshold);
-<a href=#377 id=377 data-nosnippet>377</a>
-<a href=#378 id=378 data-nosnippet>378</a>    <span class="kw">let </span>public_key = old_keyshares[<span class="number">0</span>].public_key();
-<a href=#379 id=379 data-nosnippet>379</a>
-<a href=#380 id=380 data-nosnippet>380</a>    <span class="kw">let </span>total_parties = new_n;
-<a href=#381 id=381 data-nosnippet>381</a>
-<a href=#382 id=382 data-nosnippet>382</a>    <span class="kw">let </span>old_parties = (<span class="number">0</span>..old_keyshares.len()).collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;();
-<a href=#383 id=383 data-nosnippet>383</a>    <span class="kw">let </span>new_parties = new_n_i_list
-<a href=#384 id=384 data-nosnippet>384</a>        .iter()
-<a href=#385 id=385 data-nosnippet>385</a>        .enumerate()
-<a href=#386 id=386 data-nosnippet>386</a>        .map(|(p, <span class="kw-2">&amp;</span>r)| (p, r))
-<a href=#387 id=387 data-nosnippet>387</a>        .collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;();
+<a href=#319 id=319 data-nosnippet>319</a>    <span class="kw">let </span>instance = rng.gen::&lt;[u8; <span class="number">32</span>]&gt;().into();
+<a href=#320 id=320 data-nosnippet>320</a>
+<a href=#321 id=321 data-nosnippet>321</a>    <span class="comment">// a signing key for each party.
+<a href=#322 id=322 data-nosnippet>322</a>    </span><span class="kw">let </span>party_sk: Vec&lt;NoSigningKey&gt; = std::iter::repeat_with(|| NoSigningKey)
+<a href=#323 id=323 data-nosnippet>323</a>        .take(total_parties)
+<a href=#324 id=324 data-nosnippet>324</a>        .collect();
+<a href=#325 id=325 data-nosnippet>325</a>
+<a href=#326 id=326 data-nosnippet>326</a>    <span class="kw">let </span>party_vk: Vec&lt;NoVerifyingKey&gt; = party_sk
+<a href=#327 id=327 data-nosnippet>327</a>        .iter()
+<a href=#328 id=328 data-nosnippet>328</a>        .enumerate()
+<a href=#329 id=329 data-nosnippet>329</a>        .map(|(p, <span class="kw">_</span>)| NoVerifyingKey::new(p))
+<a href=#330 id=330 data-nosnippet>330</a>        .collect();
+<a href=#331 id=331 data-nosnippet>331</a>
+<a href=#332 id=332 data-nosnippet>332</a>    party_sk
+<a href=#333 id=333 data-nosnippet>333</a>        .into_iter()
+<a href=#334 id=334 data-nosnippet>334</a>        .enumerate()
+<a href=#335 id=335 data-nosnippet>335</a>        .map(|(p, sk)| {
+<a href=#336 id=336 data-nosnippet>336</a>            <span class="comment">// first old_parties_n with Keyshare
+<a href=#337 id=337 data-nosnippet>337</a>            </span><span class="kw">let </span>keyshare = <span class="kw">if </span>p &lt; old_participants {
+<a href=#338 id=338 data-nosnippet>338</a>                <span class="prelude-val">Some</span>(old_keyshares[p].clone())
+<a href=#339 id=339 data-nosnippet>339</a>            } <span class="kw">else </span>{
+<a href=#340 id=340 data-nosnippet>340</a>                <span class="prelude-val">None
+<a href=#341 id=341 data-nosnippet>341</a>            </span>};
+<a href=#342 id=342 data-nosnippet>342</a>
+<a href=#343 id=343 data-nosnippet>343</a>            QuorumChangeSetupMessage::new(
+<a href=#344 id=344 data-nosnippet>344</a>                instance,
+<a href=#345 id=345 data-nosnippet>345</a>                p,
+<a href=#346 id=346 data-nosnippet>346</a>                <span class="kw-2">&amp;</span>old_parties,
+<a href=#347 id=347 data-nosnippet>347</a>                <span class="kw-2">&amp;</span>new_parties,
+<a href=#348 id=348 data-nosnippet>348</a>                new_threshold <span class="kw">as </span>usize,
+<a href=#349 id=349 data-nosnippet>349</a>                sk,
+<a href=#350 id=350 data-nosnippet>350</a>                party_vk.clone(),
+<a href=#351 id=351 data-nosnippet>351</a>                public_key,
+<a href=#352 id=352 data-nosnippet>352</a>            )
+<a href=#353 id=353 data-nosnippet>353</a>            .with_keyshare_opt(keyshare)
+<a href=#354 id=354 data-nosnippet>354</a>        })
+<a href=#355 id=355 data-nosnippet>355</a>        .map(|setup| (setup, rng.gen()))
+<a href=#356 id=356 data-nosnippet>356</a>        .collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;()
+<a href=#357 id=357 data-nosnippet>357</a>}
+<a href=#358 id=358 data-nosnippet>358</a>
+<a href=#359 id=359 data-nosnippet>359</a><span class="doccomment">/// Generates setup messages and seeds for extending the quorum with new parties.
+<a href=#360 id=360 data-nosnippet>360</a>///
+<a href=#361 id=361 data-nosnippet>361</a>/// This function creates setup messages and seeds for a quorum change that
+<a href=#362 id=362 data-nosnippet>362</a>/// adds new parties to the existing quorum.
+<a href=#363 id=363 data-nosnippet>363</a>///
+<a href=#364 id=364 data-nosnippet>364</a>/// # Arguments
+<a href=#365 id=365 data-nosnippet>365</a>/// * `old_keyshares` - Existing key shares from the current quorum
+<a href=#366 id=366 data-nosnippet>366</a>/// * `new_threshold` - New threshold value for the protocol
+<a href=#367 id=367 data-nosnippet>367</a>/// * `new_participants_len` - Number of new participants to add
+<a href=#368 id=368 data-nosnippet>368</a>/// * `new_n_i_list` - List of ranks for new parties
+<a href=#369 id=369 data-nosnippet>369</a>///
+<a href=#370 id=370 data-nosnippet>370</a>/// # Returns
+<a href=#371 id=371 data-nosnippet>371</a>/// A vector of tuples containing setup messages and seeds for each party
+<a href=#372 id=372 data-nosnippet>372</a></span><span class="attr">#[cfg(any(test, feature = <span class="string">"test-support"</span>))]
+<a href=#373 id=373 data-nosnippet>373</a></span><span class="kw">pub fn </span>setup_quorum_change_extend_parties(
+<a href=#374 id=374 data-nosnippet>374</a>    old_keyshares: <span class="kw-2">&amp;</span>[Arc&lt;Keyshare&gt;],
+<a href=#375 id=375 data-nosnippet>375</a>    new_threshold: u8,
+<a href=#376 id=376 data-nosnippet>376</a>    new_participants_len: u8,
+<a href=#377 id=377 data-nosnippet>377</a>    new_n_i_list: <span class="kw-2">&amp;</span>[u8],
+<a href=#378 id=378 data-nosnippet>378</a>) -&gt; Vec&lt;(QuorumChangeSetupMessage, [u8; <span class="number">32</span>])&gt; {
+<a href=#379 id=379 data-nosnippet>379</a>    <span class="kw">let </span>new_n = old_keyshares.len() + new_participants_len <span class="kw">as </span>usize;
+<a href=#380 id=380 data-nosnippet>380</a>
+<a href=#381 id=381 data-nosnippet>381</a>    <span class="kw">let </span>old_threshold = old_keyshares[<span class="number">0</span>].threshold <span class="kw">as </span>usize;
+<a href=#382 id=382 data-nosnippet>382</a>    <span class="kw">let </span>old_participants = old_keyshares.len();
+<a href=#383 id=383 data-nosnippet>383</a>    <span class="macro">assert!</span>(old_keyshares.len() &gt;= old_threshold);
+<a href=#384 id=384 data-nosnippet>384</a>
+<a href=#385 id=385 data-nosnippet>385</a>    <span class="kw">let </span>public_key = old_keyshares[<span class="number">0</span>].public_key();
+<a href=#386 id=386 data-nosnippet>386</a>
+<a href=#387 id=387 data-nosnippet>387</a>    <span class="kw">let </span>total_parties = new_n;
 <a href=#388 id=388 data-nosnippet>388</a>
-<a href=#389 id=389 data-nosnippet>389</a>    <span class="kw">let </span><span class="kw-2">mut </span>rng = rand::thread_rng();
-<a href=#390 id=390 data-nosnippet>390</a>
-<a href=#391 id=391 data-nosnippet>391</a>    <span class="kw">let </span>instance = rng.gen::&lt;[u8; <span class="number">32</span>]&gt;().into();
-<a href=#392 id=392 data-nosnippet>392</a>
-<a href=#393 id=393 data-nosnippet>393</a>    <span class="comment">// a signing key for each party.
-<a href=#394 id=394 data-nosnippet>394</a>    </span><span class="kw">let </span>party_sk: Vec&lt;NoSigningKey&gt; = std::iter::repeat_with(|| NoSigningKey)
-<a href=#395 id=395 data-nosnippet>395</a>        .take(total_parties)
-<a href=#396 id=396 data-nosnippet>396</a>        .collect();
-<a href=#397 id=397 data-nosnippet>397</a>    <span class="kw">let </span>party_vk: Vec&lt;NoVerifyingKey&gt; = party_sk
-<a href=#398 id=398 data-nosnippet>398</a>        .iter()
-<a href=#399 id=399 data-nosnippet>399</a>        .enumerate()
-<a href=#400 id=400 data-nosnippet>400</a>        .map(|(p, <span class="kw">_</span>)| NoVerifyingKey::new(p))
-<a href=#401 id=401 data-nosnippet>401</a>        .collect();
-<a href=#402 id=402 data-nosnippet>402</a>
-<a href=#403 id=403 data-nosnippet>403</a>    party_sk
-<a href=#404 id=404 data-nosnippet>404</a>        .into_iter()
-<a href=#405 id=405 data-nosnippet>405</a>        .enumerate()
-<a href=#406 id=406 data-nosnippet>406</a>        .map(|(p, sk)| {
-<a href=#407 id=407 data-nosnippet>407</a>            <span class="comment">// first old_parties_n with Keyshare
-<a href=#408 id=408 data-nosnippet>408</a>            </span><span class="kw">let </span>keyshare = <span class="kw">if </span>p &lt; old_participants {
-<a href=#409 id=409 data-nosnippet>409</a>                <span class="prelude-val">Some</span>(old_keyshares[p].clone())
-<a href=#410 id=410 data-nosnippet>410</a>            } <span class="kw">else </span>{
-<a href=#411 id=411 data-nosnippet>411</a>                <span class="prelude-val">None
-<a href=#412 id=412 data-nosnippet>412</a>            </span>};
-<a href=#413 id=413 data-nosnippet>413</a>
-<a href=#414 id=414 data-nosnippet>414</a>            QuorumChangeSetupMessage::new(
-<a href=#415 id=415 data-nosnippet>415</a>                instance,
-<a href=#416 id=416 data-nosnippet>416</a>                p,
-<a href=#417 id=417 data-nosnippet>417</a>                <span class="kw-2">&amp;</span>old_parties,
-<a href=#418 id=418 data-nosnippet>418</a>                <span class="kw-2">&amp;</span>new_parties,
-<a href=#419 id=419 data-nosnippet>419</a>                new_threshold <span class="kw">as </span>usize,
-<a href=#420 id=420 data-nosnippet>420</a>                sk,
-<a href=#421 id=421 data-nosnippet>421</a>                party_vk.clone(),
-<a href=#422 id=422 data-nosnippet>422</a>                public_key,
-<a href=#423 id=423 data-nosnippet>423</a>            )
-<a href=#424 id=424 data-nosnippet>424</a>            .with_keyshare_opt(keyshare)
-<a href=#425 id=425 data-nosnippet>425</a>        })
-<a href=#426 id=426 data-nosnippet>426</a>        .map(|setup| (setup, rng.gen()))
-<a href=#427 id=427 data-nosnippet>427</a>        .collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;()
-<a href=#428 id=428 data-nosnippet>428</a>}
-<a href=#429 id=429 data-nosnippet>429</a>
-<a href=#430 id=430 data-nosnippet>430</a><span class="doccomment">/// Generates setup messages and seeds for changing the quorum threshold.
-<a href=#431 id=431 data-nosnippet>431</a>///
-<a href=#432 id=432 data-nosnippet>432</a>/// This function creates setup messages and seeds for a quorum change that
-<a href=#433 id=433 data-nosnippet>433</a>/// modifies the threshold value while keeping the same set of parties.
-<a href=#434 id=434 data-nosnippet>434</a>///
-<a href=#435 id=435 data-nosnippet>435</a>/// # Arguments
-<a href=#436 id=436 data-nosnippet>436</a>/// * `old_keyshares` - Existing key shares from the current quorum
-<a href=#437 id=437 data-nosnippet>437</a>/// * `new_threshold` - New threshold value for the protocol
-<a href=#438 id=438 data-nosnippet>438</a>/// * `new_n_i_list` - List of ranks for the parties
-<a href=#439 id=439 data-nosnippet>439</a>///
-<a href=#440 id=440 data-nosnippet>440</a>/// # Returns
-<a href=#441 id=441 data-nosnippet>441</a>/// A vector of tuples containing setup messages and seeds for each party
-<a href=#442 id=442 data-nosnippet>442</a></span><span class="attr">#[cfg(any(test, feature = <span class="string">"test-support"</span>))]
-<a href=#443 id=443 data-nosnippet>443</a></span><span class="kw">pub fn </span>setup_quorum_change_threshold(
-<a href=#444 id=444 data-nosnippet>444</a>    old_keyshares: <span class="kw-2">&amp;</span>[Arc&lt;Keyshare&gt;],
-<a href=#445 id=445 data-nosnippet>445</a>    new_threshold: u8,
-<a href=#446 id=446 data-nosnippet>446</a>    new_n_i_list: <span class="kw-2">&amp;</span>[u8],
-<a href=#447 id=447 data-nosnippet>447</a>) -&gt; Vec&lt;(QuorumChangeSetupMessage, [u8; <span class="number">32</span>])&gt; {
-<a href=#448 id=448 data-nosnippet>448</a>    <span class="macro">assert!</span>(old_keyshares.len() &gt;= old_keyshares[<span class="number">0</span>].threshold <span class="kw">as </span>usize);
-<a href=#449 id=449 data-nosnippet>449</a>
-<a href=#450 id=450 data-nosnippet>450</a>    <span class="kw">let </span>total_parties = old_keyshares.len();
-<a href=#451 id=451 data-nosnippet>451</a>
-<a href=#452 id=452 data-nosnippet>452</a>    <span class="kw">let </span>old_participants = old_keyshares.len();
-<a href=#453 id=453 data-nosnippet>453</a>
-<a href=#454 id=454 data-nosnippet>454</a>    <span class="kw">let </span>public_key = old_keyshares[<span class="number">0</span>].public_key();
-<a href=#455 id=455 data-nosnippet>455</a>
-<a href=#456 id=456 data-nosnippet>456</a>    <span class="kw">let </span>old_parties = (<span class="number">0</span>..old_keyshares.len()).collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;();
-<a href=#457 id=457 data-nosnippet>457</a>
-<a href=#458 id=458 data-nosnippet>458</a>    <span class="kw">let </span>new_parties = new_n_i_list.iter().copied().enumerate().collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;();
-<a href=#459 id=459 data-nosnippet>459</a>
-<a href=#460 id=460 data-nosnippet>460</a>    <span class="kw">let </span><span class="kw-2">mut </span>rng = rand::thread_rng();
-<a href=#461 id=461 data-nosnippet>461</a>
-<a href=#462 id=462 data-nosnippet>462</a>    <span class="kw">let </span>instance = rng.gen::&lt;[u8; <span class="number">32</span>]&gt;().into();
-<a href=#463 id=463 data-nosnippet>463</a>
-<a href=#464 id=464 data-nosnippet>464</a>    <span class="comment">// a signing key for each party.
-<a href=#465 id=465 data-nosnippet>465</a>    </span><span class="kw">let </span>party_sk: Vec&lt;NoSigningKey&gt; = std::iter::repeat_with(|| NoSigningKey)
-<a href=#466 id=466 data-nosnippet>466</a>        .take(total_parties)
-<a href=#467 id=467 data-nosnippet>467</a>        .collect();
-<a href=#468 id=468 data-nosnippet>468</a>    <span class="kw">let </span>party_vk: Vec&lt;NoVerifyingKey&gt; = party_sk
-<a href=#469 id=469 data-nosnippet>469</a>        .iter()
-<a href=#470 id=470 data-nosnippet>470</a>        .enumerate()
-<a href=#471 id=471 data-nosnippet>471</a>        .map(|(p, <span class="kw">_</span>)| NoVerifyingKey::new(p))
-<a href=#472 id=472 data-nosnippet>472</a>        .collect();
-<a href=#473 id=473 data-nosnippet>473</a>
-<a href=#474 id=474 data-nosnippet>474</a>    party_sk
-<a href=#475 id=475 data-nosnippet>475</a>        .into_iter()
-<a href=#476 id=476 data-nosnippet>476</a>        .enumerate()
-<a href=#477 id=477 data-nosnippet>477</a>        .map(|(p, sk)| {
-<a href=#478 id=478 data-nosnippet>478</a>            <span class="comment">// first old_parties_n with Keyshare
-<a href=#479 id=479 data-nosnippet>479</a>            </span><span class="kw">let </span>keyshare = <span class="kw">if </span>p &lt; old_participants {
-<a href=#480 id=480 data-nosnippet>480</a>                <span class="prelude-val">Some</span>(old_keyshares[p].clone())
-<a href=#481 id=481 data-nosnippet>481</a>            } <span class="kw">else </span>{
-<a href=#482 id=482 data-nosnippet>482</a>                <span class="prelude-val">None
-<a href=#483 id=483 data-nosnippet>483</a>            </span>};
-<a href=#484 id=484 data-nosnippet>484</a>
-<a href=#485 id=485 data-nosnippet>485</a>            QuorumChangeSetupMessage::new(
-<a href=#486 id=486 data-nosnippet>486</a>                instance,
-<a href=#487 id=487 data-nosnippet>487</a>                p,
-<a href=#488 id=488 data-nosnippet>488</a>                <span class="kw-2">&amp;</span>old_parties,
-<a href=#489 id=489 data-nosnippet>489</a>                <span class="kw-2">&amp;</span>new_parties,
-<a href=#490 id=490 data-nosnippet>490</a>                new_threshold <span class="kw">as </span>usize,
-<a href=#491 id=491 data-nosnippet>491</a>                sk,
-<a href=#492 id=492 data-nosnippet>492</a>                party_vk.clone(),
-<a href=#493 id=493 data-nosnippet>493</a>                public_key,
-<a href=#494 id=494 data-nosnippet>494</a>            )
-<a href=#495 id=495 data-nosnippet>495</a>            .with_keyshare_opt(keyshare)
-<a href=#496 id=496 data-nosnippet>496</a>        })
-<a href=#497 id=497 data-nosnippet>497</a>        .map(|setup| (setup, rng.gen()))
-<a href=#498 id=498 data-nosnippet>498</a>        .collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;()
-<a href=#499 id=499 data-nosnippet>499</a>}</code></pre></div></section></main></body></html>
+<a href=#389 id=389 data-nosnippet>389</a>    <span class="kw">let </span>old_parties = (<span class="number">0</span>..old_keyshares.len()).collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;();
+<a href=#390 id=390 data-nosnippet>390</a>    <span class="kw">let </span>new_parties = new_n_i_list
+<a href=#391 id=391 data-nosnippet>391</a>        .iter()
+<a href=#392 id=392 data-nosnippet>392</a>        .enumerate()
+<a href=#393 id=393 data-nosnippet>393</a>        .map(|(p, <span class="kw-2">&amp;</span>r)| (p, r))
+<a href=#394 id=394 data-nosnippet>394</a>        .collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;();
+<a href=#395 id=395 data-nosnippet>395</a>
+<a href=#396 id=396 data-nosnippet>396</a>    <span class="kw">let </span><span class="kw-2">mut </span>rng = rand::thread_rng();
+<a href=#397 id=397 data-nosnippet>397</a>
+<a href=#398 id=398 data-nosnippet>398</a>    <span class="kw">let </span>instance = rng.gen::&lt;[u8; <span class="number">32</span>]&gt;().into();
+<a href=#399 id=399 data-nosnippet>399</a>
+<a href=#400 id=400 data-nosnippet>400</a>    <span class="comment">// a signing key for each party.
+<a href=#401 id=401 data-nosnippet>401</a>    </span><span class="kw">let </span>party_sk: Vec&lt;NoSigningKey&gt; = std::iter::repeat_with(|| NoSigningKey)
+<a href=#402 id=402 data-nosnippet>402</a>        .take(total_parties)
+<a href=#403 id=403 data-nosnippet>403</a>        .collect();
+<a href=#404 id=404 data-nosnippet>404</a>    <span class="kw">let </span>party_vk: Vec&lt;NoVerifyingKey&gt; = party_sk
+<a href=#405 id=405 data-nosnippet>405</a>        .iter()
+<a href=#406 id=406 data-nosnippet>406</a>        .enumerate()
+<a href=#407 id=407 data-nosnippet>407</a>        .map(|(p, <span class="kw">_</span>)| NoVerifyingKey::new(p))
+<a href=#408 id=408 data-nosnippet>408</a>        .collect();
+<a href=#409 id=409 data-nosnippet>409</a>
+<a href=#410 id=410 data-nosnippet>410</a>    party_sk
+<a href=#411 id=411 data-nosnippet>411</a>        .into_iter()
+<a href=#412 id=412 data-nosnippet>412</a>        .enumerate()
+<a href=#413 id=413 data-nosnippet>413</a>        .map(|(p, sk)| {
+<a href=#414 id=414 data-nosnippet>414</a>            <span class="comment">// first old_parties_n with Keyshare
+<a href=#415 id=415 data-nosnippet>415</a>            </span><span class="kw">let </span>keyshare = <span class="kw">if </span>p &lt; old_participants {
+<a href=#416 id=416 data-nosnippet>416</a>                <span class="prelude-val">Some</span>(old_keyshares[p].clone())
+<a href=#417 id=417 data-nosnippet>417</a>            } <span class="kw">else </span>{
+<a href=#418 id=418 data-nosnippet>418</a>                <span class="prelude-val">None
+<a href=#419 id=419 data-nosnippet>419</a>            </span>};
+<a href=#420 id=420 data-nosnippet>420</a>
+<a href=#421 id=421 data-nosnippet>421</a>            QuorumChangeSetupMessage::new(
+<a href=#422 id=422 data-nosnippet>422</a>                instance,
+<a href=#423 id=423 data-nosnippet>423</a>                p,
+<a href=#424 id=424 data-nosnippet>424</a>                <span class="kw-2">&amp;</span>old_parties,
+<a href=#425 id=425 data-nosnippet>425</a>                <span class="kw-2">&amp;</span>new_parties,
+<a href=#426 id=426 data-nosnippet>426</a>                new_threshold <span class="kw">as </span>usize,
+<a href=#427 id=427 data-nosnippet>427</a>                sk,
+<a href=#428 id=428 data-nosnippet>428</a>                party_vk.clone(),
+<a href=#429 id=429 data-nosnippet>429</a>                public_key,
+<a href=#430 id=430 data-nosnippet>430</a>            )
+<a href=#431 id=431 data-nosnippet>431</a>            .with_keyshare_opt(keyshare)
+<a href=#432 id=432 data-nosnippet>432</a>        })
+<a href=#433 id=433 data-nosnippet>433</a>        .map(|setup| (setup, rng.gen()))
+<a href=#434 id=434 data-nosnippet>434</a>        .collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;()
+<a href=#435 id=435 data-nosnippet>435</a>}
+<a href=#436 id=436 data-nosnippet>436</a>
+<a href=#437 id=437 data-nosnippet>437</a><span class="doccomment">/// Generates setup messages and seeds for changing the quorum threshold.
+<a href=#438 id=438 data-nosnippet>438</a>///
+<a href=#439 id=439 data-nosnippet>439</a>/// This function creates setup messages and seeds for a quorum change that
+<a href=#440 id=440 data-nosnippet>440</a>/// modifies the threshold value while keeping the same set of parties.
+<a href=#441 id=441 data-nosnippet>441</a>///
+<a href=#442 id=442 data-nosnippet>442</a>/// # Arguments
+<a href=#443 id=443 data-nosnippet>443</a>/// * `old_keyshares` - Existing key shares from the current quorum
+<a href=#444 id=444 data-nosnippet>444</a>/// * `new_threshold` - New threshold value for the protocol
+<a href=#445 id=445 data-nosnippet>445</a>/// * `new_n_i_list` - List of ranks for the parties
+<a href=#446 id=446 data-nosnippet>446</a>///
+<a href=#447 id=447 data-nosnippet>447</a>/// # Returns
+<a href=#448 id=448 data-nosnippet>448</a>/// A vector of tuples containing setup messages and seeds for each party
+<a href=#449 id=449 data-nosnippet>449</a></span><span class="attr">#[cfg(any(test, feature = <span class="string">"test-support"</span>))]
+<a href=#450 id=450 data-nosnippet>450</a></span><span class="kw">pub fn </span>setup_quorum_change_threshold(
+<a href=#451 id=451 data-nosnippet>451</a>    old_keyshares: <span class="kw-2">&amp;</span>[Arc&lt;Keyshare&gt;],
+<a href=#452 id=452 data-nosnippet>452</a>    new_threshold: u8,
+<a href=#453 id=453 data-nosnippet>453</a>    new_n_i_list: <span class="kw-2">&amp;</span>[u8],
+<a href=#454 id=454 data-nosnippet>454</a>) -&gt; Vec&lt;(QuorumChangeSetupMessage, [u8; <span class="number">32</span>])&gt; {
+<a href=#455 id=455 data-nosnippet>455</a>    <span class="macro">assert!</span>(old_keyshares.len() &gt;= old_keyshares[<span class="number">0</span>].threshold <span class="kw">as </span>usize);
+<a href=#456 id=456 data-nosnippet>456</a>
+<a href=#457 id=457 data-nosnippet>457</a>    <span class="kw">let </span>total_parties = old_keyshares.len();
+<a href=#458 id=458 data-nosnippet>458</a>
+<a href=#459 id=459 data-nosnippet>459</a>    <span class="kw">let </span>old_participants = old_keyshares.len();
+<a href=#460 id=460 data-nosnippet>460</a>
+<a href=#461 id=461 data-nosnippet>461</a>    <span class="kw">let </span>public_key = old_keyshares[<span class="number">0</span>].public_key();
+<a href=#462 id=462 data-nosnippet>462</a>
+<a href=#463 id=463 data-nosnippet>463</a>    <span class="kw">let </span>old_parties = (<span class="number">0</span>..old_keyshares.len()).collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;();
+<a href=#464 id=464 data-nosnippet>464</a>
+<a href=#465 id=465 data-nosnippet>465</a>    <span class="kw">let </span>new_parties =
+<a href=#466 id=466 data-nosnippet>466</a>        new_n_i_list.iter().copied().enumerate().collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;();
+<a href=#467 id=467 data-nosnippet>467</a>
+<a href=#468 id=468 data-nosnippet>468</a>    <span class="kw">let </span><span class="kw-2">mut </span>rng = rand::thread_rng();
+<a href=#469 id=469 data-nosnippet>469</a>
+<a href=#470 id=470 data-nosnippet>470</a>    <span class="kw">let </span>instance = rng.gen::&lt;[u8; <span class="number">32</span>]&gt;().into();
+<a href=#471 id=471 data-nosnippet>471</a>
+<a href=#472 id=472 data-nosnippet>472</a>    <span class="comment">// a signing key for each party.
+<a href=#473 id=473 data-nosnippet>473</a>    </span><span class="kw">let </span>party_sk: Vec&lt;NoSigningKey&gt; = std::iter::repeat_with(|| NoSigningKey)
+<a href=#474 id=474 data-nosnippet>474</a>        .take(total_parties)
+<a href=#475 id=475 data-nosnippet>475</a>        .collect();
+<a href=#476 id=476 data-nosnippet>476</a>    <span class="kw">let </span>party_vk: Vec&lt;NoVerifyingKey&gt; = party_sk
+<a href=#477 id=477 data-nosnippet>477</a>        .iter()
+<a href=#478 id=478 data-nosnippet>478</a>        .enumerate()
+<a href=#479 id=479 data-nosnippet>479</a>        .map(|(p, <span class="kw">_</span>)| NoVerifyingKey::new(p))
+<a href=#480 id=480 data-nosnippet>480</a>        .collect();
+<a href=#481 id=481 data-nosnippet>481</a>
+<a href=#482 id=482 data-nosnippet>482</a>    party_sk
+<a href=#483 id=483 data-nosnippet>483</a>        .into_iter()
+<a href=#484 id=484 data-nosnippet>484</a>        .enumerate()
+<a href=#485 id=485 data-nosnippet>485</a>        .map(|(p, sk)| {
+<a href=#486 id=486 data-nosnippet>486</a>            <span class="comment">// first old_parties_n with Keyshare
+<a href=#487 id=487 data-nosnippet>487</a>            </span><span class="kw">let </span>keyshare = <span class="kw">if </span>p &lt; old_participants {
+<a href=#488 id=488 data-nosnippet>488</a>                <span class="prelude-val">Some</span>(old_keyshares[p].clone())
+<a href=#489 id=489 data-nosnippet>489</a>            } <span class="kw">else </span>{
+<a href=#490 id=490 data-nosnippet>490</a>                <span class="prelude-val">None
+<a href=#491 id=491 data-nosnippet>491</a>            </span>};
+<a href=#492 id=492 data-nosnippet>492</a>
+<a href=#493 id=493 data-nosnippet>493</a>            QuorumChangeSetupMessage::new(
+<a href=#494 id=494 data-nosnippet>494</a>                instance,
+<a href=#495 id=495 data-nosnippet>495</a>                p,
+<a href=#496 id=496 data-nosnippet>496</a>                <span class="kw-2">&amp;</span>old_parties,
+<a href=#497 id=497 data-nosnippet>497</a>                <span class="kw-2">&amp;</span>new_parties,
+<a href=#498 id=498 data-nosnippet>498</a>                new_threshold <span class="kw">as </span>usize,
+<a href=#499 id=499 data-nosnippet>499</a>                sk,
+<a href=#500 id=500 data-nosnippet>500</a>                party_vk.clone(),
+<a href=#501 id=501 data-nosnippet>501</a>                public_key,
+<a href=#502 id=502 data-nosnippet>502</a>            )
+<a href=#503 id=503 data-nosnippet>503</a>            .with_keyshare_opt(keyshare)
+<a href=#504 id=504 data-nosnippet>504</a>        })
+<a href=#505 id=505 data-nosnippet>505</a>        .map(|setup| (setup, rng.gen()))
+<a href=#506 id=506 data-nosnippet>506</a>        .collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;()
+<a href=#507 id=507 data-nosnippet>507</a>}</code></pre></div></section></main></body></html>

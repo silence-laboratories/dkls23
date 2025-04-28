@@ -12,7 +12,7 @@ maintaining a specific format:</p>
 </ul>
 <p>The <code>payload</code> and <code>trailer</code> sections are encrypted, while the header and
 additional data remain in plaintext.</p>
-</div></details><h2 id="implementations" class="section-header">Implementations<a href="#implementations" class="anchor">§</a></h2><div id="implementations-list"><details class="toggle implementors-toggle" open><summary><section id="impl-EncryptedMessage%3CT%3E" class="impl"><a class="src rightside" href="../../src/dkls23/proto/encrypted.rs.html#45-269">Source</a><a href="#impl-EncryptedMessage%3CT%3E" class="anchor">§</a><h3 class="code-header">impl&lt;T: AnyBitPattern + NoUninit&gt; <a class="struct" href="struct.EncryptedMessage.html" title="struct dkls23::proto::EncryptedMessage">EncryptedMessage</a>&lt;T&gt;</h3></section></summary><div class="impl-items"><details class="toggle method-toggle" open><summary><section id="method.size" class="method"><a class="src rightside" href="../../src/dkls23/proto/encrypted.rs.html#57-59">Source</a><h4 class="code-header">pub fn <a href="#method.size" class="fn">size</a>(ad: <a class="primitive" href="https://doc.rust-lang.org/1.86.0/std/primitive.usize.html">usize</a>, trailer: <a class="primitive" href="https://doc.rust-lang.org/1.86.0/std/primitive.usize.html">usize</a>, scheme: &amp;dyn <a class="trait" href="trait.EncryptionScheme.html" title="trait dkls23::proto::EncryptionScheme">EncryptionScheme</a>) -&gt; <a class="primitive" href="https://doc.rust-lang.org/1.86.0/std/primitive.usize.html">usize</a></h4></section></summary><div class="docblock"><p>Calculates the total size of an encrypted message.</p>
+</div></details><h2 id="implementations" class="section-header">Implementations<a href="#implementations" class="anchor">§</a></h2><div id="implementations-list"><details class="toggle implementors-toggle" open><summary><section id="impl-EncryptedMessage%3CT%3E" class="impl"><a class="src rightside" href="../../src/dkls23/proto/encrypted.rs.html#45-291">Source</a><a href="#impl-EncryptedMessage%3CT%3E" class="anchor">§</a><h3 class="code-header">impl&lt;T: AnyBitPattern + NoUninit&gt; <a class="struct" href="struct.EncryptedMessage.html" title="struct dkls23::proto::EncryptedMessage">EncryptedMessage</a>&lt;T&gt;</h3></section></summary><div class="impl-items"><details class="toggle method-toggle" open><summary><section id="method.size" class="method"><a class="src rightside" href="../../src/dkls23/proto/encrypted.rs.html#57-63">Source</a><h4 class="code-header">pub fn <a href="#method.size" class="fn">size</a>(ad: <a class="primitive" href="https://doc.rust-lang.org/1.86.0/std/primitive.usize.html">usize</a>, trailer: <a class="primitive" href="https://doc.rust-lang.org/1.86.0/std/primitive.usize.html">usize</a>, scheme: &amp;dyn <a class="trait" href="trait.EncryptionScheme.html" title="trait dkls23::proto::EncryptionScheme">EncryptionScheme</a>) -&gt; <a class="primitive" href="https://doc.rust-lang.org/1.86.0/std/primitive.usize.html">usize</a></h4></section></summary><div class="docblock"><p>Calculates the total size of an encrypted message.</p>
 <h5 id="arguments"><a class="doc-anchor" href="#arguments">§</a>Arguments</h5>
 <ul>
 <li><code>ad</code> - Size of additional data in bytes</li>
@@ -21,7 +21,7 @@ additional data remain in plaintext.</p>
 </ul>
 <h5 id="returns"><a class="doc-anchor" href="#returns">§</a>Returns</h5>
 <p>The total size in bytes needed for the encrypted message</p>
-</div></details><details class="toggle method-toggle" open><summary><section id="method.new" class="method"><a class="src rightside" href="../../src/dkls23/proto/encrypted.rs.html#72-82">Source</a><h4 class="code-header">pub fn <a href="#method.new" class="fn">new</a>(
+</div></details><details class="toggle method-toggle" open><summary><section id="method.new" class="method"><a class="src rightside" href="../../src/dkls23/proto/encrypted.rs.html#76-86">Source</a><h4 class="code-header">pub fn <a href="#method.new" class="fn">new</a>(
     id: &amp;<a class="struct" href="../struct.MsgId.html" title="struct dkls23::MsgId">MsgId</a>,
     ttl: <a class="primitive" href="https://doc.rust-lang.org/1.86.0/std/primitive.u32.html">u32</a>,
     flags: <a class="primitive" href="https://doc.rust-lang.org/1.86.0/std/primitive.u16.html">u16</a>,
@@ -38,7 +38,7 @@ additional data remain in plaintext.</p>
 </ul>
 <h5 id="returns-1"><a class="doc-anchor" href="#returns-1">§</a>Returns</h5>
 <p>A new <code>EncryptedMessage</code> instance</p>
-</div></details><details class="toggle method-toggle" open><summary><section id="method.new_with_ad" class="method"><a class="src rightside" href="../../src/dkls23/proto/encrypted.rs.html#96-107">Source</a><h4 class="code-header">pub fn <a href="#method.new_with_ad" class="fn">new_with_ad</a>(
+</div></details><details class="toggle method-toggle" open><summary><section id="method.new_with_ad" class="method"><a class="src rightside" href="../../src/dkls23/proto/encrypted.rs.html#100-119">Source</a><h4 class="code-header">pub fn <a href="#method.new_with_ad" class="fn">new_with_ad</a>(
     id: &amp;<a class="struct" href="../struct.MsgId.html" title="struct dkls23::MsgId">MsgId</a>,
     ttl: <a class="primitive" href="https://doc.rust-lang.org/1.86.0/std/primitive.u32.html">u32</a>,
     flags: <a class="primitive" href="https://doc.rust-lang.org/1.86.0/std/primitive.u16.html">u16</a>,
@@ -57,7 +57,7 @@ additional data remain in plaintext.</p>
 </ul>
 <h5 id="returns-2"><a class="doc-anchor" href="#returns-2">§</a>Returns</h5>
 <p>A new <code>EncryptedMessage</code> instance with space for additional data</p>
-</div></details><details class="toggle method-toggle" open><summary><section id="method.from_buffer" class="method"><a class="src rightside" href="../../src/dkls23/proto/encrypted.rs.html#122-142">Source</a><h4 class="code-header">pub fn <a href="#method.from_buffer" class="fn">from_buffer</a>(
+</div></details><details class="toggle method-toggle" open><summary><section id="method.from_buffer" class="method"><a class="src rightside" href="../../src/dkls23/proto/encrypted.rs.html#134-154">Source</a><h4 class="code-header">pub fn <a href="#method.from_buffer" class="fn">from_buffer</a>(
     buffer: <a class="struct" href="https://doc.rust-lang.org/1.86.0/alloc/vec/struct.Vec.html" title="struct alloc::vec::Vec">Vec</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/1.86.0/std/primitive.u8.html">u8</a>&gt;,
     id: &amp;<a class="struct" href="../struct.MsgId.html" title="struct dkls23::MsgId">MsgId</a>,
     ttl: <a class="primitive" href="https://doc.rust-lang.org/1.86.0/std/primitive.u32.html">u32</a>,
@@ -78,7 +78,7 @@ additional data remain in plaintext.</p>
 </ul>
 <h5 id="returns-3"><a class="doc-anchor" href="#returns-3">§</a>Returns</h5>
 <p>A new <code>EncryptedMessage</code> instance using the provided buffer</p>
-</div></details><details class="toggle method-toggle" open><summary><section id="method.payload_with_ad" class="method"><a class="src rightside" href="../../src/dkls23/proto/encrypted.rs.html#154-168">Source</a><h4 class="code-header">pub fn <a href="#method.payload_with_ad" class="fn">payload_with_ad</a>(
+</div></details><details class="toggle method-toggle" open><summary><section id="method.payload_with_ad" class="method"><a class="src rightside" href="../../src/dkls23/proto/encrypted.rs.html#166-181">Source</a><h4 class="code-header">pub fn <a href="#method.payload_with_ad" class="fn">payload_with_ad</a>(
     &amp;mut self,
     scheme: &amp;dyn <a class="trait" href="trait.EncryptionScheme.html" title="trait dkls23::proto::EncryptionScheme">EncryptionScheme</a>,
 ) -&gt; (<a class="primitive" href="https://doc.rust-lang.org/1.86.0/std/primitive.reference.html">&amp;mut T</a>, &amp;mut [<a class="primitive" href="https://doc.rust-lang.org/1.86.0/std/primitive.u8.html">u8</a>], &amp;mut [<a class="primitive" href="https://doc.rust-lang.org/1.86.0/std/primitive.u8.html">u8</a>])</h4></section></summary><div class="docblock"><p>Returns mutable references to the message payload, trailer, and additional data.</p>
@@ -93,7 +93,7 @@ additional data remain in plaintext.</p>
 <li>Mutable reference to the trailer bytes</li>
 <li>Mutable reference to the additional data bytes</li>
 </ul>
-</div></details><details class="toggle method-toggle" open><summary><section id="method.payload" class="method"><a class="src rightside" href="../../src/dkls23/proto/encrypted.rs.html#179-183">Source</a><h4 class="code-header">pub fn <a href="#method.payload" class="fn">payload</a>(&amp;mut self, scheme: &amp;dyn <a class="trait" href="trait.EncryptionScheme.html" title="trait dkls23::proto::EncryptionScheme">EncryptionScheme</a>) -&gt; (<a class="primitive" href="https://doc.rust-lang.org/1.86.0/std/primitive.reference.html">&amp;mut T</a>, &amp;mut [<a class="primitive" href="https://doc.rust-lang.org/1.86.0/std/primitive.u8.html">u8</a>])</h4></section></summary><div class="docblock"><p>Returns mutable references to the message payload and trailer.</p>
+</div></details><details class="toggle method-toggle" open><summary><section id="method.payload" class="method"><a class="src rightside" href="../../src/dkls23/proto/encrypted.rs.html#192-199">Source</a><h4 class="code-header">pub fn <a href="#method.payload" class="fn">payload</a>(&amp;mut self, scheme: &amp;dyn <a class="trait" href="trait.EncryptionScheme.html" title="trait dkls23::proto::EncryptionScheme">EncryptionScheme</a>) -&gt; (<a class="primitive" href="https://doc.rust-lang.org/1.86.0/std/primitive.reference.html">&amp;mut T</a>, &amp;mut [<a class="primitive" href="https://doc.rust-lang.org/1.86.0/std/primitive.u8.html">u8</a>])</h4></section></summary><div class="docblock"><p>Returns mutable references to the message payload and trailer.</p>
 <h5 id="arguments-5"><a class="doc-anchor" href="#arguments-5">§</a>Arguments</h5>
 <ul>
 <li><code>scheme</code> - The encryption scheme to use</li>
@@ -104,7 +104,7 @@ additional data remain in plaintext.</p>
 <li>Mutable reference to the payload object</li>
 <li>Mutable reference to the trailer bytes</li>
 </ul>
-</div></details><details class="toggle method-toggle" open><summary><section id="method.encrypt" class="method"><a class="src rightside" href="../../src/dkls23/proto/encrypted.rs.html#193-207">Source</a><h4 class="code-header">pub fn <a href="#method.encrypt" class="fn">encrypt</a>(
+</div></details><details class="toggle method-toggle" open><summary><section id="method.encrypt" class="method"><a class="src rightside" href="../../src/dkls23/proto/encrypted.rs.html#209-227">Source</a><h4 class="code-header">pub fn <a href="#method.encrypt" class="fn">encrypt</a>(
     self,
     scheme: &amp;mut dyn <a class="trait" href="trait.EncryptionScheme.html" title="trait dkls23::proto::EncryptionScheme">EncryptionScheme</a>,
     receiver: <a class="primitive" href="https://doc.rust-lang.org/1.86.0/std/primitive.usize.html">usize</a>,
@@ -116,7 +116,7 @@ additional data remain in plaintext.</p>
 </ul>
 <h5 id="returns-6"><a class="doc-anchor" href="#returns-6">§</a>Returns</h5>
 <p>The encrypted message as a byte vector, or <code>None</code> if encryption failed</p>
-</div></details><details class="toggle method-toggle" open><summary><section id="method.decrypt_with_ad" class="method"><a class="src rightside" href="../../src/dkls23/proto/encrypted.rs.html#221-247">Source</a><h4 class="code-header">pub fn <a href="#method.decrypt_with_ad" class="fn">decrypt_with_ad</a>&lt;'msg&gt;(
+</div></details><details class="toggle method-toggle" open><summary><section id="method.decrypt_with_ad" class="method"><a class="src rightside" href="../../src/dkls23/proto/encrypted.rs.html#241-269">Source</a><h4 class="code-header">pub fn <a href="#method.decrypt_with_ad" class="fn">decrypt_with_ad</a>&lt;'msg&gt;(
     buffer: &amp;'msg mut [<a class="primitive" href="https://doc.rust-lang.org/1.86.0/std/primitive.u8.html">u8</a>],
     additional_data: <a class="primitive" href="https://doc.rust-lang.org/1.86.0/std/primitive.usize.html">usize</a>,
     trailer: <a class="primitive" href="https://doc.rust-lang.org/1.86.0/std/primitive.usize.html">usize</a>,
@@ -134,7 +134,7 @@ additional data remain in plaintext.</p>
 <h5 id="returns-7"><a class="doc-anchor" href="#returns-7">§</a>Returns</h5>
 <p>A tuple containing references to the decrypted payload, trailer, and additional data,
 or <code>None</code> if decryption failed</p>
-</div></details><details class="toggle method-toggle" open><summary><section id="method.decrypt" class="method"><a class="src rightside" href="../../src/dkls23/proto/encrypted.rs.html#260-268">Source</a><h4 class="code-header">pub fn <a href="#method.decrypt" class="fn">decrypt</a>&lt;'msg&gt;(
+</div></details><details class="toggle method-toggle" open><summary><section id="method.decrypt" class="method"><a class="src rightside" href="../../src/dkls23/proto/encrypted.rs.html#282-290">Source</a><h4 class="code-header">pub fn <a href="#method.decrypt" class="fn">decrypt</a>&lt;'msg&gt;(
     buffer: &amp;'msg mut [<a class="primitive" href="https://doc.rust-lang.org/1.86.0/std/primitive.u8.html">u8</a>],
     trailer: <a class="primitive" href="https://doc.rust-lang.org/1.86.0/std/primitive.usize.html">usize</a>,
     scheme: &amp;dyn <a class="trait" href="trait.EncryptionScheme.html" title="trait dkls23::proto::EncryptionScheme">EncryptionScheme</a>,
