@@ -1,16 +1,13 @@
 // Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
 
-//! Module for importing private key into the protocol
-
 use k256::{NonZeroScalar, ProjectivePoint, Scalar};
 use rand::{CryptoRng, RngCore};
 use sl_mpc_mate::math::Polynomial;
 
 use crate::keygen::key_refresh::KeyshareForRefresh;
 
-/// Create ecdsa keyshares from private key.
-///
+/// Create ecdsa keyshares from a singleton private key.
 pub fn ecdsa_secret_shares<T: RngCore + CryptoRng>(
     threshold: u8,
     rank_list: Vec<u8>,

@@ -1,72 +1,79 @@
 // Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
 
+//! This module defines the error types and common types used throughout the DKG protocol.
+//! It includes error handling for various protocol operations and test utilities for
+//! polynomial operations used in the protocol.
+
 use crate::proto::tags::Error;
 use sl_mpc_mate::coord::MessageSendError;
 
+/// Error type for distributed key generation protocol operations.
+///
+/// This enum defines all possible errors that can occur during the execution of the
+/// DKG protocol, including message handling, cryptographic operations, and protocol
+/// state management.
 #[derive(Debug, thiserror::Error)]
-#[allow(missing_docs)]
-/// Distributed key generation errors
 pub enum KeygenError {
-    /// error while serializing or deserializing or invalid message data length
+    /// Error while serializing or deserializing message data, or invalid message length
     #[error(
         "Error while deserializing message or invalid message data length"
     )]
     InvalidMessage,
 
-    /// Invalid commitment hash
+    /// The commitment hash provided does not match the expected value
     #[error("Invalid commitment hash")]
     InvalidCommitmentHash,
 
+    /// The discrete logarithm proof provided is invalid
     #[error("Invalid DLog proof")]
-    /// Invalid DLog proof
     InvalidDLogProof,
 
+    /// The polynomial point provided is invalid
     #[error("Invalid Polynomial Point")]
-    /// Invalid Polynomial Point
     InvalidPolynomialPoint,
 
+    /// The key refresh operation failed
     #[error("Invalid key refresh")]
-    /// Invalid key refresh
     InvalidKeyRefresh,
 
+    /// The quorum change operation failed
     #[error("Invalid Quorum Change")]
-    /// Invalid Quorum Change
     InvalidQuorumChange,
 
-    /// Not unique x_i values
+    /// The x_i values provided are not unique
     #[error("Not unique x_i values")]
     NotUniqueXiValues,
 
-    /// Big F vec mismatch
+    /// The Big F vector does not match the expected value
     #[error("Big F vec mismatch")]
     BigFVecMismatch,
 
-    /// Failed felman verify
-    #[error("Failed felman verify")]
+    /// The Feldman verification failed
+    #[error("Failed feldman verify")]
     FailedFelmanVerify,
 
-    /// Public key mismatch between the message and the party
+    /// The public key in the message does not match the party's public key
     #[error("Public key mismatch between the message and the party")]
     PublicKeyMismatch,
 
-    /// Big S value mismatch
+    /// The Big S value does not match the expected value
     #[error("Big S value mismatch")]
     BigSMismatch,
 
+    /// An error occurred in the PPRF (Pseudorandom Function) operation
     #[error("PPRF error")]
-    /// PPRF error
     PPRFError(&'static str),
 
-    /// Missing message
+    /// A required message is missing
     #[error("Missing message")]
     MissingMessage,
 
-    /// We can't a send message
+    /// Failed to send a message
     #[error("Send message")]
     SendMessage,
 
-    /// Some party decided to not participate in the protocol.
+    /// A party has decided to abort the protocol
     #[error("Abort protocol by party {0}")]
     AbortProtocol(usize),
 }
@@ -96,6 +103,11 @@ mod tests {
     };
     use sl_mpc_mate::math::{GroupPolynomial, Polynomial};
 
+    /// Test the derivative calculation for large values
+    ///
+    /// This test verifies that the derivative calculation works correctly with values
+    /// close to the curve order. It tests the polynomial f(x) = 1 + 2x + (p-1)x^2
+    /// where p is the curve order.
     #[test]
     fn test_derivative_large() {
         // order of the curve
@@ -123,6 +135,10 @@ mod tests {
         );
     }
 
+    /// Test the derivative calculation for normal values
+    ///
+    /// This test verifies that the derivative calculation works correctly with normal
+    /// polynomial coefficients. It tests the polynomial f(x) = 1 + 2x + 3x^2 + 4x^3.
     #[test]
     fn test_derivative_normal() {
         // f(x) = 1 + 2x + 3x^2 + 4x^3
@@ -143,6 +159,10 @@ mod tests {
         assert_eq!(result, Scalar::from(54_u64));
     }
 
+    /// Test the derivative coefficients calculation
+    ///
+    /// This test verifies that the derivative coefficients are calculated correctly
+    /// for both first and second derivatives of a polynomial with group elements.
     #[test]
     fn test_derivative_coeffs() {
         // f(x) = 1 + 2x + 3x^2 + 4x^3
