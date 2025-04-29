@@ -28,7 +28,7 @@
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
 ## Introduction
-DKLs23 is a high-performance threshold ECDSA signing protocol with dynamic quorum management. 
+DKLs23 is a high-performance threshold ECDSA signing protocol with dynamic quorum management.
 
 This is a production-ready, audited implementation that powers the [Silent Shard SDK](https://silencelaboratories.com/silent-shard) and has undergone a comprehensive [security audit](./docs/ToB-SilenceLaboratories_2024.04.10.pdf) by Trail of Bits.
 
@@ -46,13 +46,13 @@ This is a production-ready, audited implementation that powers the [Silent Shard
 The repository is structured as follows:
 
 ```
-crates/                   
+crates/
 ├── msg-relay/           # Message relay crate
 └── dkls-metrics/        # Metrics crate
 docs/                    # Audit reports and whitepapers
 examples/                # Examples (keygen, sign, refresh)
 scripts/                 # Utility scripts
-src/                     
+src/
 ├── keygen/              # Key generation module
 ├── proto/               # Protocol definitions
 ├── setup/               # Setup module
@@ -106,7 +106,7 @@ cargo run --example refresh
 
 ##  Crates structure
 
-### Protocols 
+### Protocols
 
 <table>
   <tr>
@@ -191,13 +191,13 @@ cargo run --example refresh
     <td><a href="https://eprint.iacr.org/2015/546.pdf">paper</a></td>
     <td><a href="https://github.com/silence-laboratories/sl-crypto/blob/main/crates/sl-oblivious/src/soft_spoken/soft_spoken_ot.rs">code</a></td>
     <td>Yes</td>
-  
+
 </tr>
   <tr>
     <td>Extended OT</td>
     <td><a href="https://eprint.iacr.org/2022/192.pdf">paper</a></td>
     <td><a href="https://github.com/silence-laboratories/sl-crypto/tree/main/crates/sl-oblivious/src/soft_spoken">code</a></td>
-    <td>Yes</td> 
+    <td>Yes</td>
 
 </tr>
   <tr>
@@ -239,7 +239,7 @@ cargo run --example refresh
   <tr>
     <td>Sender authenticity: EdDSA+Curve25519</td>
     <td><a href="https://github.com/silence-laboratories/dkls23/blob/core-after-audit/src/proto/signed.rs">code</a></td>
-    <td>Yes</td> 
+    <td>Yes</td>
 
 </tr>
 
@@ -262,18 +262,24 @@ The report is available here:
 
 ### Setup Messages
 
-The `run()` functions are now generic over the setup message type.
-All setup message types must implement the trait
-`ProtocolParticipant`, which contains associated types that define how
-to sign and verify broadcast messages.
+The `run()` functions are now generic over the setup message type. All
+setup message types must implement the trait `ProtocolParticipant`,
+which contains associated types that define how to sign and verify
+broadcast messages.
+
+`ProtocolParticipant::MessageVerifier` is also used as a unique party
+identifier. We use the identifier of the sender and receiver, if any,
+to create a unique ID for each message. It is impossible to "parse" an
+ID of the messages, but each party is able to calculate the ID of all
+messages in a protocol.
 
 ### Message Serialization
 
 We implemented what we call zero-copy message serialization. We
 redefined all messages sent between parties and their components to be
-arrays of bytes. This transformation allows us to safely cast a byte
-slice `&[u8]` into a reference to some message structure if the sizes
-are equal.
+arrays of bytes or structures of arrays of bytes. This transformation
+allows us to safely cast a slice of bytes into a reference to some
+message structure if the sizes are equal.
 
 This allows us to implement in-place message construction. We allocate
 a memory buffer of an appropriate size, take a mutable reference to
@@ -290,8 +296,26 @@ memory buffer for the key share at the beginning of the key generation
 execution and fill it piece by piece. This allows us to avoid extra
 memory copies.
 
-Key share for a 3-party case is about 130kb; messages are: 16kb, 37kb,
-and 49kb.
+### Abstract networking layer
+
+The `run()` function is also generic over the so-called `relay`. The
+relay allows a party to send and receive messages. A message does not
+contain explicit receiver-id or sender-id fields. A party does not
+send a message to one or more receivers. We say that the party
+publishes a message. Also, the party asks for a set of messages
+"published" by other parties.
+
+This "pull" pattern works better when some parties can't directly
+communicate with each other, and an additional intermediate service is
+required to facilitate message exchange.
+
+If you have a two-party protocol, and the parties are connected by a two-way
+communication channel, then implementation of `Relay` could simply
+drop ask messages.
+
+There is a function `message_receivers()` that allows you to build a message
+map.  This map will allow you to implement traditional message routing
+with sender-id and receiver-id fields.
 
 ## Contributing
 
@@ -300,7 +324,7 @@ Please refer to [CONTRIBUTING](CONTRIBUTING.md).
 ## Reach out to us
 Don't hesitate to contact us if you need any assistance.
 
-info@silencelaboratories.com  
+info@silencelaboratories.com
 security@silencelaboratories.com
 
 **Happy signing!**
