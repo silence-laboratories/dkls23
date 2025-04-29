@@ -67,16 +67,18 @@ src/
 
 ## Installing, Testing, Benchmarks
 ### Building
-`cargo build
-`
+```bash
+cargo build
+```
 ### Running Tests
-`cargo test
-`
+```bash
+cargo test
+```
 
  ### Documentation
  Rustdoc reference is published here:
 
-https://dkls23.silencelaboratories.com/docs/
+https://dkls23.silencelaboratories.com/docs/dkls23/
 
 ### Benchmarks
 Up-to-date benchmarks can be found here:
@@ -84,22 +86,23 @@ Up-to-date benchmarks can be found here:
 https://dkls23.silencelaboratories.com/
 
 #### Criterion
-`cd crates/dkls-metrics/benches`
-
-`cargo bench`
+```bash
+cd crates/dkls-metrics/benches
+cargo bench
+```
 #### Detailed Metrics (total message sizes sent and received)
-`cargo run -p dkls-metrics -r -- dkg --n 3 --t 2 --dsg
-`
+```bash
+cargo run -p dkls-metrics -r -- dkg --n 3 --t 2 --dsg
+```
 ### Examples
 Under <a href="./examples/">`/examples/`</a> directory there are examples on how to perform keygen, sign and refresh.
 
 Running the examples:
-
-- `cargo run --example keygen`
-- `cargo run --example sign`
-- `cargo run --example refresh`
-
-
+```bash
+cargo run --example keygen
+cargo run --example sign
+cargo run --example refresh
+```
 
 ##  Crates structure
 
@@ -295,7 +298,7 @@ and 49kb.
 Please refer to [CONTRIBUTING](CONTRIBUTING.md).
 
 ## Reach out to us
-Don`t hesitate to contact us if you need any assistance.
+Don't hesitate to contact us if you need any assistance.
 
 info@silencelaboratories.com  
 security@silencelaboratories.com
