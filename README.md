@@ -2,8 +2,9 @@
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 # Table of Contents
 
-- [DKLs23](#dkls23)
+- [Introduction](#introduction)
 - [Features](#features)
+- [Structure](#structure)
 - [Installing, Testing, Benchmarks](#installing-testing-benchmarks)
   - [Building](#building)
   - [Running Tests](#running-tests)
@@ -16,11 +17,11 @@
   - [Protocols](#protocols)
   - [Primitives](#primitives)
   - [E2E Security](#e2e-security)
-- [Contributing](#contributing)
 - [Security](#security)
 - [Security Audit](#security-audit)
   - [Summary of Changes After the Security Audit](#summary-of-changes-after-the-security-audit)
   - [Message Serialization](#message-serialization)
+- [Contributing](#contributing)
 - [Reach out to us](#reach-out-to-us)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
