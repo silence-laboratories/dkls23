@@ -29,7 +29,7 @@
 ## Introduction
 DKLs23 is a high-performance threshold ECDSA signing protocol with dynamic quorum management. 
 
-This a production-ready, audited implementation that powers the [Silent Shard SDK](https://silencelaboratories.com/silent-shard) for decentralized key custody and has undergone a comprehensive security audit by [Trail of Bits](./docs/ToB-SilenceLaboratories_2024.04.10.pdf).
+This is a production-ready, audited implementation that powers the [Silent Shard SDK](https://silencelaboratories.com/silent-shard) and has undergone a comprehensive [security audit](./docs/ToB-SilenceLaboratories_2024.04.10.pdf) by Trail of Bits.
 
 ## Features
 
