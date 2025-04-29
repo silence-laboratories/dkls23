@@ -128,21 +128,21 @@ Running the examples:
   </tr>
   <tr>
     <td>Refresh</td>
-    <td>reference</td>
+    <td>-</td>
     <td><a href="./src/keygen/key_refresh.rs">code</a></td>
     <td>Yes</td>
 
   </tr>
   <tr>
     <td>Import</td>
-    <td>reference</td>
+    <td>-</td>
     <td><a href="./src/key_import.rs">code</a></td>
     <td>No</td>
 
   </tr>
   <tr>
     <td>Export</td>
-    <td>reference</td>
+    <td>-</td>
     <td><a href="./src/key_export.rs">code</a></td>
     <td>No</td>
 
@@ -198,13 +198,13 @@ Running the examples:
 </tr>
   <tr>
     <td>Polynomial Arithmetics</td>
-    <td>reference</td>
+    <td>-</td>
     <td><a href="https://github.com/silence-laboratories/sl-crypto/blob/main/crates/sl-mpc-mate/src/math.rs">code</a></td>
     <td>Yes</td>
 </tr>
  <tr>
     <td>Matrix Arithmetics</td>
-    <td>reference</td>
+    <td>-</td>
     <td><a href="https://github.com/silence-laboratories/sl-crypto/blob/main/crates/sl-mpc-mate/src/matrix.rs
 ">code</a></td>
     <td>Yes</td>
