@@ -3,32 +3,32 @@
 # Table of Contents
 
 - [DKLs23](#dkls23)
-- [Functionality](#functionality)
+- [Features](#features)
 - [Installing, Testing, Benchmarks](#installing-testing-benchmarks)
-  - [Build](#build)
-  - [Tests](#tests)
-  - [Examples](#examples)
+  - [Building](#building)
+  - [Running Tests](#running-tests)
+  - [Documentation](#documentation)
   - [Benchmarks](#benchmarks)
     - [Criterion](#criterion)
-    - [Detailed Metrics](#detailed-metrics)
-  - [Rustdocs](#rustdocs)
+    - [Detailed Metrics (total message sizes sent and received)](#detailed-metrics-total-message-sizes-sent-and-received)
+  - [Examples](#examples)
 - [Crates structure](#crates-structure)
   - [Protocols](#protocols)
   - [Primitives](#primitives)
   - [E2E Security](#e2e-security)
-- [Summary of Changes After Security Audit](#summary-of-changes-after-security-audit)
-  - [Setup Messages](#setup-messages)
-  - [Message Serialization](#message-serialization)
 - [Contributing](#contributing)
 - [Security](#security)
-- [Audit](#audit)
+- [Security Audit](#security-audit)
+  - [Summary of Changes After the Security Audit](#summary-of-changes-after-the-security-audit)
+  - [Message Serialization](#message-serialization)
+- [Reach out to us](#reach-out-to-us)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
 ## DKLs23
-Threshold ECDSA signing implemented based on the DKLs23 protocol. This implementation is used  by Silent Shard SDK.
+DKLs23 is a high-performance threshold ECDSA signing protocol with dynamic quorum management. This a production-ready, audited implementation that powers the Silent Shard SDK for decentralized key custody.
 
-## Functionality
+## Features
 
 - Distributed Key Generation (DKG)
 - Distributed Signature Generation (DSG)
@@ -38,14 +38,23 @@ Threshold ECDSA signing implemented based on the DKLs23 protocol. This implement
 - Quorum Change: change dynamically the set of participants adding or removing
 - Migration: Migrate from compatible curve protocols like: GG** or CMP to DKLs23
 
-## Installing, Testing, Benchmarks and Examples
-### Build
+## Installing, Testing, Benchmarks
+### Building
 `cargo build
 `
-### Tests
+### Running Tests
 `cargo test
 `
+
+ ### Documentation
+
+ Rustdoc reference is published here:
+
+ https://silence-laboratories.github.io/dkls23/rustdocs/dkls23/
+
 ### Benchmarks
+Up-to-date benchmarks can be found here:
+
 https://silence-laboratories.github.io/dkls23/
 #### Criterion
 `cd crates/dkls-metrics/benches`
@@ -55,14 +64,15 @@ https://silence-laboratories.github.io/dkls23/
 `cargo run -p dkls-metrics -r -- dkg --n 3 --t 2 --dsg
 `
 ### Examples
-Under `/examples` directory there are example codes to keygen,sign and refresh:
+Under <a href="./examples/">`/examples/`</a> directory there are examples on how to perform keygen, sign and refresh.
+
+Running the examples:
 
 - `cargo run --example keygen`
 - `cargo run --example sign`
 - `cargo run --example refresh`
 
- ### Rustdocs
- https://silence-laboratories.github.io/dkls23/rustdocs/dkls23/
+
 
 ##  Crates structure
 
@@ -79,49 +89,49 @@ Under `/examples` directory there are example codes to keygen,sign and refresh:
   <tr>
     <td>DKG</td>
     <td><a href="https://eprint.iacr.org/2022/374.pdf">paper</a></td>
-    <td><a href="src/keygen/dkg.rs">code</a></td>
+    <td><a href="./src/keygen/dkg.rs">code</a></td>
     <td>Yes</td>
 
   </tr>
   <tr>
     <td>DSG</td>
     <td><a href="https://eprint.iacr.org/2023/765.pdf">paper</a></td>
-    <td><a href="src/sign/dsg.rs">code</a></td>
+    <td><a href="./src/sign/dsg.rs">code</a></td>
     <td>Yes</td>
 
   </tr>
   <tr>
     <td>Refresh</td>
     <td>reference</td>
-    <td><a href="src/keygen/key_refresh.rs">code</a></td>
+    <td><a href="./src/keygen/key_refresh.rs">code</a></td>
     <td>Yes</td>
 
   </tr>
   <tr>
     <td>Import</td>
     <td>reference</td>
-    <td><a href="/src/key_import.rs">code</a></td>
+    <td><a href="./src/key_import.rs">code</a></td>
     <td>No</td>
 
   </tr>
   <tr>
     <td>Export</td>
     <td>reference</td>
-    <td><a href="/src/key_export.rs">code</a></td>
+    <td><a href="./src/key_export.rs">code</a></td>
     <td>No</td>
 
   </tr>
 <tr>
     <td>Quorum Change</td>
     <td><a href="https://github.com/silence-laboratories/dkls23/blob/core-after-audit/docs/dwtss.pdf">reference</a></td>
-    <td><a href="/src/keygen/quorum_change.rs">code</a></td>
+    <td><a href="./src/keygen/quorum_change.rs">code</a></td>
     <td>No</td>
 
   </tr>
 <tr>
     <td>Migration</td>
     <td>reference</td>
-    <td><a href="/src/keygen/migration.rs">code</a></td>
+    <td><a href="./src/keygen/migration.rs">code</a></td>
     <td>No</td>
 
   </tr>
@@ -206,9 +216,25 @@ Under `/examples` directory there are example codes to keygen,sign and refresh:
 </table>
 
 
-## Summary of Changes After Security Audit
 
-### Setup Messages
+## Contributing
+
+Please refer to [CONTRIBUTING](CONTRIBUTING.md).
+
+## Security
+
+If you discover a vulnerability, please follow the instructions in [SECURITY](SECURITY.md).
+
+## Security Audit
+
+Trail of Bits has performed a security audit in February, 2024 on the following commits:
+- `1510c2fafe3c` from the [dkls23](https://github.com/silence-laboratories/dkls23/commit/1510c2fafe3cd6866581ce3e2c43c565561b929b) repository.
+- `a6b014722a29` from the [sl-crypto](https://github.com/silence-laboratories/sl-crypto/commit/a6b014722a29027d813bcb58720412da68f63d07) repository.
+
+The report is available here:
+- [Security Assessment Report: Silent Shard - Trail of Bits, Feb 2024](docs/ToB-SilenceLaboratories_2024.04.10.pdf).
+
+### Summary of Changes After the Security Audit
 
 The `run()` functions are now generic over the setup message type.
 All setup message types must implement the trait
@@ -241,19 +267,10 @@ memory copies.
 Key share for a 3-party case is about 130kb; messages are: 16kb, 37kb,
 and 49kb.
 
-## Contributing
+## Reach out to us
+Don`t hesitate to contact us if you need any assistance.
 
-Please refer to [CONTRIBUTING.md](CONTRIBUTING.md).
+info@silencelaboratories.com  
+security@silencelaboratories.com
 
-## Security
-
-If you discover a vulnerability, please follow the instructions in [SECURITY.md](SECURITY.md).
-
-## Security Audit
-
-Trail of Bits has performed a security audit in Feb 2024 on the following commits:
-- `1510c2fafe3c` from the [dkls23](https://github.com/silence-laboratories/dkls23/commit/1510c2fafe3cd6866581ce3e2c43c565561b929b) repository.
-- `a6b014722a29` from the [sl-crypto](https://github.com/silence-laboratories/sl-crypto/commit/a6b014722a29027d813bcb58720412da68f63d07) repository.
-
-The report is available here:
-- [Security Assessment Report: Silent Shard - Trail of Bits, Feb 2024](docs/ToB-SilenceLaboratories_2024.04.10.pdf).
+**Happy signing!**
