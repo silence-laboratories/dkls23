@@ -114,7 +114,7 @@ jobs:
           mv gh-pages/* docs
           mv index.html docs
           cp -rf target/doc/* docs/dkls23/
-          cp -rf target/doc/dkls23 docs/docs/
+          cp -rf target/doc/* docs/docs/
           
       - name: Deploy to GitHub Pages
         uses: JamesIves/github-pages-deploy-action@v4
