@@ -254,16 +254,16 @@ Trail of Bits has performed a security audit in February, 2024 on the following 
 The report is available here:
 - [Security Assessment Report: Silent Shard - Trail of Bits, Feb 2024](./docs/ToB-SilenceLaboratories_2024.04.10.pdf).
 
-### Summary of Changes After the Security Audit
+## Summary of Changes After the Security Audit
 
-#### Setup Messages
+### Setup Messages
 
 The `run()` functions are now generic over the setup message type.
 All setup message types must implement the trait
 `ProtocolParticipant`, which contains associated types that define how
 to sign and verify broadcast messages.
 
-#### Message Serialization
+### Message Serialization
 
 We implemented what we call zero-copy message serialization. We
 redefined all messages sent between parties and their components to be
