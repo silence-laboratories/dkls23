@@ -256,12 +256,14 @@ The report is available here:
 
 ### Summary of Changes After the Security Audit
 
+#### Setup Messages
+
 The `run()` functions are now generic over the setup message type.
 All setup message types must implement the trait
 `ProtocolParticipant`, which contains associated types that define how
 to sign and verify broadcast messages.
 
-### Message Serialization
+#### Message Serialization
 
 We implemented what we call zero-copy message serialization. We
 redefined all messages sent between parties and their components to be
