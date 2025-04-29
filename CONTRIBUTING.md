@@ -1,13 +1,12 @@
 # Contributing Guidelines
 
-We appreciate you are willing to spend your valuable time at this repo
+Thank you for considering contributing to this implementation!
 
 ## How to Contribute
 
-If you are willing to mention a new feature or suspected bug please open an Issue
-
+- To suggest a new feature or report a non-security bug, please open an Issue.
+- We are currently not accepting Pull Requests.
 
 ## Security Contributions
 
-Please see [SECURITY](SECURITY.md).
-
+For security-related bugs please see [SECURITY.md](SECURITY.md).

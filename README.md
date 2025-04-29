@@ -2,33 +2,37 @@
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 # Table of Contents
 
-- [DKLs23](#dkls23)
-- [Functionality](#functionality)
+- [Introduction](#introduction)
+- [Features](#features)
+- [Structure](#structure)
 - [Installing, Testing, Benchmarks](#installing-testing-benchmarks)
-  - [Build](#build)
-  - [Tests](#tests)
-  - [Examples](#examples)
+  - [Building](#building)
+  - [Running Tests](#running-tests)
+  - [Documentation](#documentation)
   - [Benchmarks](#benchmarks)
     - [Criterion](#criterion)
-    - [Detailed Metrics](#detailed-metrics)
-  - [Rustdocs](#rustdocs)
+    - [Detailed Metrics (total message sizes sent and received)](#detailed-metrics-total-message-sizes-sent-and-received)
+  - [Examples](#examples)
 - [Crates structure](#crates-structure)
   - [Protocols](#protocols)
   - [Primitives](#primitives)
   - [E2E Security](#e2e-security)
-- [Summary of Changes After Security Audit](#summary-of-changes-after-security-audit)
+- [Security](#security)
+- [Security Audit](#security-audit)
+- [Summary of Changes After the Security Audit](#summary-of-changes-after-the-security-audit)
   - [Setup Messages](#setup-messages)
   - [Message Serialization](#message-serialization)
 - [Contributing](#contributing)
-- [Security](#security)
-- [Audit](#audit)
+- [Reach out to us](#reach-out-to-us)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
-## DKLs23
-The repository implements threshold ECDSA signatures implementing DKLs23 protocol.
+## Introduction
+DKLs23 is a high-performance threshold ECDSA signing protocol with dynamic quorum management. 
 
-## Functionality
+This is a production-ready, audited implementation that powers the [Silent Shard SDK](https://silencelaboratories.com/silent-shard) and has undergone a comprehensive [security audit](./docs/ToB-SilenceLaboratories_2024.04.10.pdf) by Trail of Bits.
+
+## Features
 
 - Distributed Key Generation (DKG)
 - Distributed Signature Generation (DSG)
@@ -38,31 +42,67 @@ The repository implements threshold ECDSA signatures implementing DKLs23 protoco
 - Quorum Change: change dynamically the set of participants adding or removing
 - Migration: Migrate from compatible curve protocols like: GG** or CMP to DKLs23
 
-## Installing, Testing, Benchmarks and Examples
-### Build
-`cargo build
-`
-### Tests
-`cargo test
-`
+## Structure
+The repository is structured as follows:
+
+```
+crates/                   
+├── msg-relay/           # Message relay crate
+└── dkls-metrics/        # Metrics crate
+docs/                    # Audit reports and whitepapers
+examples/                # Examples (keygen, sign, refresh)
+scripts/                 # Utility scripts
+src/                     
+├── keygen/              # Key generation module
+├── proto/               # Protocol definitions
+├── setup/               # Setup module
+├── sign/                # Signing module
+├── key_export.rs        # Key export functionality
+├── key_import.rs        # Key import functionality
+├── lib.rs               # Library entry point
+├── pairs.rs             # Key pairs functionality
+├── proto.rs             # Protocol implementation
+└── setup.rs             # Setup implementation
+```
+
+## Installing, Testing, Benchmarks
+### Building
+```bash
+cargo build
+```
+### Running Tests
+```bash
+cargo test
+```
+
+ ### Documentation
+ Rustdoc reference is published here:
+
+https://dkls23.silencelaboratories.com/docs/dkls23/
+
 ### Benchmarks
-https://silence-laboratories.github.io/dkls23/
+Up-to-date benchmarks can be found here:
+
+https://dkls23.silencelaboratories.com/
+
 #### Criterion
-`cd crates/dkls-metrics/benches`
-
-`cargo bench`
+```bash
+cd crates/dkls-metrics/benches
+cargo bench
+```
 #### Detailed Metrics (total message sizes sent and received)
-`cargo run -p dkls-metrics -r -- dkg --n 3 --t 2 --dsg
-`
+```bash
+cargo run -p dkls-metrics -r -- dkg --n 3 --t 2 --dsg
+```
 ### Examples
-Under `/examples` directory there are example codes to keygen,sign and refresh:
+Under <a href="./examples/">`/examples/`</a> directory there are examples on how to perform keygen, sign and refresh.
 
-- `cargo run --example keygen`
-- `cargo run --example sign`
-- `cargo run --example refresh`
-
- ### Rustdocs
- https://silence-laboratories.github.io/dkls23/rustdocs/dkls23/
+Running the examples:
+```bash
+cargo run --example keygen
+cargo run --example sign
+cargo run --example refresh
+```
 
 ##  Crates structure
 
@@ -79,49 +119,49 @@ Under `/examples` directory there are example codes to keygen,sign and refresh:
   <tr>
     <td>DKG</td>
     <td><a href="https://eprint.iacr.org/2022/374.pdf">paper</a></td>
-    <td><a href="src/keygen/dkg.rs">code</a></td>
+    <td><a href="./src/keygen/dkg.rs">code</a></td>
     <td>Yes</td>
 
   </tr>
   <tr>
     <td>DSG</td>
     <td><a href="https://eprint.iacr.org/2023/765.pdf">paper</a></td>
-    <td><a href="src/sign/dsg.rs">code</a></td>
+    <td><a href="./src/sign/dsg.rs">code</a></td>
     <td>Yes</td>
 
   </tr>
   <tr>
     <td>Refresh</td>
-    <td>reference</td>
-    <td><a href="src/keygen/key_refresh.rs">code</a></td>
+    <td>-</td>
+    <td><a href="./src/keygen/key_refresh.rs">code</a></td>
     <td>Yes</td>
 
   </tr>
   <tr>
     <td>Import</td>
-    <td><a href="sss"></a>reference</td>
-    <td><a href="/src/key_import.rs">code</a></td>
+    <td>-</td>
+    <td><a href="./src/key_import.rs">code</a></td>
     <td>No</td>
 
   </tr>
   <tr>
     <td>Export</td>
-    <td>reference</td>
-    <td><a href="/src/key_export.rs">code</a></td>
+    <td>-</td>
+    <td><a href="./src/key_export.rs">code</a></td>
     <td>No</td>
 
   </tr>
 <tr>
     <td>Quorum Change</td>
     <td><a href="https://github.com/silence-laboratories/dkls23/blob/core-after-audit/docs/dwtss.pdf">reference</a></td>
-    <td><a href="/src/keygen/quorum_change.rs">code</a></td>
+    <td><a href="./src/keygen/quorum_change.rs">code</a></td>
     <td>No</td>
 
   </tr>
 <tr>
     <td>Migration</td>
     <td>reference</td>
-    <td><a href="/src/keygen/migration.rs">code</a></td>
+    <td><a href="./src/keygen/migration.rs">code</a></td>
     <td>No</td>
 
   </tr>
@@ -162,13 +202,13 @@ Under `/examples` directory there are example codes to keygen,sign and refresh:
 </tr>
   <tr>
     <td>Polynomial Arithmetics</td>
-    <td>reference</td>
+    <td>-</td>
     <td><a href="https://github.com/silence-laboratories/sl-crypto/blob/main/crates/sl-mpc-mate/src/math.rs">code</a></td>
     <td>Yes</td>
 </tr>
  <tr>
     <td>Matrix Arithmetics</td>
-    <td>reference</td>
+    <td>-</td>
     <td><a href="https://github.com/silence-laboratories/sl-crypto/blob/main/crates/sl-mpc-mate/src/matrix.rs
 ">code</a></td>
     <td>Yes</td>
@@ -205,8 +245,20 @@ Under `/examples` directory there are example codes to keygen,sign and refresh:
 
 </table>
 
+## Security
 
-## Summary of Changes After Security Audit
+If you discover a vulnerability, please follow the instructions in [SECURITY](SECURITY.md).
+
+## Security Audit
+
+Trail of Bits has performed a security audit in February, 2024 on the following commits:
+- `1510c2fafe3c` from the [dkls23](https://github.com/silence-laboratories/dkls23/commit/1510c2fafe3cd6866581ce3e2c43c565561b929b) repository.
+- `a6b014722a29` from the [sl-crypto](https://github.com/silence-laboratories/sl-crypto/commit/a6b014722a29027d813bcb58720412da68f63d07) repository.
+
+The report is available here:
+- [Security Assessment Report: Silent Shard - Trail of Bits, Feb 2024](./docs/ToB-SilenceLaboratories_2024.04.10.pdf).
+
+## Summary of Changes After the Security Audit
 
 ### Setup Messages
 
@@ -243,12 +295,12 @@ and 49kb.
 
 ## Contributing
 
-Please see [Contributing](CONTRIBUTING.md) section
+Please refer to [CONTRIBUTING](CONTRIBUTING.md).
 
-## Security
+## Reach out to us
+Don't hesitate to contact us if you need any assistance.
 
-Please see [Security](SECURITY.md) section
+info@silencelaboratories.com  
+security@silencelaboratories.com
 
-## Audit
-
-Trail of bits has [audited](docs/ToB-SilenceLaboratories_2024.04.10.pdf) commit hash `1510c2fafe3cd6866581ce3e2c43c565561b929b` from [dkls23](https://github.com/silence-laboratories/dkls23/commit/1510c2fafe3cd6866581ce3e2c43c565561b929b) and commit hash `a6b014722a29027d813bcb58720412da68f63d07` from [sl-crypto](https://github.com/silence-laboratories/sl-crypto/commit/a6b014722a29027d813bcb58720412da68f63d07) repo.
+**Happy signing!**
