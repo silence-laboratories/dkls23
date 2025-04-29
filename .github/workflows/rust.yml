@@ -105,14 +105,14 @@ jobs:
       - name: Write the HTML page
         run: |
           python -m pip install --upgrade pip
-          python scripts/process_benchmarks_to_html.py gh-pages/docs/data.js
+          python scripts/process_benchmarks_to_html.py gh-pages/commit-benchmark/data.js
           cargo clean
           cargo doc --no-deps
           mkdir -p docs/rustdocs
           cp scripts/sil.jpg docs
           mv gh-pages/* docs
           mv index.html docs
-          cp -rf target/doc/* docs/rustdocs
+          cp -rf target/doc/* docs/
       - name: Deploy to GitHub Pages
         uses: JamesIves/github-pages-deploy-action@v4
         with:
