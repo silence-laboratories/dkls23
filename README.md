@@ -48,8 +48,8 @@ The repository is structured as follows:
 crates/                   
 ├── msg-relay/           # Message relay crate
 └── dkls-metrics/        # Metrics crate
-docs/                    # Documentation
-examples/                # Example code
+docs/                    # Audit reports and whitepapers
+examples/                # Examples (keygen, sign, refresh)
 scripts/                 # Utility scripts
 src/                     
 ├── keygen/              # Key generation module
@@ -73,15 +73,15 @@ src/
 `
 
  ### Documentation
-
  Rustdoc reference is published here:
 
- https://silence-laboratories.github.io/dkls23/rustdocs/dkls23/
+https://dkls23.silencelaboratories.com/docs/
 
 ### Benchmarks
 Up-to-date benchmarks can be found here:
 
-https://silence-laboratories.github.io/dkls23/
+https://dkls23.silencelaboratories.com/
+
 #### Criterion
 `cd crates/dkls-metrics/benches`
 
