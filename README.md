@@ -25,8 +25,10 @@
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
-## DKLs23
-DKLs23 is a high-performance threshold ECDSA signing protocol with dynamic quorum management. This a production-ready, audited implementation that powers the Silent Shard SDK for decentralized key custody.
+## Introduction
+DKLs23 is a high-performance threshold ECDSA signing protocol with dynamic quorum management. 
+
+This a production-ready, audited implementation that powers the [Silent Shard SDK](https://silencelaboratories.com/silent-shard) for decentralized key custody and has undergone a comprehensive security audit by [Trail of Bits](./docs/ToB-SilenceLaboratories_2024.04.10.pdf).
 
 ## Features
 
@@ -37,6 +39,29 @@ DKLs23 is a high-performance threshold ECDSA signing protocol with dynamic quoru
 - Export a threshold key to a singleton one
 - Quorum Change: change dynamically the set of participants adding or removing
 - Migration: Migrate from compatible curve protocols like: GG** or CMP to DKLs23
+
+## Structure
+The repository is structured as follows:
+
+```
+crates/                   
+├── msg-relay/           # Message relay crate
+└── dkls-metrics/        # Metrics crate
+docs/                    # Documentation
+examples/                # Example code
+scripts/                 # Utility scripts
+src/                     
+├── keygen/              # Key generation module
+├── proto/               # Protocol definitions
+├── setup/               # Setup module
+├── sign/                # Signing module
+├── key_export.rs        # Key export functionality
+├── key_import.rs        # Key import functionality
+├── lib.rs               # Library entry point
+├── pairs.rs             # Key pairs functionality
+├── proto.rs             # Protocol implementation
+└── setup.rs             # Setup implementation
+```
 
 ## Installing, Testing, Benchmarks
 ### Building
@@ -215,12 +240,6 @@ Running the examples:
 
 </table>
 
-
-
-## Contributing
-
-Please refer to [CONTRIBUTING](CONTRIBUTING.md).
-
 ## Security
 
 If you discover a vulnerability, please follow the instructions in [SECURITY](SECURITY.md).
@@ -232,7 +251,7 @@ Trail of Bits has performed a security audit in February, 2024 on the following 
 - `a6b014722a29` from the [sl-crypto](https://github.com/silence-laboratories/sl-crypto/commit/a6b014722a29027d813bcb58720412da68f63d07) repository.
 
 The report is available here:
-- [Security Assessment Report: Silent Shard - Trail of Bits, Feb 2024](docs/ToB-SilenceLaboratories_2024.04.10.pdf).
+- [Security Assessment Report: Silent Shard - Trail of Bits, Feb 2024](./docs/ToB-SilenceLaboratories_2024.04.10.pdf).
 
 ### Summary of Changes After the Security Audit
 
@@ -266,6 +285,10 @@ memory copies.
 
 Key share for a 3-party case is about 130kb; messages are: 16kb, 37kb,
 and 49kb.
+
+## Contributing
+
+Please refer to [CONTRIBUTING](CONTRIBUTING.md).
 
 ## Reach out to us
 Don`t hesitate to contact us if you need any assistance.
