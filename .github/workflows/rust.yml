@@ -109,10 +109,13 @@ jobs:
           cargo clean
           cargo doc --no-deps
           mkdir -p docs/rustdocs
+          mkdir -p docs/docs
           cp scripts/sil.jpg docs
           mv gh-pages/* docs
           mv index.html docs
-          cp -rf target/doc/* docs/rustdocs
+          cp -rf target/doc/* docs/dkls23/
+          cp -rf target/doc/* docs/docs/
+          
       - name: Deploy to GitHub Pages
         uses: JamesIves/github-pages-deploy-action@v4
         with:
