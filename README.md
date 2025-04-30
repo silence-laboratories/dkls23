@@ -213,6 +213,13 @@ cargo run --example refresh
 ">code</a></td>
     <td>Yes</td>
 </tr>
+<tr>
+    <td>Verifiable Encryption</td>
+    <td><a href="https://eprint.iacr.org/2019/706.pdf](https://eprint.iacr.org/1999/008">paper</a></td>
+    <td><a href="https://github.com/silence-laboratories/sl-crypto/tree/main/crates/sl-verifiable-enc">code</a></td>
+    <td>WIP</td>
+
+  </tr>
 </table>
 
 ### E2E Security
