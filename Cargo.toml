@@ -1,8 +1,9 @@
 [package]
-name = "dkls23"
-version = "0.1.0"
+name = "sl-dkls23"
+version = "1.0.0-beta"
 edition = "2021"
-publish = false
+publish = true
+description = "DKLs23 implementation for threshold ECDSA signatures"
 license-file ="LICENSE"
 
 
@@ -73,8 +74,8 @@ futures-util = { version = "0.3.30", default-features = false }
 anyhow = "1"
 derivation-path = "0.2.0"
 zeroize = "1.6.1"
-sl-mpc-mate = { git = "https://github.com/silence-laboratories/sl-crypto.git", rev = "ff63353" }
-sl-oblivious = { git = "https://github.com/silence-laboratories/sl-crypto.git", rev = "ff63353" }
+sl-mpc-mate = "1.0.0-beta"
+sl-oblivious = "1.0.0-beta"
 
 x25519-dalek = { version = "2.0.0" }
 signature = { version = "2.2.0" }

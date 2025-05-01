@@ -8,8 +8,8 @@ use std::{
 
 use tokio::task::JoinSet;
 
-use dkls23::{keygen::Keyshare, sign};
 use msg_relay::MsgRelay;
+use sl_dkls23::{keygen::Keyshare, sign};
 use sl_mpc_mate::coord::stats::{RelayStats, Stats};
 
 use crate::{
@@ -31,7 +31,7 @@ pub async fn run_one(
     let stats = Stats::alloc();
     let relay = RelayStats::new(relay.connect(), stats.clone());
 
-    dkls23::sign::run(setup, seed, relay).await.unwrap();
+    sl_dkls23::sign::run(setup, seed, relay).await.unwrap();
 
     stats
 }

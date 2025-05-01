@@ -3,8 +3,8 @@
 
 use std::sync::Arc;
 
-use dkls23::keygen::key_refresh::KeyshareForRefresh;
-use dkls23::keygen::{
+use sl_dkls23::keygen::key_refresh::KeyshareForRefresh;
+use sl_dkls23::keygen::{
     key_refresh::run as run_key_refresh, key_refresh::setup_key_refresh,
     Keyshare,
 };

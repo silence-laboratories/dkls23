@@ -15,7 +15,7 @@ path = "src/main.rs"
 bench = false
 
 [dependencies]
-dkls23 = { path = "../..", features = [ "multi-thread", "test-support" ] }
+sl-dkls23 = { path = "../..", features = [ "multi-thread", "test-support" ] }
 msg-relay = { path = "../msg-relay" }
 sl-mpc-mate = { workspace = true }
 tokio = { workspace = true, features = [ "rt", "rt-multi-thread" ] }
