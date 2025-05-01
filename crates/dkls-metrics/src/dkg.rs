@@ -12,8 +12,8 @@ use std::{
 use anyhow::anyhow;
 use tokio::task::JoinSet;
 
-use dkls23::keygen::{self, utils::setup_keygen, KeygenError, Keyshare};
 use msg_relay::MsgRelay;
+use sl_dkls23::keygen::{self, utils::setup_keygen, KeygenError, Keyshare};
 use sl_mpc_mate::{
     coord::stats::{RelayStats, Stats},
     message::*,
@@ -169,7 +169,7 @@ impl Trace {
         let stats = Stats::alloc();
         let relay = RelayStats::new(self.relay.connect(), stats.clone());
 
-        let _keyshare = dkls23::keygen::run(setup, seed, relay).await?;
+        let _keyshare = sl_dkls23::keygen::run(setup, seed, relay).await?;
 
         Ok(stats)
     }
