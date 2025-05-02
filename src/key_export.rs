@@ -12,7 +12,7 @@ use sl_mpc_mate::{
     message::{MessageTag, MsgId, MESSAGE_HEADER_SIZE},
 };
 
-/// Tag of an encypted keyshare message
+/// Tag of an enrypted keyshare message
 pub const KEYSHARE_EXPORT_TAG: MessageTag = MessageTag::tag(1);
 
 /// Receiver of an encrypted keyshare.

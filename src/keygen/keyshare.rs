@@ -1,6 +1,16 @@
 // Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
 
+//! This module provides functionality for managing key shares in a distributed key generation protocol.
+//! A key share represents a party's portion of a distributed secret key, along with associated metadata
+//! and cryptographic material needed for protocol operations.
+//!
+//! The `Keyshare` struct is the main type in this module, providing methods for:
+//! - Creating and validating key shares
+//! - Accessing key share components (public keys, ranks, etc.)
+//! - Deriving child keys and extended public keys
+//! - Managing oblivious transfer seeds for protocol operations
+
 use core::{mem, ops::Deref};
 
 use derivation_path::DerivationPath;
@@ -20,14 +30,27 @@ use self::details::KeyshareInfo;
 
 mod details;
 
-/// Key share of a party.
+/// A key share representing a party's portion of a distributed secret key.
+///
+/// This struct encapsulates all the information needed for a party to participate in
+/// distributed key generation and signing protocols. It includes:
+/// - The party's secret share
+/// - Public key components
+/// - Party ranks and identifiers
+/// - Oblivious transfer seeds
+/// - Additional protocol-specific data
+///
+/// The key share is stored in a compact binary format and provides methods for
+/// accessing its components and deriving child keys.
 #[derive(Clone, ZeroizeOnDrop)]
 pub struct Keyshare {
     buffer: Vec<u8>,
 }
 
 impl Keyshare {
-    /// Identified of key share data
+    /// Magic number identifying valid key share data.
+    ///
+    /// This constant is used to validate that a byte buffer contains a valid key share.
     pub const MAGIC: [u8; 4] = [0, 0, 0, 1];
 }
 
@@ -47,7 +70,16 @@ impl Keyshare {
             + extra
     }
 
-    /// Allocate an instance of a key share with given parameters.
+    /// Creates a new key share with the specified parameters.
+    ///
+    /// # Arguments
+    /// * `n` - Total number of parties in the protocol
+    /// * `t` - Threshold value for the protocol
+    /// * `id` - ID of this party
+    /// * `extra` - Additional data to be embedded in the key share
+    ///
+    /// # Panics
+    /// Panics if `n` is less than 2.
     pub fn new(n: u8, t: u8, id: u8, extra: &[u8]) -> Keyshare {
         let size = Self::calculate_size(n, extra.len());
         let mut buffer = vec![0u8; size];
@@ -108,7 +140,13 @@ impl Keyshare {
         true
     }
 
-    /// Create a key share from slice of bytes.
+    /// Creates a key share from a byte slice.
+    ///
+    /// # Arguments
+    /// * `buffer` - Byte slice containing the key share data
+    ///
+    /// # Returns
+    /// `Some(Keyshare)` if the buffer contains valid key share data, `None` otherwise.
     pub fn from_bytes(buffer: &[u8]) -> Option<Self> {
         if Self::is_valid_buffer(buffer) {
             Some(Self {
@@ -119,8 +157,13 @@ impl Keyshare {
         }
     }
 
-    /// Create a key share from a given vector. Returns a passed
-    /// vector in case of an error.
+    /// Creates a key share from a vector of bytes.
+    ///
+    /// # Arguments
+    /// * `buffer` - Vector containing the key share data
+    ///
+    /// # Returns
+    /// `Ok(Keyshare)` if the vector contains valid key share data, `Err(buffer)` otherwise.
     pub fn from_vec(buffer: Vec<u8>) -> Result<Self, Vec<u8>> {
         if Self::is_valid_buffer(&buffer) {
             Ok(Self { buffer })
@@ -129,24 +172,24 @@ impl Keyshare {
         }
     }
 
-    /// Return underlying byte slice.
+    /// Returns the underlying byte slice of the key share.
     pub fn as_slice(&self) -> &[u8] {
         &self.buffer
     }
 
-    /// Return public key as ProjectiveProint.
+    /// Returns the public key as a `ProjectivePoint`.
     pub fn public_key(&self) -> ProjectivePoint {
         decode_point(&self.info().public_key).unwrap()
     }
 
-    /// Return vector of ranks
+    /// Returns a vector of ranks for all parties.
     pub fn rank_list(&self) -> Vec<u8> {
         (0..self.info().total_parties)
             .map(|p| self.each(p).rank)
             .collect()
     }
 
-    /// x_i_list
+    /// Returns a vector of x-coordinates for all parties.
     pub fn x_i_list(&self) -> Vec<NonZeroScalar> {
         (0..self.info().total_parties)
             .map(|p| decode_nonzero(&self.each(p).x_i).unwrap())
@@ -158,7 +201,7 @@ impl Keyshare {
             .unwrap()
     }
 
-    /// Return true if all parties has rank zero.
+    /// Returns true if all parties have rank zero.
     pub fn zero_ranks(&self) -> bool {
         for p in 0..self.info().total_parties {
             if self.each(p).rank != 0 {
@@ -169,19 +212,22 @@ impl Keyshare {
         true
     }
 
-    /// Return rank of a party.
+    /// Returns the rank of a specific party.
+    ///
+    /// # Arguments
+    /// * `party_id` - ID of the party
     pub fn get_rank(&self, party_id: u8) -> u8 {
         self.each(party_id).rank
     }
 
-    /// Return the secret scalar s_i.
+    /// Returns the secret scalar s_i for this party.
     pub fn s_i(&self) -> Scalar {
         decode_scalar(&self.info().s_i).unwrap()
     }
 
-    /// Return user defined data embedded into the key share. The data
-    /// is passed via setup message at time of key generation and are
-    /// immutable.
+    /// Returns the user-defined data embedded in the key share.
+    ///
+    /// This data is passed via the setup message during key generation and is immutable.
     pub fn extra_data(&self) -> &[u8] {
         let n = self.info().total_parties as usize;
         let offset = Self::INFO + Self::OTHER * (n - 1) + Self::EACH * n;
@@ -256,7 +302,10 @@ impl Keyshare {
         &each[party_id as usize]
     }
 
-    /// Get the big S value of another party
+    /// Returns the public key component for a specific party.
+    ///
+    /// # Arguments
+    /// * `party_id` - ID of the party
     pub fn big_s(&self, party_id: u8) -> ProjectivePoint {
         decode_point(&self.each(party_id).big_s).unwrap()
     }
@@ -292,25 +341,30 @@ impl Deref for Keyshare {
 }
 
 impl Keyshare {
-    /// Returns root chain code
+    /// Returns the root chain code.
     pub fn root_chain_code(&self) -> [u8; 32] {
         self.info().root_chain_code
     }
 
-    /// Returns public key as ProjectivePoint
+    /// Returns the root public key.
     pub fn root_public_key(&self) -> ProjectivePoint {
         self.public_key()
     }
 }
 
-// Separate impl for BIP32 related functions
 impl Keyshare {
-    /// Get the fingerprint of the root public key
+    /// Returns the key fingerprint.
     pub fn get_finger_print(&self) -> KeyFingerPrint {
         get_finger_print(&self.root_public_key())
     }
 
-    /// Get the additive offset of a key share for a given derivation path
+    /// Derives a child key with the given chain path and offset.
+    ///
+    /// # Arguments
+    /// * `chain_path` - The derivation path to use
+    ///
+    /// # Returns
+    /// A tuple containing the derived scalar and public key, or an error if derivation fails.
     pub fn derive_with_offset(
         &self,
         chain_path: &DerivationPath,
@@ -330,7 +384,13 @@ impl Keyshare {
         Ok((additive_offset, pubkey))
     }
 
-    /// Derive the child public key for a given derivation path
+    /// Derives a child public key with the given chain path.
+    ///
+    /// # Arguments
+    /// * `chain_path` - The derivation path to use
+    ///
+    /// # Returns
+    /// The derived public key, or an error if derivation fails.
     pub fn derive_child_pubkey(
         &self,
         chain_path: &DerivationPath,
@@ -340,13 +400,14 @@ impl Keyshare {
         Ok(child_pubkey)
     }
 
-    /// Derive the extended public key for a given derivation path and prefix
+    /// Derives an extended public key with the given prefix and chain path.
+    ///
     /// # Arguments
-    /// * `prefix` - Prefix for the extended public key (`Prefix` has commonly used prefixes)
-    /// * `chain_path` - Derivation path
+    /// * `prefix` - The prefix to use for the extended public key
+    /// * `chain_path` - The derivation path to use
     ///
     /// # Returns
-    /// * `XPubKey` - Extended public key
+    /// The derived extended public key, or an error if derivation fails.
     pub fn derive_xpub(
         &self,
         prefix: Prefix,
