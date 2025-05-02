@@ -1,112 +1,56 @@
+// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
+// This software is licensed under the Silence Laboratories License Agreement.
+
 mod dkg;
 mod types;
-mod utils;
+
+/// Misc reusable code
+pub mod utils;
 
 pub use dkg::*;
 pub use types::*;
-pub use utils::*;
 
 /// Key refresh protocol
 pub mod key_refresh;
 
 /// Keygen protocol messages
-pub mod messages;
+mod messages;
 
-///
+/// Keyshare and related definitions
+pub mod keyshare;
+
+/// Various contants
 pub mod constants;
 
-pub use crate::setup::keygen::ValidatedSetup;
-pub use messages::Keyshare;
+/// Migrate shares from GG20
+pub mod migration;
 
-#[cfg(test)]
-mod tests {
-    // use std::collections::HashSet;
+/// Quorum change protocol
+pub mod quorum_change;
 
-    // use k256::elliptic_curve::group::GroupEncoding;
-    // use rand::seq::SliceRandom;
+pub use keyshare::Keyshare;
 
-    // use crate::keygen::{check_all_but_one_seeds, check_secret_recovery};
+use sl_mpc_mate::message::MsgId;
 
-    // use super::process_keygen;
+use crate::setup::{ProtocolParticipant, ABORT_MESSAGE_TAG};
 
-    #[test]
-    fn keygen_r1() {}
+/// Generate message receiver map.
+///
+/// Call the passed closure for each pair (msg_id, receiver)
+///
+pub fn message_receivers<S, F>(setup: &S, mut msg_receiver: F)
+where
+    S: ProtocolParticipant,
+    F: FnMut(MsgId, &S::MessageVerifier),
+{
+    setup.all_other_parties().for_each(|p| {
+        let vk = setup.verifier(p);
 
-    // #[test]
-    // fn test_keygen() {
-    //     const T: usize = 3;
-    //     const N: usize = 5;
-
-    //     let keyshares = process_keygen::<T, N>(None);
-
-    //     let pubkeys = keyshares.iter().map(|key| key.public_key.to_bytes());
-
-    //     check_not_unique(pubkeys);
-
-    //     let x_i_list = keyshares.iter().map(|key| key.x_i.to_bytes());
-    //     check_unique(x_i_list);
-
-    //     let big_s_list = keyshares.iter().map(|key| {
-    //         key.big_s_list
-    //             .iter()
-    //             .map(|s| s.to_bytes())
-    //             .collect::<Vec<_>>()
-    //     });
-
-    //     check_not_unique(big_s_list);
-
-    //     for (pid, key) in keyshares.iter().enumerate() {
-    //         assert_eq!(T, key.threshold);
-    //         assert_eq!(N, key.total_parties);
-    //         assert_eq!(pid, key.party_id);
-    //         assert_eq!(0, key.rank);
-    //     }
-
-    //     let mut rng = rand::thread_rng();
-    //     let big_s_list = &keyshares[0].big_s_list;
-    //     let public_key = &keyshares[0].public_key;
-    //     let x_i_list = &keyshares[0].x_i_list;
-
-    //     for _ in 0..N {
-    //         let threshold_keyshares = keyshares.choose_multiple(&mut rng, T).collect::<Vec<_>>();
-    //         let rank_list = threshold_keyshares
-    //             .iter()
-    //             .map(|key| key.rank)
-    //             .collect::<Vec<_>>();
-    //         check_secret_recovery(x_i_list, &rank_list, big_s_list, public_key)
-    //             .expect("Failed to recover secret");
-    //     }
-    //     let party_1 = &keyshares[0];
-    //     let party_2 = &keyshares[1];
-    //     let party_3 = &keyshares[2];
-
-    //     check_all_but_one_seeds(&party_1.seed_ot_senders[0], &party_2.seed_ot_receivers[0]);
-    //     check_all_but_one_seeds(&party_2.seed_ot_senders[0], &party_1.seed_ot_receivers[0]);
-
-    //     // party1 - party3
-    //     check_all_but_one_seeds(&party_1.seed_ot_senders[1], &party_3.seed_ot_receivers[0]);
-    //     check_all_but_one_seeds(&party_3.seed_ot_senders[0], &party_1.seed_ot_receivers[1]);
-
-    //     // party2 - party3
-    //     check_all_but_one_seeds(&party_2.seed_ot_senders[1], &party_3.seed_ot_receivers[1]);
-    //     check_all_but_one_seeds(&party_3.seed_ot_senders[1], &party_2.seed_ot_receivers[1]);
-    // }
-
-    // fn check_unique<T: std::cmp::Eq + std::hash::Hash>(list: impl Iterator<Item = T>) {
-    //     let mut unique = HashSet::new();
-    //     let mut count = 0;
-    //     for item in list {
-    //         unique.insert(item);
-    //         count += 1;
-    //     }
-    //     assert!(unique.len() == count)
-    // }
-
-    // fn check_not_unique<T: std::cmp::Eq + std::hash::Hash>(list: impl Iterator<Item = T>) {
-    //     let mut unique = HashSet::new();
-    //     for item in list {
-    //         unique.insert(item);
-    //     }
-    //     assert!(unique.len() == 1)
-    // }
+        msg_receiver(setup.msg_id(None, ABORT_MESSAGE_TAG), vk);
+        msg_receiver(setup.msg_id(None, constants::DKG_MSG_R1), vk);
+        msg_receiver(setup.msg_id(None, constants::DKG_MSG_R2), vk);
+        msg_receiver(setup.msg_id(Some(p), constants::DKG_MSG_OT1), vk);
+        msg_receiver(setup.msg_id(Some(p), constants::DKG_MSG_R3), vk);
+        msg_receiver(setup.msg_id(None, constants::DKG_MSG_R4), vk);
+    })
 }

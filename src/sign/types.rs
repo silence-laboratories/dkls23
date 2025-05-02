@@ -1,19 +1,13 @@
-use thiserror::Error;
+// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
+// This software is licensed under the Silence Laboratories License Agreement.
 
-use sl_mpc_mate::{
-    bincode::error::{DecodeError, EncodeError},
-    message::InvalidMessage,
-};
-
-use crate::BadPartyIndex;
+use crate::proto::tags::Error;
+use sl_mpc_mate::coord::MessageSendError;
 
 /// Distributed key generation errors
-#[derive(Error, Debug)]
+#[derive(thiserror::Error, Debug)]
+#[allow(missing_docs)]
 pub enum SignError {
-    /// Mta error
-    #[error("MTA error: {0}")]
-    MtaError(&'static str),
-
     /// Invalid commitment
     #[error("Invalid commitment")]
     InvalidCommitment,
@@ -31,18 +25,17 @@ pub enum SignError {
     FailedCheck(&'static str),
 
     /// k256 error
-    #[error("k256 error: {0}")]
-    K256Error(#[from] k256::ecdsa::Error),
+    #[error("k256 error")]
+    K256Error,
+
+    /// Invalid PreSignature
+    #[error("invalid pre signature")]
+    InvalidPreSign,
 
     /// Invalid message format
     #[error("invalid message format")]
     InvalidMessage,
 
-    /// Invalid party
-    #[error("Bad Party")]
-    BadParty,
-
-    ///
     #[error("Missing message")]
     MissingMessage,
 
@@ -52,33 +45,32 @@ pub enum SignError {
 
     /// Some party decided to not participate in the protocol.
     #[error("Abort protocol by party {0}")]
-    AbortProtocol(u8),
+    AbortProtocol(usize),
 
     /// Abort the protocol and ban the party
     #[error("Abort the protocol and ban the party {0}")]
     AbortProtocolAndBanParty(u8),
 }
 
-impl From<InvalidMessage> for SignError {
-    fn from(_err: InvalidMessage) -> Self {
-        SignError::InvalidMessage
+impl From<MessageSendError> for SignError {
+    fn from(_err: MessageSendError) -> Self {
+        SignError::SendMessage
     }
 }
 
-impl From<EncodeError> for SignError {
-    fn from(_err: EncodeError) -> Self {
-        SignError::InvalidMessage
+impl From<k256::ecdsa::Error> for SignError {
+    fn from(_err: k256::ecdsa::Error) -> Self {
+        Self::K256Error
     }
 }
 
-impl From<DecodeError> for SignError {
-    fn from(_err: DecodeError) -> Self {
-        SignError::InvalidMessage
-    }
-}
-
-impl From<BadPartyIndex> for SignError {
-    fn from(_err: BadPartyIndex) -> SignError {
-        SignError::BadParty
+impl From<Error> for SignError {
+    fn from(err: Error) -> Self {
+        match err {
+            Error::Abort(p) => SignError::AbortProtocol(p as _),
+            Error::Recv => SignError::MissingMessage,
+            Error::Send => SignError::SendMessage,
+            Error::InvalidMessage => SignError::InvalidMessage,
+        }
     }
 }

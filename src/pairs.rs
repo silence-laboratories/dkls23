@@ -1,9 +1,10 @@
+// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
+// This software is licensed under the Silence Laboratories License Agreement.
+
 use std::cmp::Ord;
 
-use sl_mpc_mate::message::*;
-
 /// Small ordered set of pairs.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Pairs<T, I = u8>(Vec<(I, T)>);
 
 impl<T: Clone> Clone for Pairs<T> {
@@ -65,8 +66,13 @@ impl<T, I: Ord> Pairs<T, I> {
     }
 
     /// Removes an item by given id and return it. Return error if the item not found.
-    pub fn pop_pair_or_err<E>(&mut self, party_id: I, err: E) -> Result<T, E> {
-        let pos = self.0.iter().position(|(p, _)| *p == party_id).ok_or(err)?;
+    pub fn pop_pair_or_err<E>(
+        &mut self,
+        party_id: I,
+        err: E,
+    ) -> Result<T, E> {
+        let pos =
+            self.0.iter().position(|(p, _)| *p == party_id).ok_or(err)?;
 
         Ok(self.0.remove(pos).1)
     }
@@ -83,7 +89,7 @@ impl<T, I: Ord> Pairs<T, I> {
 }
 
 impl<T, I: Ord> Pairs<T, I> {
-    ///
+    /// Check for pair duplicates
     pub fn no_dups_by<F>(&self, eq: F) -> bool
     where
         F: Fn(&T, &T) -> bool,
@@ -108,7 +114,7 @@ impl<T, I: Ord> Pairs<T, I> {
 }
 
 impl<T: Eq, I: Ord> Pairs<T, I> {
-    ///
+    /// Check for pair duplicates
     pub fn no_dups(&self) -> bool {
         self.no_dups_by(|a, b| a.eq(b))
     }
@@ -118,12 +124,25 @@ impl<T: Clone, I> Pairs<T, I> {
     pub fn remove_ids(&self) -> Vec<T> {
         self.0.iter().map(|(_, v)| v.clone()).collect()
     }
+}
 
-    pub fn remove_ids_and_wrap<K>(&self) -> Vec<Opaque<T, K>> {
-        self.0
-            .iter()
-            .map(|(_, v)| Opaque::from(v.clone()))
-            .collect()
+impl<T, I> IntoIterator for Pairs<T, I> {
+    type Item = <Vec<(I, T)> as IntoIterator>::Item;
+
+    type IntoIter = <Vec<(I, T)> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl<'a, T, I> IntoIterator for &'a Pairs<T, I> {
+    type Item = <&'a Vec<(I, T)> as IntoIterator>::Item;
+
+    type IntoIter = <&'a Vec<(I, T)> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
     }
 }
 

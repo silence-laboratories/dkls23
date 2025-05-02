@@ -1,8 +1,10 @@
-//!
+// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
+// This software is licensed under the Silence Laboratories License Agreement.
+
+use sl_mpc_mate::message::MessageTag;
+use sl_oblivious::label::Label;
 
 use crate::VERSION;
-use sl_mpc_mate::{label::Label, message::MessageTag};
-
 
 /// LABEL for the signature protocol
 pub const DSG_LABEL: Label = Label::new(VERSION, 200);
