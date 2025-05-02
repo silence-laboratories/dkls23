@@ -1,0 +1,209 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="A rust  threshold ECDSA signatures library implementing DKLs23 protocol."><title>sl_dkls23 - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../static.files/rustdoc-46132b98.css"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="sl_dkls23" data-themes="" data-resource-suffix="" data-rustdoc-version="1.85.1 (4eb161250 2025-03-15)" data-channel="1.85.1" data-search-js="search-75f5ac3e.js" data-settings-js="settings-0f613d39.js" ><script src="../static.files/storage-59e33391.js"></script><script defer src="../crates.js"></script><script defer src="../static.files/main-5f194d8c.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-893ab5e7.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-044be391.svg"></head><body class="rustdoc mod crate"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle" title="show sidebar"></button></nav><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../sl_dkls23/index.html">sl_<wbr>dkls23</a><span class="version">1.0.0-beta</span></h2></div><div class="sidebar-elems"><ul class="block"><li><a id="all-types" href="all.html">All Items</a></li></ul><section id="rustdoc-toc"><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#functionality" title="Functionality">Functionality</a></li><li><a href="#examples" title="Examples">Examples</a><ul><li><a href="#keygen" title="KeyGen">KeyGen</a></li><li><a href="#key-refresh" title="Key Refresh">Key Refresh</a></li><li><a href="#sign" title="Sign">Sign</a></li></ul></li><li><a href="#networking" title="Networking">Networking</a></li><li><a href="#data-serialization" title="Data Serialization">Data Serialization</a></li></ul><h3><a href="#reexports">Crate Items</a></h3><ul class="block"><li><a href="#reexports" title="Re-exports">Re-exports</a></li><li><a href="#modules" title="Modules">Modules</a></li><li><a href="#structs" title="Structs">Structs</a></li><li><a href="#constants" title="Constants">Constants</a></li><li><a href="#traits" title="Traits">Traits</a></li><li><a href="#types" title="Type Aliases">Type Aliases</a></li></ul></section><div id="rustdoc-modnav"></div></div></nav><div class="sidebar-resizer"></div><main><div class="width-limiter"><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><h1>Crate <span>sl_dkls23</span><button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../src/sl_dkls23/lib.rs.html#4-250">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>A rust  threshold ECDSA signatures library implementing DKLs23 protocol.</p>
+<h3 id="functionality"><a class="doc-anchor" href="#functionality">§</a>Functionality</h3>
+<ul>
+<li>Distributed Key Generation (DKG)</li>
+<li>Distributed Signature Generation (DSG)</li>
+<li>Key refresh protocol that refreshes the secret key shares without changing the common public key.</li>
+<li>Import a singleton key and distribute it among parties</li>
+<li>Export a threshold key to a singleton one</li>
+<li>Quorum Change: change dynamically the set of participants by adding or removing nodes</li>
+<li>Migration: Migrate from compatible curve protocols like: GG** or CMP to DKLs23</li>
+</ul>
+<h3 id="examples"><a class="doc-anchor" href="#examples">§</a>Examples</h3>
+<p>The mod common module can be replicated  from the dkls23 github <a href="https://github.com/silence-laboratories/dkls23/examples/common.rs">repo</a> under examples folder</p>
+<h4 id="keygen"><a class="doc-anchor" href="#keygen">§</a>KeyGen</h4>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>dkls23::keygen;
+<span class="kw">use </span>k256::elliptic_curve::group::GroupEncoding;
+<span class="kw">use </span>rand::Rng;
+<span class="kw">use </span>rand_chacha::ChaCha20Rng;
+<span class="kw">use </span>rand_core::SeedableRng;
+<span class="kw">use </span>std::sync::Arc;
+
+<span class="kw">mod </span>common;
+
+<span class="attr">#[tokio::main]
+</span><span class="kw">pub async fn </span>main() {
+    <span class="kw">let </span>t: u8 = <span class="number">2</span>;
+    <span class="kw">let </span>n: u8 = <span class="number">3</span>;
+    <span class="kw">let </span>coord = sl_mpc_mate::coord::SimpleMessageRelay::new();
+
+    <span class="kw">let </span><span class="kw-2">mut </span>parties = tokio::task::JoinSet::new();
+
+    <span class="kw">for </span>setup <span class="kw">in </span>common::shared::setup_keygen(t, n, <span class="prelude-val">None</span>) {
+        parties.spawn({
+            <span class="kw">let </span>relay = coord.connect();
+            <span class="kw">let </span><span class="kw-2">mut </span>rng = ChaCha20Rng::from_entropy();
+            keygen::run(setup, rng.gen(), relay)
+        });
+    }
+    <span class="kw">let </span><span class="kw-2">mut </span>shares = <span class="macro">vec!</span>[];
+    <span class="kw">while let </span><span class="prelude-val">Some</span>(fini) = parties.join_next().<span class="kw">await </span>{
+        <span class="kw">if let </span><span class="prelude-val">Err</span>(<span class="kw-2">ref </span>err) = fini {
+            <span class="macro">println!</span>(<span class="string">"error {err:?}"</span>);
+        } <span class="kw">else </span>{
+            <span class="kw">match </span>fini.unwrap() {
+                <span class="prelude-val">Err</span>(err) =&gt; <span class="macro">panic!</span>(<span class="string">"err {:?}"</span>, err),
+                <span class="prelude-val">Ok</span>(share) =&gt; shares.push(Arc::new(share)),
+           }
+        }
+    }
+
+    <span class="kw">for </span>keyshare <span class="kw">in </span>shares.iter() {
+        <span class="macro">println!</span>(<span class="string">"PK{}"</span>, hex::encode(keyshare.public_key().to_bytes()));
+    }
+}</code></pre></div>
+<h4 id="key-refresh"><a class="doc-anchor" href="#key-refresh">§</a>Key Refresh</h4>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>dkls23::keygen::key_refresh::KeyshareForRefresh;
+<span class="kw">use </span>k256::elliptic_curve::group::GroupEncoding;
+<span class="kw">use </span>rand::Rng;
+<span class="kw">use </span>rand_chacha::ChaCha20Rng;
+<span class="kw">use </span>rand_core::SeedableRng;
+<span class="kw">use </span>sl_mpc_mate::coord::SimpleMessageRelay;
+<span class="kw">use </span>std::sync::Arc;
+<span class="kw">use </span>tokio::task::JoinSet;
+
+<span class="kw">mod </span>common;
+
+<span class="attr">#[tokio::main]
+</span><span class="kw">pub async fn </span>main() {
+    <span class="kw">let </span>old_shares = common::shared::gen_keyshares(<span class="number">2</span>, <span class="number">3</span>).<span class="kw">await</span>;
+    <span class="kw">let </span>coord = SimpleMessageRelay::new();
+    <span class="kw">let </span><span class="kw-2">mut </span>parties = JoinSet::new();
+
+    <span class="kw">let </span>key_shares_for_refresh: Vec&lt;KeyshareForRefresh&gt; = old_shares
+        .iter()
+        .map(|share| KeyshareForRefresh::from_keyshare(share, <span class="prelude-val">None</span>))
+        .collect();
+
+    <span class="kw">let </span><span class="kw-2">mut </span>rng = ChaCha20Rng::from_entropy();
+    <span class="kw">for </span>(setup, share) <span class="kw">in </span>common::shared::setup_keygen(<span class="number">2</span>, <span class="number">3</span>, <span class="prelude-val">None</span>)
+        .into_iter()
+        .zip(key_shares_for_refresh)
+        .collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;()
+    {
+        <span class="comment">// run the keyrefresh protocol for each node
+        </span>parties.spawn(dkls23::keygen::key_refresh::run(
+            setup,
+            rng.gen(),
+            coord.connect(),
+            share,
+        ));
+    }
+
+    <span class="kw">let </span><span class="kw-2">mut </span>new_shares = <span class="macro">vec!</span>[];
+    <span class="kw">while let </span><span class="prelude-val">Some</span>(fini) = parties.join_next().<span class="kw">await </span>{
+        <span class="kw">let </span>fini = fini.unwrap();
+
+        <span class="kw">if let </span><span class="prelude-val">Err</span>(<span class="kw-2">ref </span>err) = fini {
+            <span class="macro">println!</span>(<span class="string">"error {}"</span>, err);
+        }
+
+       <span class="macro">assert!</span>(fini.is_ok());
+
+        <span class="comment">// Print all the new PK of the refreshed share
+        </span><span class="kw">let </span>new_share = fini.unwrap();
+        <span class="kw">let </span>pk = hex::encode(new_share.public_key().to_bytes());
+
+        new_shares.push(Arc::new(new_share));
+
+        <span class="macro">println!</span>(<span class="string">"PK {}"</span>, pk);
+    }
+
+    <span class="comment">//check that this is equal the old key share public key
+    </span><span class="macro">println!</span>(
+        <span class="string">"Old PK{}"</span>,
+        hex::encode(old_shares[<span class="number">0</span>].public_key().to_bytes())
+    );
+
+}</code></pre></div>
+<h4 id="sign"><a class="doc-anchor" href="#sign">§</a>Sign</h4>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>tokio::task::JoinSet;
+
+<span class="kw">use </span>rand::Rng;
+<span class="kw">use </span>rand_chacha::ChaCha20Rng;
+<span class="kw">use </span>rand_core::SeedableRng;
+
+<span class="kw">use </span>k256::ecdsa::{RecoveryId, VerifyingKey};
+
+<span class="kw">use </span>dkls23::sign;
+<span class="kw">use </span>sl_mpc_mate::coord::SimpleMessageRelay;
+
+<span class="kw">mod </span>common;
+
+<span class="attr">#[tokio::main]
+</span><span class="kw">async fn </span>main() {
+    <span class="kw">let </span>coord = SimpleMessageRelay::new();
+
+    <span class="comment">// We locally generate some key shares in order to test the signing procedure.
+    </span><span class="kw">let </span>shares = common::shared::gen_keyshares(<span class="number">2</span>, <span class="number">3</span>).<span class="kw">await</span>;
+
+    <span class="comment">//fetch the public verification key from one of the keyshares
+    </span><span class="kw">let </span>vk = VerifyingKey::from_affine(shares[<span class="number">0</span>].public_key().to_affine()).unwrap();
+
+    <span class="comment">//define a chain path for the signature: m is the default one
+    </span><span class="kw">let </span>chain_path = <span class="string">"m"</span>;
+
+    <span class="comment">//Here the parties are simulated as in a real world example but locally as a set of rust async tasks:
+    </span><span class="kw">let </span><span class="kw-2">mut </span>parties = JoinSet::new();
+
+    <span class="kw">for </span>setup <span class="kw">in </span>common::shared::setup_dsg(<span class="kw-2">&amp;</span>shares[<span class="number">0</span>..<span class="number">2</span>], chain_path) {
+        <span class="kw">let </span><span class="kw-2">mut </span>rng = ChaCha20Rng::from_entropy();
+        <span class="kw">let </span>relay = coord.connect();
+
+        parties.spawn(sign::run(setup, rng.gen(), relay));
+    }
+
+    <span class="comment">// After all the tasks have finished we extract the signature and verify it against the public key
+    </span><span class="kw">while let </span><span class="prelude-val">Some</span>(fini) = parties.join_next().<span class="kw">await </span>{
+        <span class="kw">let </span>fini = fini.unwrap();
+
+        <span class="kw">if let </span><span class="prelude-val">Err</span>(<span class="kw-2">ref </span>err) = fini {
+            <span class="macro">println!</span>(<span class="string">"error {err:?}"</span>);
+        }
+
+        <span class="kw">let </span>(sign, recid) = fini.unwrap();
+
+        <span class="kw">let </span>hash = [<span class="number">1u8</span>; <span class="number">32</span>];
+
+        <span class="kw">let </span>recid2 = RecoveryId::trial_recovery_from_prehash(<span class="kw-2">&amp;</span>vk, <span class="kw-2">&amp;</span>hash, <span class="kw-2">&amp;</span>sign).unwrap();
+
+        <span class="macro">assert_eq!</span>(recid, recid2);
+    }
+}</code></pre></div>
+<h3 id="networking"><a class="doc-anchor" href="#networking">§</a>Networking</h3>
+<p>Communication between nodes  is happening through a relayer in a pull messaging mode:
+Everything is posted on the relayer and the receiver knows when and what to ask. That was a design
+decision that maps best the nature of MPC protocols whereby any mpc node depending on the protocol knows what type of messages to expect and from
+where.</p>
+<p>The relayer follows the Actor model: It spawns from the caller task, does the assigned task
+independently and return the result in the main task. The library itself does not expose networking stack
+,but instead a generic combination of shared state between rust tasks and message channel passing where
+receiver and sender channels are interleaved for p2p and broadcast communication. That is a local <code>SimpleMessageRelay</code>.
+In a real setup the relayer can be an independent network entity, where all the nodes can talk to. It
+can be implemented with a variety of existing  networking protocols such as websockets; as long as it follows the
+underlying pull logic : Each receiver knows what message to subscribe for and so it asks the relayer to deliver it
+as long as it arrives from the expected sender.</p>
+<h3 id="data-serialization"><a class="doc-anchor" href="#data-serialization">§</a>Data Serialization</h3>
+<p>The library implements zero-copy message serialization. All messages sent between parties
+and their components are defined as arrays of bytes. This transformation enables us to safely cast a byte
+slice <code>&amp;[u8]</code> into a reference to some message structure if the sizes
+are equal.</p>
+<p>This allows to implement in-place message construction:  Allocate
+a memory buffer of an appropriate size, take a mutable reference to
+some message structure, and pass it to a message constructor. Then
+calculate the message signature or encrypt the message in place
+without any extra memory copying.
+This provides not only memory efficiency but also more secure code
+because there is exactly one copy of secret material in memory and
+overwrite it with in-place encryption.
+Key share representation also uses the same technique. Allocates a
+memory buffer for the key share at the beginning of the key generation
+execution and fill it piece by piece. Thus, memory copies are not happening</p>
+</div></details><h2 id="reexports" class="section-header">Re-exports<a href="#reexports" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name" id="reexport.k256"><code>pub use k256;</code></div></li></ul><h2 id="modules" class="section-header">Modules<a href="#modules" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name"><a class="mod" href="key_export/index.html" title="mod sl_dkls23::key_export">key_<wbr>export</a></div><div class="desc docblock-short">Exports a threshold key to a singleton one by consolidating all shares of other nodes.</div></li><li><div class="item-name"><a class="mod" href="key_import/index.html" title="mod sl_dkls23::key_import">key_<wbr>import</a></div><div class="desc docblock-short">Imports a singleton external key and secret shares it among parties to use dkls23 related mpc protocols.</div></li><li><div class="item-name"><a class="mod" href="keygen/index.html" title="mod sl_dkls23::keygen">keygen</a></div><div class="desc docblock-short">DKLs23 keygen.
+This module implements a distributed key generation protocol that allows multiple parties
+to collaboratively generate a shared secret key without any single party learning the
+complete secret. The protocol includes several sub-protocols for key refresh, quorum
+changes, and migration from other protocols.</div></li><li><div class="item-name"><a class="mod" href="proto/index.html" title="mod sl_dkls23::proto">proto</a></div><div class="desc docblock-short">Misc helper functions.</div></li><li><div class="item-name"><a class="mod" href="setup/index.html" title="mod sl_dkls23::setup">setup</a></div><div class="desc docblock-short">Setup messages.
+Each mpc protocol: Keygen, Sign, Quorum change, Key Export in order to bootstrap the nodes need
+to setup necessary information  such as protocol id, participant information, cryptographic keys, and tailored per MPC protocol parameters.</div></li><li><div class="item-name"><a class="mod" href="sign/index.html" title="mod sl_dkls23::sign">sign</a></div><div class="desc docblock-short">DKLs23 sign.
+Distributed Signature Generation (DSG) Protocol Implementation</div></li></ul><h2 id="structs" class="section-header">Structs<a href="#structs" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name"><a class="struct" href="struct.InstanceId.html" title="struct sl_dkls23::InstanceId">Instance<wbr>Id</a></div></li><li><div class="item-name"><a class="struct" href="struct.MessageSendError.html" title="struct sl_dkls23::MessageSendError">Message<wbr>Send<wbr>Error</a></div></li><li><div class="item-name"><a class="struct" href="struct.MsgId.html" title="struct sl_dkls23::MsgId">MsgId</a></div></li></ul><h2 id="constants" class="section-header">Constants<a href="#constants" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name"><a class="constant" href="constant.VERSION.html" title="constant sl_dkls23::VERSION">VERSION</a></div><div class="desc docblock-short">Version of domain labels</div></li></ul><h2 id="traits" class="section-header">Traits<a href="#traits" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name"><a class="trait" href="trait.Relay.html" title="trait sl_dkls23::Relay">Relay</a></div></li></ul><h2 id="types" class="section-header">Type Aliases<a href="#types" class="anchor">§</a></h2><ul class="item-table"><li><div class="item-name"><a class="type" href="type.Seed.html" title="type sl_dkls23::Seed">Seed</a></div><div class="desc docblock-short">Seed for our RNG.</div></li></ul><script type="text/json" id="notable-traits-data">{"&'a mut [u8]":"<h3>Notable traits for <code>&amp;mut [<a class=\"primitive\" href=\"https://doc.rust-lang.org/1.85.1/std/primitive.u8.html\">u8</a>]</code></h3><pre><code><div class=\"where\">impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.85.1/std/io/trait.Write.html\" title=\"trait std::io::Write\">Write</a> for &amp;mut [<a class=\"primitive\" href=\"https://doc.rust-lang.org/1.85.1/std/primitive.u8.html\">u8</a>]</div>"}</script></section></div></main></body></html>
