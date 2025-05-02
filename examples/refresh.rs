@@ -1,8 +1,8 @@
-use dkls23::keygen::key_refresh::KeyshareForRefresh;
 use k256::elliptic_curve::group::GroupEncoding;
 use rand::Rng;
 use rand_chacha::ChaCha20Rng;
 use rand_core::SeedableRng;
+use sl_dkls23::keygen::key_refresh::KeyshareForRefresh;
 use sl_mpc_mate::coord::SimpleMessageRelay;
 use std::sync::Arc;
 use tokio::task::JoinSet;
@@ -27,7 +27,7 @@ pub async fn main() {
     let coord = SimpleMessageRelay::new();
 
     // Here the parties are simulated as in a real world example but locally as a set of rust async tasks:
-    // One task for each node to run the dkls23 ecdsa refresh algorithm
+    // One task for each node to run the DKLs23 ecdsa refresh algorithm
     let mut parties = JoinSet::new();
 
     // Tag into a new type the old key shares in order to be identifiable as key shares to be refreshed from the existing refresh
@@ -51,7 +51,7 @@ pub async fn main() {
         .collect::<Vec<_>>()
     {
         // run the keyrefresh protocol for each node
-        parties.spawn(dkls23::keygen::key_refresh::run(
+        parties.spawn(sl_dkls23::keygen::key_refresh::run(
             setup,
             rng.gen(),
             coord.connect(),
@@ -92,7 +92,11 @@ pub async fn main() {
 
     let mut parties: JoinSet<Result<_, _>> = JoinSet::new();
     for setup in common::shared::setup_dsg(subset, "m") {
-        parties.spawn(dkls23::sign::run(setup, rng.gen(), coord.connect()));
+        parties.spawn(sl_dkls23::sign::run(
+            setup,
+            rng.gen(),
+            coord.connect(),
+        ));
     }
 
     while let Some(fini) = parties.join_next().await {

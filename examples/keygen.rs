@@ -1,8 +1,8 @@
-use dkls23::keygen::run as keygen_run;
 use k256::elliptic_curve::group::GroupEncoding;
 use rand::Rng;
 use rand_chacha::ChaCha20Rng;
 use rand_core::SeedableRng;
+use sl_dkls23::keygen::run as keygen_run;
 use std::sync::Arc;
 
 mod common;
