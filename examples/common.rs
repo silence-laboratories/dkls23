@@ -1,8 +1,8 @@
 pub mod shared {
-    use dkls23::keygen;
-    use dkls23::keygen::Keyshare;
-    use dkls23::setup::sign::SetupMessage as SignSetupMessage;
-    use dkls23::setup::{
+    use sl_dkls23::keygen;
+    use sl_dkls23::keygen::Keyshare;
+    use sl_dkls23::setup::sign::SetupMessage as SignSetupMessage;
+    use sl_dkls23::setup::{
         keygen::SetupMessage, keygen::SetupMessage as KeygenSetupMessage,
         NoSigningKey, NoVerifyingKey,
     };
@@ -126,7 +126,7 @@ pub mod shared {
     pub fn setup_dsg(
         shares: &[Arc<Keyshare>],
         chain_path: &str,
-    ) -> Vec<dkls23::setup::sign::SetupMessage> {
+    ) -> Vec<sl_dkls23::setup::sign::SetupMessage> {
         let chain_path = DerivationPath::from_str(chain_path).unwrap();
 
         let t = shares[0].threshold as usize;
@@ -177,5 +177,5 @@ pub mod shared {
 
 fn main() {
     // Example usage of the shared module
-    println!("DKLS23 Common Functions");
+    println!("DKLs23 Common Functions");
 }
