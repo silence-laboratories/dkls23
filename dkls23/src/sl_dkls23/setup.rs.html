@@ -338,7 +338,17 @@
 <a href="#337" id="337">337</a>
 <a href="#338" id="338">338</a>
 <a href="#339" id="339">339</a>
-<a href="#340" id="340">340</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
+<a href="#340" id="340">340</a>
+<a href="#341" id="341">341</a>
+<a href="#342" id="342">342</a>
+<a href="#343" id="343">343</a>
+<a href="#344" id="344">344</a>
+<a href="#345" id="345">345</a>
+<a href="#346" id="346">346</a>
+<a href="#347" id="347">347</a>
+<a href="#348" id="348">348</a>
+<a href="#349" id="349">349</a>
+<a href="#350" id="350">350</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
 
 </span><span class="doccomment">//! Each mpc protocol: Keygen, Sign, Quorum change, Key Export in order to bootstrap the nodes need
@@ -562,14 +572,24 @@
 </span><span class="kw">pub trait </span>FinalSignSetupMessage: ProtocolParticipant {
     <span class="doccomment">/// Pre-signature created by sign::pre_signature()
     </span><span class="kw">fn </span>pre_signature(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>PreSign;
-
-    <span class="doccomment">/// Hash of a message to sign.
-    </span><span class="kw">fn </span>message_hash(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; [u8; <span class="number">32</span>];
 }
 
 <span class="doccomment">/// A setup message for sign::run()
 </span><span class="kw">pub trait </span>SignSetupMessage: PreSignSetupMessage {
     <span class="doccomment">/// Hash of a message to sign.
+    ///
+    /// **Internal Use Only:** This method is intended solely for
+    /// internal use during protocol execution.  It's *not* designed
+    /// to be called directly by users or external code.
+    </span><span class="comment">//
+    </span><span class="doccomment">/// Security considerations dictate that the message hash must
+    /// always be calculated locally from the raw message
+    /// data.
+    ///
+    /// Accepting a pre-computed hash from an external source would
+    /// introduce significant security vulnerabilities and is strictly
+    /// prohibited.
+    ///
     </span><span class="kw">fn </span>message_hash(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; [u8; <span class="number">32</span>];
 }
 

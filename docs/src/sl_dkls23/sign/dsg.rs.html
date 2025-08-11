@@ -1265,7 +1265,34 @@
 <a href="#1264" id="1264">1264</a>
 <a href="#1265" id="1265">1265</a>
 <a href="#1266" id="1266">1266</a>
-<a href="#1267" id="1267">1267</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
+<a href="#1267" id="1267">1267</a>
+<a href="#1268" id="1268">1268</a>
+<a href="#1269" id="1269">1269</a>
+<a href="#1270" id="1270">1270</a>
+<a href="#1271" id="1271">1271</a>
+<a href="#1272" id="1272">1272</a>
+<a href="#1273" id="1273">1273</a>
+<a href="#1274" id="1274">1274</a>
+<a href="#1275" id="1275">1275</a>
+<a href="#1276" id="1276">1276</a>
+<a href="#1277" id="1277">1277</a>
+<a href="#1278" id="1278">1278</a>
+<a href="#1279" id="1279">1279</a>
+<a href="#1280" id="1280">1280</a>
+<a href="#1281" id="1281">1281</a>
+<a href="#1282" id="1282">1282</a>
+<a href="#1283" id="1283">1283</a>
+<a href="#1284" id="1284">1284</a>
+<a href="#1285" id="1285">1285</a>
+<a href="#1286" id="1286">1286</a>
+<a href="#1287" id="1287">1287</a>
+<a href="#1288" id="1288">1288</a>
+<a href="#1289" id="1289">1289</a>
+<a href="#1290" id="1290">1290</a>
+<a href="#1291" id="1291">1291</a>
+<a href="#1292" id="1292">1292</a>
+<a href="#1293" id="1293">1293</a>
+<a href="#1294" id="1294">1294</a></pre></div><pre class="rust"><code><span class="comment">// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
 // This software is licensed under the Silence Laboratories License Agreement.
 
 </span><span class="kw">use </span>std::collections::HashMap;
@@ -1283,7 +1310,7 @@
         subtle::{Choice, ConstantTimeEq},
         PrimeField,
     },
-    sha2::{Digest, Sha256},
+    sha2::{digest::consts::U32, Digest, Sha256},
     NonZeroScalar, ProjectivePoint, Scalar, Secp256k1, U256,
 };
 <span class="kw">use </span>rand::{Rng, SeedableRng};
@@ -1983,23 +2010,31 @@
 ///
 /// * `R`: Type implementing the `Relay` trait for message communication
 /// * `S`: Type implementing the `FinalSignSetupMessage` trait for setup parameters
+/// * `D`: Type of hash function.
 ///
 /// # Arguments
 ///
 /// * `setup`: Setup parameters for the protocol
 /// * `relay`: Message relay for communication between parties
+/// * `raw_message`: Raw message to sign
 ///
 /// # Returns
 ///
 /// A `Result` containing either:
 /// * `Ok((Signature, RecoveryId))`: The final signature and recovery ID
 /// * `Err(SignError)`: An error if the protocol fails
-</span><span class="kw">pub async fn </span>finish&lt;R: Relay, S: FinalSignSetupMessage&gt;(
+</span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">async fn </span>finish&lt;D, R, S&gt;(
     setup: S,
     relay: R,
-) -&gt; <span class="prelude-ty">Result</span>&lt;(Signature, RecoveryId), SignError&gt; {
+    raw_message: <span class="kw-2">&amp;</span>[u8],
+) -&gt; <span class="prelude-ty">Result</span>&lt;(Signature, RecoveryId), SignError&gt;
+<span class="kw">where
+    </span>R: Relay,
+    S: FinalSignSetupMessage,
+    D: Digest&lt;OutputSize = U32&gt;,
+{
     <span class="kw">let </span>pre_signature_result = setup.pre_signature();
-    <span class="kw">let </span>msg_hash = setup.message_hash();
+    <span class="kw">let </span>msg_hash = D::digest(raw_message).into();
     <span class="kw">let </span><span class="kw-2">mut </span>relay = FilteredMsgRelay::new(relay);
 
     relay.ask_messages(<span class="kw-2">&amp;</span>setup, ABORT_MESSAGE_TAG, <span class="bool-val">false</span>).<span class="kw">await</span><span class="question-mark">?</span>;
@@ -2018,6 +2053,19 @@
 
     result
 }
+
+<span class="doccomment">/// Run `finish()` with SHA256.
+</span><span class="kw">pub async fn </span>finish_with_sha256&lt;R, S&gt;(
+    setup: S,
+    relay: R,
+    raw_message: <span class="kw-2">&amp;</span>[u8],
+) -&gt; <span class="prelude-ty">Result</span>&lt;(Signature, RecoveryId), SignError&gt;
+<span class="kw">where
+    </span>R: Relay,
+    S: FinalSignSetupMessage,
+{
+    finish::&lt;Sha256, R, S&gt;(setup, relay, raw_message).<span class="kw">await
+</span>}
 
 <span class="doccomment">/// Inner function for the finish phase of the DSG protocol
 ///
@@ -2517,8 +2565,14 @@
         <span class="kw">let </span>coord = SimpleMessageRelay::new();
         <span class="kw">let </span><span class="kw-2">mut </span>parties = JoinSet::new();
 
+        <span class="kw">let </span>raw_message = <span class="string">b"message to sign"</span>;
+
         <span class="kw">for </span>setup <span class="kw">in </span>setup_finish_sign(pre_sign) {
-            parties.spawn(finish(setup, coord.connect()));
+            parties.spawn(finish::&lt;Sha256, <span class="kw">_</span>, <span class="kw">_</span>&gt;(
+                setup,
+                coord.connect(),
+                raw_message,
+            ));
         }
 
         <span class="kw">while let </span><span class="prelude-val">Some</span>(fini) = parties.join_next().<span class="kw">await </span>{
