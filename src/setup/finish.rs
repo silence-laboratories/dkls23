@@ -167,9 +167,4 @@ where
     fn pre_signature(&self) -> &PreSign {
         &self.pre
     }
-
-    /// Returns the hash of the message to be signed.
-    fn message_hash(&self) -> [u8; 32] {
-        self.hash
-    }
 }
