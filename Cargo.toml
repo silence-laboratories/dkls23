@@ -21,6 +21,7 @@ name = "refresh"
 default = ["multi-thread", "tracing"]
 multi-thread = ["dep:tokio", "tokio/rt-multi-thread"]
 test-support = ["sl-mpc-mate/simple-relay"]
+allow-presign-finish-with-hash = []
 
 [dependencies]
 sl-mpc-mate.workspace = true
