@@ -78,7 +78,10 @@ jobs:
           output-file-path: /tmp/output.txt
           github-token: ${{ secrets.GITHUB_TOKEN }}
           benchmark-data-dir-path: docs
-          auto-push: true
+          # Only publish benchmark data from `push` to `main`. On pull_request
+          # runs the benchmark is still computed (and alerts commented), but
+          # data must not be keyed to an unmerged PR head commit.
+          auto-push: ${{ github.event_name == 'push' }}
           comment-on-alert: true
           summary-always: true
 
@@ -86,6 +89,9 @@ jobs:
     name: Create HTML page
     runs-on: github-builder
     needs: get_benchmark
+    # The page is regenerated from benchmark data committed on `main`; only
+    # deploy it from `push` events to avoid stale PR commits ending up on the page.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - name: Checkout code (main)
         uses: actions/checkout@v4
