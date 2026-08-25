@@ -1,6 +1,3 @@
-// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
-// This software is licensed under the Silence Laboratories License Agreement.
-
 //! Each mpc protocol: Keygen, Sign, Quorum change, Key Export in order to bootstrap the nodes need
 //! to setup necessary information  such as protocol id, participant information, cryptographic keys, and tailored per MPC protocol parameters.
 

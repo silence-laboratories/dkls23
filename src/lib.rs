@@ -1,6 +1,3 @@
-// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
-// This software is licensed under the Silence Laboratories License Agreement.
-
 //! A rust  threshold ECDSA signatures library implementing DKLs23 protocol.
 //!
 //! ## Functionality
@@ -13,7 +10,8 @@
 //! - Migration: Migrate from compatible curve protocols like: GG** or CMP to DKLs23
 //!
 //! ## Examples
-//! The mod common module can be replicated  from the dkls23 github [repo](https://github.com/silence-laboratories/dkls23/examples/common.rs) under examples folder
+//! The mod common module can be replicated from the `examples` folder
+//! (`examples/common.rs`).
 //! ### KeyGen
 //! ```
 //! use dkls23::keygen;

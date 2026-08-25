@@ -1,6 +1,3 @@
-// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
-// This software is licensed under the Silence Laboratories License Agreement.
-
 //! Module for handling signed messages in the protocol.
 //!
 //! This module provides functionality for creating and verifying signed messages

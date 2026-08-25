@@ -1,6 +1,3 @@
-// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
-// This software is licensed under the Silence Laboratories License Agreement.
-
 use super::*;
 
 /// A message used for setting up key export operations in a multi-party computation protocol.

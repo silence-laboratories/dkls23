@@ -1,6 +1,3 @@
-// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
-// This software is licensed under the Silence Laboratories License Agreement.
-
 use std::collections::HashMap;
 
 use k256::{
@@ -44,6 +41,7 @@ use crate::{
 use super::SignError;
 
 use crate::pairs::Pairs;
+use crate::sign::associated_data_proof::AssociatedDataProof;
 
 /// Inner function for the pre-signature phase of the DSG protocol
 ///
@@ -67,11 +65,12 @@ use crate::pairs::Pairs;
 /// A `Result` containing either:
 /// * `Ok(PreSign)`: The pre-signature result
 /// * `Err(SignError)`: An error if the protocol fails
-async fn pre_signature_inner<R: Relay, S: PreSignSetupMessage>(
+pub(crate) async fn pre_signature_inner<R: Relay, S: PreSignSetupMessage>(
     setup: &S,
+    associated_data: Option<Vec<u8>>,
     seed: Seed,
     relay: &mut FilteredMsgRelay<R>,
-) -> Result<PreSign, SignError> {
+) -> Result<(PreSign, Option<AssociatedDataProof>), SignError> {
     let mut rng = ChaCha20Rng::from_seed(seed);
     let mut scheme = crate::proto::Scheme::new(&mut rng);
 
@@ -423,6 +422,18 @@ async fn pre_signature_inner<R: Relay, S: PreSignSetupMessage>(
 
     // new var
     let big_r = big_r_star + big_r_i;
+
+    // associated data tweak
+    let big_r_prime = big_r;
+    let mut ad_tweak = Scalar::ONE;
+    let mut proof = None;
+    if let Some(ad) = associated_data {
+        // big_r = big_r_prime * H(big_r_prime, ad)
+        ad_tweak = AssociatedDataProof::ro(&big_r_prime, &ad);
+        proof = Some(AssociatedDataProof { big_r_prime });
+    }
+    let big_r = big_r_prime * ad_tweak;
+
     sum_pk_j += pk_i;
 
     // Checks
@@ -444,7 +455,7 @@ async fn pre_signature_inner<R: Relay, S: PreSignSetupMessage>(
     let r_x = <Scalar as Reduce<U256>>::reduce_bytes(&r_point.x());
     let phi_plus_sum_psi = phi_i + sum_psi_j_i;
     let s_0 = r_x * (sk_i * phi_plus_sum_psi + sum_v);
-    let s_1 = r_i * phi_plus_sum_psi + sum_u;
+    let s_1 = (r_i * phi_plus_sum_psi + sum_u) * ad_tweak;
 
     let pre_sign_result = PreSign {
         final_session_id,
@@ -456,7 +467,7 @@ async fn pre_signature_inner<R: Relay, S: PreSignSetupMessage>(
         party_id: my_party_id,
     };
 
-    Ok(pre_sign_result)
+    Ok((pre_sign_result, proof))
 }
 
 /// Creates a partial signature from a pre-signature result
@@ -651,7 +662,7 @@ async fn run_inner<R: Relay, S: SignSetupMessage>(
     let t = setup.total_participants();
 
     let pre_signature_result =
-        pre_signature_inner(&setup, seed, relay).await?;
+        pre_signature_inner(&setup, None, seed, relay).await?.0;
 
     let msg_hash = setup.message_hash();
 
@@ -692,8 +703,8 @@ pub async fn pre_signature<R: Relay, S: PreSignSetupMessage>(
     relay.ask_messages(&setup, DSG_MSG_R2, true).await?;
     relay.ask_messages(&setup, DSG_MSG_R3, true).await?;
 
-    let result = match pre_signature_inner(&setup, seed, &mut relay).await {
-        Ok(result) => Ok(result),
+    let result = match pre_signature_inner(&setup, None, seed, &mut relay).await {
+        Ok((result, _)) => Ok(result),
         Err(SignError::AbortProtocol(p)) => Err(SignError::AbortProtocol(p)),
         Err(SignError::SendMessage) => Err(SignError::SendMessage),
         Err(err) => {
@@ -775,7 +786,7 @@ pub async fn finish<R: Relay, S: FinalSignSetupMessage>(
 /// A `Result` containing either:
 /// * `Ok((Signature, RecoveryId))`: The final signature and recovery ID
 /// * `Err(SignError)`: An error if the protocol fails
-async fn run_final<R: Relay, S: ProtocolParticipant>(
+pub(crate) async fn run_final<R: Relay, S: ProtocolParticipant>(
     setup: &S,
     relay: &mut FilteredMsgRelay<R>,
     t: usize,

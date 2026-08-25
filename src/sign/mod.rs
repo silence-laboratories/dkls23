@@ -1,6 +1,3 @@
-// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
-// This software is licensed under the Silence Laboratories License Agreement.
-
 //! Distributed Signature Generation (DSG) Protocol Implementation
 //!
 //! This module implements a distributed signature generation protocol that allows
@@ -24,6 +21,11 @@ mod constants;
 mod dsg;
 mod messages;
 mod types;
+
+/// Associated-data proof for nonce binding.
+pub mod associated_data_proof;
+/// DSG with associated data bound into the nonce.
+pub mod dsg_with_associated_data;
 
 pub use dsg::*;
 pub use types::*;
@@ -141,6 +143,16 @@ mod support {
         shares: &[Arc<Keyshare>],
         chain_path: &str,
     ) -> Vec<(SetupMessage, Seed)> {
+        setup_dsg_with_message_hash(instance, shares, chain_path, &[1; 32])
+    }
+
+    /// Sets up DSG with an explicit message hash (used by associated-data tests).
+    pub fn setup_dsg_with_message_hash(
+        instance: Option<[u8; 32]>,
+        shares: &[Arc<Keyshare>],
+        chain_path: &str,
+        message_hash: &[u8; 32],
+    ) -> Vec<(SetupMessage, Seed)> {
         let instance = instance.unwrap_or_else(rand::random);
 
         let chain_path = DerivationPath::from_str(chain_path).unwrap();
@@ -168,7 +180,7 @@ mod support {
                     share.clone(),
                 )
                 .with_chain_path(chain_path.clone())
-                .with_hash([1; 32])
+                .with_hash(*message_hash)
                 .with_ttl(Duration::from_secs(1000))
             })
             .map(|setup| {

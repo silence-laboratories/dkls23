@@ -1,6 +1,3 @@
-// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
-// This software is licensed under the Silence Laboratories License Agreement.
-
 //! This module implements a distributed key generation protocol that allows multiple parties
 //! to collaboratively generate a shared secret key without any single party learning the
 //! complete secret. The protocol includes several sub-protocols for key refresh, quorum

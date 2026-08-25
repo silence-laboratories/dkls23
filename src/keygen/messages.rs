@@ -1,6 +1,3 @@
-// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
-// This software is licensed under the Silence Laboratories License Agreement.
-
 //! This module defines the message types used in the DKG and quorum change protocols.
 //! These messages are exchanged between participants during different rounds of the protocols.
 //! All message types are designed to be efficiently serialized and deserialized using

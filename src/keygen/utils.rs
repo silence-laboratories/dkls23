@@ -1,6 +1,3 @@
-// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
-// This software is licensed under the Silence Laboratories License Agreement.
-
 //! This module provides utility functions used throughout the DKG protocol implementation,
 //! including polynomial operations, key generation setup, and protocol execution helpers.
 //! It also includes test utilities for protocol simulation and verification.

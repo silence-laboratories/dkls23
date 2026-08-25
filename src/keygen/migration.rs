@@ -1,6 +1,3 @@
-// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
-// This software is licensed under the Silence Laboratories License Agreement.
-
 //! This module provides functionality for migrating existing key shares from the other threshold ECDSA protocols
 //! such as GG** to the DKLS23 protocol format. The migration process preserves the cryptographic properties
 //! of the original key shares while updating them to the new protocol format.

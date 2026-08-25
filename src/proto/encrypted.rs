@@ -1,6 +1,3 @@
-// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
-// This software is licensed under the Silence Laboratories License Agreement.
-
 //! Module for handling encrypted messages in the protocol.
 //! This module provides functionality for encrypting and decrypting messages
 //! with support for additional data and trailers. It uses a pluggable encryption

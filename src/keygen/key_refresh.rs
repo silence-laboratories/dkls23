@@ -1,6 +1,3 @@
-// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
-// This software is licensed under the Silence Laboratories License Agreement.
-
 //! Protocol for refreshing existing keyshares without changing the corresponding public key
 
 use std::fmt;

@@ -1,6 +1,3 @@
-// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
-// This software is licensed under the Silence Laboratories License Agreement.
-
 //! Message types for the Distributed Signature Generation (DSG) Protocol
 //!
 //! This module defines the message structures used in the DSG protocol for

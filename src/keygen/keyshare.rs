@@ -1,6 +1,3 @@
-// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
-// This software is licensed under the Silence Laboratories License Agreement.
-
 //! This module provides functionality for managing key shares in a distributed key generation protocol.
 //! A key share represents a party's portion of a distributed secret key, along with associated metadata
 //! and cryptographic material needed for protocol operations.

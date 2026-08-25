@@ -1,6 +1,3 @@
-// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
-// This software is licensed under the Silence Laboratories License Agreement.
-
 //! Constants for the Distributed Signature Generation (DSG) Protocol
 //!
 //! This module defines various constants used throughout the DSG protocol,

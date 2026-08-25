@@ -1,6 +1,3 @@
-// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
-// This software is licensed under the Silence Laboratories License Agreement.
-
 use dkls_metrics::{dkg, flags, relay::MessageTrace};
 
 use flags::{DklsMetrics, DklsMetricsCmd};

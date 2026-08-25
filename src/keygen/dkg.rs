@@ -1,6 +1,3 @@
-// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
-// This software is licensed under the Silence Laboratories License Agreement.
-
 //! This module implements the distributed key generation protocol based on Protocol 6.1 from
 //! the paper "Efficient Multi-Party Computation with Dispute Resolution" <https://eprint.iacr.org/2022/374.pdf> and OT parameters
 //! from here "Threshold ECDSA in Three Rounds" <https://eprint.iacr.org/2023/765.pdf>

@@ -1,6 +1,3 @@
-// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
-// This software is licensed under the Silence Laboratories License Agreement.
-
 use k256::{NonZeroScalar, ProjectivePoint, Scalar};
 use rand::{CryptoRng, RngCore};
 use sl_mpc_mate::math::Polynomial;

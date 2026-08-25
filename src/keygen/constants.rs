@@ -1,6 +1,3 @@
-// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
-// This software is licensed under the Silence Laboratories License Agreement.
-
 //! This module defines all the constants used throughout the DKG protocol,
 //! including message tags, labels for cryptographic operations, and protocol-specific
 //! identifiers. These constants ensure consistent message handling and cryptographic

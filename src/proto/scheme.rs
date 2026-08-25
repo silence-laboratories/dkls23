@@ -1,6 +1,3 @@
-// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
-// This software is licensed under the Silence Laboratories License Agreement.
-
 //! Cryptographic Scheme Implementation for Secure Communication
 //!
 //! This module provides the core cryptographic primitives and protocols

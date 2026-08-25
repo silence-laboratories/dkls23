@@ -1,6 +1,3 @@
-// Copyright (c) Silence Laboratories Pte. Ltd. All Rights Reserved.
-// This software is licensed under the Silence Laboratories License Agreement.
-
 //! This module defines the error types and common types used throughout the DKG protocol.
 //! It includes error handling for various protocol operations and test utilities for
 //! polynomial operations used in the protocol.
