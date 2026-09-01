@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1786458969348,
+  "lastUpdate": 1788273289294,
   "repoUrl": "https://github.com/silence-laboratories/dkls23",
   "entries": {
     "Rust Benchmark": [
@@ -4349,6 +4349,102 @@ window.BENCHMARK_DATA = {
             "name": "dsg-27x15",
             "value": 176089282,
             "range": "± 7254015",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "rhonstin@gmail.com",
+            "name": "Bohdan Kikot",
+            "username": "Rhonstin"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "af5ada2a2e573c2c8eac5b01f9bbc4bf1c331ac7",
+          "message": "Merge pull request #9 from silence-laboratories/chore/supply-chain-dependabot\n\nchore(security): add Dependabot cooldown for cargo dependencies",
+          "timestamp": "2026-09-01T17:12:08+03:00",
+          "tree_id": "6a24bbc7cfe788e260b0a45e4c5a7a0a484ca771",
+          "url": "https://github.com/silence-laboratories/dkls23/commit/af5ada2a2e573c2c8eac5b01f9bbc4bf1c331ac7"
+        },
+        "date": 1788273282744,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "dkg-2x2",
+            "value": 143213307,
+            "range": "± 14242320",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "dsg-2x2",
+            "value": 12781078,
+            "range": "± 1450577",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "dkg-3x2",
+            "value": 285978521,
+            "range": "± 23557056",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "dsg-3x2",
+            "value": 12855594,
+            "range": "± 4097709",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "dkg-5x3",
+            "value": 574288068,
+            "range": "± 94108238",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "dsg-5x3",
+            "value": 25601656,
+            "range": "± 7448850",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "dkg-15x9",
+            "value": 2034458824,
+            "range": "± 57476074",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "dsg-15x9",
+            "value": 100760888,
+            "range": "± 1510227",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "dkg-20x11",
+            "value": 2769706836,
+            "range": "± 108678779",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "dsg-20x11",
+            "value": 126314306,
+            "range": "± 23236968",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "dkg-27x15",
+            "value": 3820407880,
+            "range": "± 62154606",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "dsg-27x15",
+            "value": 176460770,
+            "range": "± 57746698",
             "unit": "ns/iter"
           }
         ]
