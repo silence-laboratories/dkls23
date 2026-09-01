@@ -28,7 +28,7 @@ jobs:
     runs-on: github-builder
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@1.85
@@ -52,7 +52,7 @@ jobs:
     needs: lints
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@1.85
       - uses: Swatinem/rust-cache@v2
@@ -65,7 +65,7 @@ jobs:
     runs-on: github-builder
     needs: build-and-test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@1.85
       - name: Run benchmark
@@ -94,9 +94,9 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - name: Checkout code (main)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Checkout gh-pages branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: gh-pages
           path: gh-pages
