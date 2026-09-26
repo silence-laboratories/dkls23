@@ -16,7 +16,7 @@ use k256::{
         subtle::{Choice, ConstantTimeEq},
         PrimeField,
     },
-    sha2::{Digest, Sha256},
+    sha2::{digest::consts::U32, Digest, Sha256},
     NonZeroScalar, ProjectivePoint, Scalar, Secp256k1, U256,
 };
 use rand::{Rng, SeedableRng};
@@ -716,23 +716,44 @@ pub async fn pre_signature<R: Relay, S: PreSignSetupMessage>(
 ///
 /// * `R`: Type implementing the `Relay` trait for message communication
 /// * `S`: Type implementing the `FinalSignSetupMessage` trait for setup parameters
+/// * `D`: Type of hash function.
 ///
 /// # Arguments
 ///
 /// * `setup`: Setup parameters for the protocol
 /// * `relay`: Message relay for communication between parties
+/// * `raw_message`: Raw message to sign
 ///
 /// # Returns
 ///
 /// A `Result` containing either:
 /// * `Ok((Signature, RecoveryId))`: The final signature and recovery ID
 /// * `Err(SignError)`: An error if the protocol fails
-pub async fn finish<R: Relay, S: FinalSignSetupMessage>(
+pub async fn finish<D, R, S>(
     setup: S,
     relay: R,
+    raw_message: &[u8],
+) -> Result<(Signature, RecoveryId), SignError>
+where
+    R: Relay,
+    S: FinalSignSetupMessage,
+    D: Digest<OutputSize = U32>,
+{
+    let msg_hash = D::digest(raw_message).into();
+    // protect against invalid (empty) hash function.
+    if msg_hash == raw_message {
+        return Err(SignError::InvalidDigest);
+    }
+
+    finish_inner(setup, relay, msg_hash).await
+}
+
+async fn finish_inner<S: FinalSignSetupMessage, R: Relay>(
+    setup: S,
+    relay: R,
+    msg_hash: [u8; 32],
 ) -> Result<(Signature, RecoveryId), SignError> {
     let pre_signature_result = setup.pre_signature();
-    let msg_hash = setup.message_hash();
     let mut relay = FilteredMsgRelay::new(relay);
 
     relay.ask_messages(&setup, ABORT_MESSAGE_TAG, false).await?;
@@ -752,29 +773,30 @@ pub async fn finish<R: Relay, S: FinalSignSetupMessage>(
     result
 }
 
-/// Inner function for the finish phase of the DSG protocol
 ///
-/// This function implements the core logic of the finish phase,
-/// where parties use a pre-signature to generate the final signature.
-///
-/// # Type Parameters
-///
-/// * `R`: Type implementing the `Relay` trait for message communication
-/// * `S`: Type implementing the `ProtocolParticipant` trait for participant information
-///
-/// # Arguments
-///
-/// * `setup`: Setup parameters for the protocol
-/// * `relay`: Message relay for communication between parties
-/// * `t`: Threshold value for the signature
-/// * `msg_hash`: Hash of the message to be signed
-/// * `pre_signature_result`: The pre-signature result from the pre-signature phase
-///
-/// # Returns
-///
-/// A `Result` containing either:
-/// * `Ok((Signature, RecoveryId))`: The final signature and recovery ID
-/// * `Err(SignError)`: An error if the protocol fails
+#[cfg(feature = "allow-presign-finish-with-hash")]
+pub async fn finish_with_hash<S: FinalSignSetupMessage, R: Relay>(
+    setup: S,
+    relay: R,
+    msg_hash: [u8; 32],
+) -> Result<(Signature, RecoveryId), SignError> {
+    finish_inner(setup, relay, msg_hash).await
+}
+
+/// Run `finish()` with SHA256.
+pub async fn finish_with_sha256<R, S>(
+    setup: S,
+    relay: R,
+    raw_message: &[u8],
+) -> Result<(Signature, RecoveryId), SignError>
+where
+    R: Relay,
+    S: FinalSignSetupMessage,
+{
+    finish::<Sha256, R, S>(setup, relay, raw_message).await
+}
+
+// Inner function for the finish phase of the DSG protocols.
 async fn run_final<R: Relay, S: ProtocolParticipant>(
     setup: &S,
     relay: &mut FilteredMsgRelay<R>,
@@ -1250,8 +1272,14 @@ mod tests {
         let coord = SimpleMessageRelay::new();
         let mut parties = JoinSet::new();
 
+        let raw_message = b"message to sign";
+
         for setup in setup_finish_sign(pre_sign) {
-            parties.spawn(finish(setup, coord.connect()));
+            parties.spawn(finish::<Sha256, _, _>(
+                setup,
+                coord.connect(),
+                raw_message,
+            ));
         }
 
         while let Some(fini) = parties.join_next().await {
