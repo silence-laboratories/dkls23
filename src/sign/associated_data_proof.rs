@@ -1,7 +1,5 @@
 use k256::{
-    ecdsa::{
-        signature::hazmat::PrehashVerifier, Signature, VerifyingKey,
-    },
+    ecdsa::{signature::hazmat::PrehashVerifier, Signature, VerifyingKey},
     elliptic_curve::{
         group::GroupEncoding, ops::Reduce, point::AffineCoordinates,
         subtle::ConstantTimeEq,
@@ -34,9 +32,11 @@ impl AssociatedDataProof {
         let r = Scalar::reduce(U256::from_be_slice(r_bytes));
         assert_eq!(r.is_zero().unwrap_u8(), 0);
 
-        let ad_tweak = AssociatedDataProof::ro(&self.big_r_prime, associated_data);
+        let ad_tweak =
+            AssociatedDataProof::ro(&self.big_r_prime, associated_data);
         let big_r = self.big_r_prime * ad_tweak;
-        let r_x = <Scalar as Reduce<U256>>::reduce_bytes(&big_r.to_affine().x());
+        let r_x =
+            <Scalar as Reduce<U256>>::reduce_bytes(&big_r.to_affine().x());
 
         !bool::from(r_x.ct_ne(&r))
     }

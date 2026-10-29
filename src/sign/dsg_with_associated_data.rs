@@ -29,7 +29,9 @@ pub async fn run<R: Relay, S: SignSetupMessage>(
     relay.ask_messages(&setup, DSG_MSG_R3, true).await?;
     relay.ask_messages(&setup, DSG_MSG_R4, false).await?;
 
-    let result = match run_inner(setup, associated_data, seed, &mut relay).await {
+    let result = match run_inner(setup, associated_data, seed, &mut relay)
+        .await
+    {
         Ok(sign) => Ok(sign),
         Err(SignError::AbortProtocol(p)) => Err(SignError::AbortProtocol(p)),
         Err(SignError::SendMessage) => Err(SignError::SendMessage),
@@ -52,7 +54,8 @@ async fn run_inner<R: Relay, S: SignSetupMessage>(
     let t = setup.total_participants();
 
     let (pre_signature_result, proof) =
-        pre_signature_inner(&setup, Some(associated_data), seed, relay).await?;
+        pre_signature_inner(&setup, Some(associated_data), seed, relay)
+            .await?;
 
     let msg_hash = setup.message_hash();
 
@@ -143,7 +146,8 @@ mod tests {
         let coord = SimpleMessageRelay::new();
         let shares = gen_keyshares(2, 3, None).await;
         let vk =
-            VerifyingKey::from_affine(shares[0].public_key().to_affine()).unwrap();
+            VerifyingKey::from_affine(shares[0].public_key().to_affine())
+                .unwrap();
         let chain_path = "m";
 
         let mut parties = JoinSet::new();
@@ -164,9 +168,12 @@ mod tests {
         while let Some(fini) = parties.join_next().await {
             let (sign, recid, proof) = fini.unwrap().unwrap();
 
-            let recid2 =
-                RecoveryId::trial_recovery_from_prehash(&vk, &message_hash, &sign)
-                    .unwrap();
+            let recid2 = RecoveryId::trial_recovery_from_prehash(
+                &vk,
+                &message_hash,
+                &sign,
+            )
+            .unwrap();
             assert_eq!(recid, recid2);
 
             assert!(proof.verify(
@@ -215,7 +222,8 @@ mod tests {
 
         let shares = gen_keyshares(2, 3, None).await;
         let vk =
-            VerifyingKey::from_affine(shares[0].public_key().to_affine()).unwrap();
+            VerifyingKey::from_affine(shares[0].public_key().to_affine())
+                .unwrap();
         let chain_path = "m";
 
         let mut prove_extra_ns = Vec::with_capacity(N);
@@ -250,13 +258,20 @@ mod tests {
             let sign = round_sign.expect("signature");
 
             let t0 = Instant::now();
-            let tweak =
-                AssociatedDataProof::ro(&proof.big_r_prime, &associated_data_bytes);
+            let tweak = AssociatedDataProof::ro(
+                &proof.big_r_prime,
+                &associated_data_bytes,
+            );
             let _tweaked = black_box(proof.big_r_prime * tweak);
             prove_extra_ns.push(t0.elapsed().as_nanos());
 
             let t1 = Instant::now();
-            let ok = proof.verify(&vk, &message_hash, &sign, &associated_data_bytes);
+            let ok = proof.verify(
+                &vk,
+                &message_hash,
+                &sign,
+                &associated_data_bytes,
+            );
             verify_ns.push(t1.elapsed().as_nanos());
             assert!(ok, "verification failed at iteration {i}");
 
@@ -270,11 +285,11 @@ mod tests {
 
         println!("=== associated-data evaluation (N={N}) ===");
         println!("proof_size_bytes: {proof_size}");
-        println!("associated_data_len_bytes: {}", associated_data_bytes.len());
         println!(
-            "proof_computation_mean_us: {:.2}",
-            prove_mean / 1000.0
+            "associated_data_len_bytes: {}",
+            associated_data_bytes.len()
         );
+        println!("proof_computation_mean_us: {:.2}", prove_mean / 1000.0);
         println!(
             "verify_cumulative_ms: {:?}",
             Duration::from_nanos(ver_sum as u64)
