@@ -138,8 +138,7 @@ async fn pre_signature_inner<R: Relay, S: PreSignSetupMessage>(
 
     party_idx_to_id_map.sort_by_key(|&(_, pid)| pid);
 
-    // there is no party-id duplicates
-    if !party_idx_to_id_map.windows(2).all(|w| w[0] != w[1]) {
+    if !party_idx_to_id_map.windows(2).all(|w| w[0].1 != w[1].1) {
         return Err(SignError::InvalidMessage);
     }
 
@@ -183,6 +182,9 @@ async fn pre_signature_inner<R: Relay, S: PreSignSetupMessage>(
 
     let mut to_send = vec![];
 
+    // Each OT seed and MtA session id must be used at most once per session.
+    let mut used_receiver_sids = Vec::new();
+
     let mut mta_receivers = Pairs::from(
         setup
             .all_other_parties()
@@ -191,6 +193,10 @@ async fn pre_signature_inner<R: Relay, S: PreSignSetupMessage>(
 
                 let sid =
                     mta_session_id(&final_session_id, sender_id, my_party_id);
+                if used_receiver_sids.contains(&sid) {
+                    return Err(SignError::InvalidMessage);
+                }
+                used_receiver_sids.push(sid);
 
                 let sender_ot_results =
                     setup.keyshare().sender_seed(sender_id);
@@ -257,6 +263,7 @@ async fn pre_signature_inner<R: Relay, S: PreSignSetupMessage>(
     let pk_i = ProjectivePoint::GENERATOR * sk_i;
 
     let mut sender_additive_shares = vec![];
+    let mut processed_rvole_sids = Vec::new();
 
     let mut round =
         Round::new(setup.total_participants() - 1, DSG_MSG_R2, relay);
@@ -287,6 +294,10 @@ async fn pre_signature_inner<R: Relay, S: PreSignSetupMessage>(
         let receiver_id = find_party_id(party_idx);
 
         let sid = mta_session_id(&final_session_id, my_party_id, receiver_id);
+        if processed_rvole_sids.contains(&sid) {
+            return Err(SignError::InvalidMessage);
+        }
+        processed_rvole_sids.push(sid);
 
         let seed_ot_results = setup.keyshare().receiver_seed(receiver_id);
 
@@ -1220,6 +1231,44 @@ mod tests {
                     .unwrap();
 
             assert_eq!(recid, recid2);
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn duplicate_party_id_rejected() {
+        use crate::setup::{
+            sign::SetupMessage, NoSigningKey, NoVerifyingKey,
+        };
+        use sl_mpc_mate::message::InstanceId;
+
+        let shares = gen_keyshares(3, 3, Some(&[0, 0, 0])).await;
+
+        // Distinct setup identities 0, 1, 2, but identities 1 and 2 both
+        // present the key share of party 2.
+        let session_shares = [&shares[0], &shares[2], &shares[2]];
+        let vk: Vec<_> = (0..3).map(NoVerifyingKey::new).collect();
+        let instance = InstanceId::new(rand::random());
+
+        let coord = SimpleMessageRelay::new();
+        let mut parties = JoinSet::new();
+        for (party_idx, share) in session_shares.into_iter().enumerate() {
+            let setup = SetupMessage::new(
+                instance,
+                NoSigningKey,
+                party_idx,
+                vk.clone(),
+                share.clone(),
+            )
+            .with_ttl(std::time::Duration::from_secs(10));
+            let seed = [party_idx as u8 + 1; 32];
+            parties.spawn(pre_signature(setup, seed, coord.connect()));
+        }
+
+        while let Some(res) = parties.join_next().await {
+            assert!(matches!(
+                res.unwrap(),
+                Err(SignError::InvalidMessage | SignError::AbortProtocol(_))
+            ));
         }
     }
 
