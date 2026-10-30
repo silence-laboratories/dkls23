@@ -4,9 +4,26 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 7
+    groups:
+      routine-version-updates:
+        applies-to: version-updates
+        patterns:
+          - '*'
+    open-pull-requests-limit: 5
   - package-ecosystem: "cargo"
     directory: "/"
     schedule:
       interval: "weekly"
     cooldown:
       default-days: 7
+    groups:
+      routine-version-updates:
+        applies-to: version-updates
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch
+    open-pull-requests-limit: 5
