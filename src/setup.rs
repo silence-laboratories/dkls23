@@ -222,14 +222,24 @@ pub trait PreSignSetupMessage: ProtocolParticipant {
 pub trait FinalSignSetupMessage: ProtocolParticipant {
     /// Pre-signature created by sign::pre_signature()
     fn pre_signature(&self) -> &PreSign;
-
-    /// Hash of a message to sign.
-    fn message_hash(&self) -> [u8; 32];
 }
 
 /// A setup message for sign::run()
 pub trait SignSetupMessage: PreSignSetupMessage {
     /// Hash of a message to sign.
+    ///
+    /// **Internal Use Only:** This method is intended solely for
+    /// internal use during protocol execution.  It's *not* designed
+    /// to be called directly by users or external code.
+    //
+    /// Security considerations dictate that the message hash must
+    /// always be calculated locally from the raw message
+    /// data.
+    ///
+    /// Accepting a pre-computed hash from an external source would
+    /// introduce significant security vulnerabilities and is strictly
+    /// prohibited.
+    ///
     fn message_hash(&self) -> [u8; 32];
 }
 
