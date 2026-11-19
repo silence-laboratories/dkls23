@@ -1,6 +1,6 @@
 [package]
 name = "sl-dkls23"
-version = "1.0.0-beta"
+version = "1.0.1-beta"
 edition = "2021"
 publish = true
 description = "DKLs23 implementation for threshold ECDSA signatures"
